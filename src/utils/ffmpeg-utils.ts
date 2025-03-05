@@ -78,7 +78,7 @@ export const getVideoInfo = async (videoPath: string): Promise<VideoInfo> => {
       resolve({
         width: videoStream.width || 1920,
         height: videoStream.height || 1080,
-        duration: metadata.format.duration ? parseFloat(metadata.format.duration) : 0,
+        duration: metadata.format.duration ? Number(metadata.format.duration) : 0,
         fps
       });
     });

@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useCallback, useEffect } from 'react'
-import { SpeakerWaveIcon, PlayIcon, PauseIcon, ArrowRightIcon } from '@heroicons/react/24/outline'
+import { SpeakerWaveIcon, PlayIcon, PauseIcon, ArrowRightIcon, TrashIcon } from '@heroicons/react/24/outline'
 import Link from 'next/link'
 
 export default function VoiceoverPage() {
@@ -72,6 +72,30 @@ export default function VoiceoverPage() {
     }
   }, [voiceoverUrl, audioElement, isPlaying])
 
+  // Reset voiceover and script
+  const handleReset = () => {
+    // Stop audio if playing
+    if (audioElement && isPlaying) {
+      audioElement.pause();
+      setIsPlaying(false);
+    }
+    
+    // Clear audio element
+    setAudioElement(null);
+    
+    // Remove from localStorage
+    localStorage.removeItem('voiceoverUrl');
+    localStorage.removeItem('voiceoverScript');
+    
+    // Clear state
+    setVoiceoverUrl(null);
+    
+    // Optionally, you can decide whether to clear the script input or keep it
+    // setScript('');
+    
+    setError(null);
+  };
+
   // Load saved script if available
   useEffect(() => {
     const savedScript = localStorage.getItem('voiceoverScript');
@@ -106,23 +130,34 @@ export default function VoiceoverPage() {
               <div className="text-sm text-white/40">
                 {script.length} characters
               </div>
-              <button
-                onClick={handleGenerateVoiceover}
-                disabled={isGenerating || !script.trim()}
-                className="inline-flex items-center px-6 py-3 text-lg font-medium text-white bg-gradient-to-r from-primary to-primary-light rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isGenerating ? (
-                  <>
-                    <SpeakerWaveIcon className="animate-pulse h-5 w-5 mr-2" />
-                    Generating...
-                  </>
-                ) : (
-                  <>
-                    <SpeakerWaveIcon className="h-5 w-5 mr-2" />
-                    Generate Voiceover
-                  </>
+              <div className="flex gap-2">
+                {voiceoverUrl && (
+                  <button
+                    onClick={handleReset}
+                    className="inline-flex items-center px-4 py-3 text-sm font-medium text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg hover:bg-red-500/20 transition-colors"
+                  >
+                    <TrashIcon className="h-4 w-4 mr-2" />
+                    Reset
+                  </button>
                 )}
-              </button>
+                <button
+                  onClick={handleGenerateVoiceover}
+                  disabled={isGenerating || !script.trim()}
+                  className="inline-flex items-center px-6 py-3 text-lg font-medium text-white bg-gradient-to-r from-primary to-primary-light rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isGenerating ? (
+                    <>
+                      <SpeakerWaveIcon className="animate-pulse h-5 w-5 mr-2" />
+                      Generating...
+                    </>
+                  ) : (
+                    <>
+                      <SpeakerWaveIcon className="h-5 w-5 mr-2" />
+                      Generate Voiceover
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
 
             {error && (
