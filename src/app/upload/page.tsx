@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useRef, useEffect } from 'react'
-import { ArrowUpTrayIcon, XMarkIcon, TagIcon, ArrowRightIcon, CheckCircleIcon } from '@heroicons/react/24/outline'
+import { ArrowUpTrayIcon, XMarkIcon, TagIcon, ArrowRightIcon, CheckCircleIcon, FilmIcon } from '@heroicons/react/24/outline'
 import Link from 'next/link'
 
 // Define the structure for uploaded video objects
@@ -12,6 +12,7 @@ type UploadedVideo = {
   type: string;    // MIME type of the video
   url: string;     // Local object URL for preview
   tags: string[];  // Array of user-defined tags
+  filepath?: string; // Server path for the uploaded video
 }
 
 export default function UploadPage() {
@@ -29,6 +30,8 @@ export default function UploadPage() {
   const inputRef = useRef<HTMLInputElement>(null)
   // Maximum allowed file size (500MB)
   const MAX_FILE_SIZE = 500 * 1024 * 1024
+  const [isUploading, setIsUploading] = useState<{[key: string]: boolean}>({})
+  const [uploadProgress, setUploadProgress] = useState<{[key: string]: number}>({})
 
   // Load videos from localStorage on component mount
   useEffect(() => {
@@ -78,28 +81,33 @@ export default function UploadPage() {
     }
   }
 
-  const handleFiles = (files: FileList) => {
+  const handleFiles = async (files: FileList) => {
     setError(null)
     
-    Array.from(files).forEach(file => {
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      
       // Check if file is a video
       if (!file.type.startsWith('video/')) {
         setError('Only video files are allowed.')
-        return
+        continue
       }
       
       // Check file size
       if (file.size > MAX_FILE_SIZE) {
         setError(`File ${file.name} is too large. Maximum size is 500MB.`)
-        return
+        continue
       }
       
       // Create object URL for the file
       const url = URL.createObjectURL(file)
       
-      // Add to uploaded videos
+      // Generate a unique ID for the video
+      const videoId = crypto.randomUUID()
+      
+      // Add to uploaded videos with temporary blob URL
       const newVideo: UploadedVideo = {
-        id: crypto.randomUUID(),
+        id: videoId,
         name: file.name,
         size: file.size,
         type: file.type,
@@ -108,7 +116,47 @@ export default function UploadPage() {
       }
       
       setUploadedVideos(prev => [...prev, newVideo])
-    })
+      
+      // Set this video as uploading
+      setIsUploading(prev => ({ ...prev, [videoId]: true }))
+      setUploadProgress(prev => ({ ...prev, [videoId]: 0 }))
+      
+      // Upload to server
+      try {
+        // Create form data
+        const formData = new FormData()
+        formData.append('file', file)
+        formData.append('tags', JSON.stringify([]))
+        formData.append('videoId', videoId)  // Add video ID to form data
+        
+        // Upload file
+        const response = await fetch('/api/upload-video', {
+          method: 'POST',
+          body: formData
+        })
+        
+        if (!response.ok) {
+          throw new Error(`Upload failed: ${response.statusText}`)
+        }
+        
+        const data = await response.json()
+        
+        // Update the video with the server filepath
+        setUploadedVideos(prev => 
+          prev.map(video => 
+            video.id === videoId
+              ? { ...video, filepath: data.fileUrl }
+              : video
+          )
+        )
+      } catch (error) {
+        console.error('Error uploading file:', error)
+        setError(`Failed to upload ${file.name}. ${error instanceof Error ? error.message : ''}`)
+      } finally {
+        // Mark as no longer uploading
+        setIsUploading(prev => ({ ...prev, [videoId]: false }))
+      }
+    }
   }
 
   const removeVideo = (id: string) => {
@@ -230,100 +278,109 @@ export default function UploadPage() {
           </div>
         )}
 
-        {/* Upload Queue */}
-        {uploadedVideos.length > 0 && (
-          <div className="mt-8">
-            <h2 className="text-xl font-semibold mb-4">Your Videos ({uploadedVideos.length})</h2>
-            <div className="space-y-4">
+        {/* Uploaded videos section */}
+        <div className="mt-8">
+          <h2 className="text-xl font-semibold mb-4">Uploaded Videos{uploadedVideos.length > 0 && ` (${uploadedVideos.length})`}</h2>
+          
+          {uploadedVideos.length === 0 ? (
+            <div className="text-gray-400 text-center py-8">
+              <FilmIcon className="h-12 w-12 mx-auto mb-2" />
+              <p>No videos have been uploaded yet</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {uploadedVideos.map(video => (
-                <div 
-                  key={video.id} 
-                  className={`p-4 rounded-lg border ${
-                    selectedVideoId === video.id 
-                      ? 'border-primary bg-primary/5' 
-                      : 'border-white/10 bg-white/5'
-                  }`}
-                >
-                  <div className="flex justify-between items-start">
-                    <div className="flex-1">
-                      <div className="flex items-center">
-                        <h3 className="font-medium truncate">{video.name}</h3>
-                        <span className="ml-2 text-sm text-white/40">
-                          {formatFileSize(video.size)}
-                        </span>
-                      </div>
-                      
-                      {/* Video Tags */}
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        {video.tags.map(tag => (
-                          <div 
-                            key={tag} 
-                            className="inline-flex items-center px-2 py-1 rounded-full bg-primary/10 text-primary-light text-xs"
-                          >
-                            <span>{tag}</span>
-                            <button 
-                              onClick={() => handleTagRemove(video.id, tag)}
-                              className="ml-1 text-primary-light/70 hover:text-primary-light"
-                            >
-                              <XMarkIcon className="h-3 w-3" />
-                            </button>
-                          </div>
-                        ))}
-                        
-                        {selectedVideoId === video.id && (
-                          <div className="inline-flex items-center">
-                            <input
-                              type="text"
-                              value={currentTag}
-                              onChange={(e) => setCurrentTag(e.target.value)}
-                              onKeyPress={(e) => handleTagKeyPress(e, video.id)}
-                              placeholder="Add tag..."
-                              className="px-2 py-1 w-24 text-xs rounded-l-full bg-white/10 border-y border-l border-white/20 focus:outline-none focus:border-primary-light/50"
-                            />
-                            <button
-                              onClick={() => handleTagAdd(video.id)}
-                              className="px-2 py-1 text-xs rounded-r-full bg-white/20 border border-white/20 hover:bg-white/30"
-                            >
-                              Add
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                    
-                    <div className="flex items-center space-x-2">
-                      {selectedVideoId !== video.id && (
-                        <button
-                          onClick={() => setSelectedVideoId(video.id)}
-                          className="p-1 text-white/60 hover:text-primary-light"
-                          title="Add tags"
-                        >
-                          <TagIcon className="h-5 w-5" />
-                        </button>
-                      )}
-                      <button
-                        onClick={() => removeVideo(video.id)}
-                        className="p-1 text-white/60 hover:text-red-400"
-                        title="Remove video"
-                      >
-                        <XMarkIcon className="h-5 w-5" />
-                      </button>
-                    </div>
-                  </div>
-                  
-                  {/* Video Preview */}
-                  <div className="mt-4">
+                <div key={video.id} className="card bg-base-200 shadow-xl overflow-hidden">
+                  <div className="relative">
                     <video 
                       src={video.url} 
-                      controls 
-                      className="w-full h-auto rounded-lg"
+                      className="w-full h-48 object-cover"
                     />
+                    <span className="absolute bottom-2 right-2 bg-black/70 text-xs text-white px-2 py-1 rounded">
+                      {formatFileSize(video.size)}
+                    </span>
+                  </div>
+                  
+                  <div className="card-body p-4">
+                    <h3 className="card-title text-base">{video.name}</h3>
+                    
+                    {/* Video ID for reference */}
+                    <div className="text-xs text-gray-500 mt-1">
+                      ID: <span className="font-mono">{video.id}</span>
+                    </div>
+                    
+                    {/* Server filepath if available */}
+                    {video.filepath && (
+                      <div className="text-xs text-green-600 mt-1 overflow-hidden text-ellipsis">
+                        ✓ Uploaded to: <span className="font-mono">{video.filepath}</span>
+                      </div>
+                    )}
+                    
+                    {/* Tags section */}
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      {video.tags.map(tag => (
+                        <div key={`${video.id}-${tag}`} className="badge badge-primary badge-sm gap-1">
+                          {tag}
+                          <button onClick={() => handleTagRemove(video.id, tag)}>
+                            <XMarkIcon className="h-3 w-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    
+                    {/* Add tag input (only show for selected video) */}
+                    {selectedVideoId === video.id && (
+                      <div className="mt-2 flex">
+                        <div className="input-group">
+                          <input
+                            type="text"
+                            placeholder="Add tag"
+                            className="input input-sm input-bordered flex-grow"
+                            value={currentTag}
+                            onChange={e => setCurrentTag(e.target.value)}
+                            onKeyPress={e => handleTagKeyPress(e, video.id)}
+                          />
+                          <button 
+                            className="btn btn-sm btn-square"
+                            onClick={() => handleTagAdd(video.id)}
+                          >
+                            <TagIcon className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Upload status */}
+                    {isUploading[video.id] && (
+                      <div className="mt-2">
+                        <progress className="progress progress-primary w-full" value={uploadProgress[video.id] || 0} max="100"></progress>
+                        <p className="text-xs text-center mt-1">Uploading... {Math.round(uploadProgress[video.id] || 0)}%</p>
+                      </div>
+                    )}
+                    
+                    <div className="card-actions justify-between mt-3">
+                      <button
+                        className="btn btn-sm btn-ghost gap-1"
+                        onClick={() => setSelectedVideoId(selectedVideoId === video.id ? null : video.id)}
+                      >
+                        <TagIcon className="h-4 w-4" />
+                        {selectedVideoId === video.id ? 'Done' : 'Tags'}
+                      </button>
+                      
+                      <button
+                        className="btn btn-sm btn-error gap-1"
+                        onClick={() => removeVideo(video.id)}
+                      >
+                        <XMarkIcon className="h-4 w-4" />
+                        Remove
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
             </div>
-          </div>
-        )}
+          )}
+        </div>
 
         {/* Guidelines */}
         <div className="mt-12 p-6 rounded-lg border border-white/10 bg-white/5">
