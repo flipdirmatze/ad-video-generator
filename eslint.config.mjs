@@ -1,4 +1,4 @@
-import path from "path";
+import { dirname } from "path";
 import { fileURLToPath } from "url";
 import { FlatCompat } from "@eslint/eslintrc";
 import eslint from '@eslint/js';
@@ -6,34 +6,39 @@ import tseslint from 'typescript-eslint';
 import nextPlugin from '@next/eslint-plugin-next';
 
 const __filename = fileURLToPath(import.meta.url);
-const __path.dirname = path.dirname(__filename);
-
+const __dirname = dirname(__filename);
 
 const compat = new FlatCompat({
-  baseDirectory: __path.dirname,
-  recommendedConfig: eslint.configs.recommended,
+  baseDirectory: __dirname,
 });
 
-export default [
-  ...compat.config({
-    extends: [
-      'next/core-web-vitals',
-      'plugin:@typescript-eslint/recommended'
-    ],
-  }),
+const eslintConfig = [
+  ...compat.extends("next/core-web-vitals", "next/typescript"),
+];
+
+export default tseslint.config(
+  eslint.configs.recommended,
+  ...tseslint.configs.recommended,
   {
-    files: ['**/*.ts', '**/*.tsx'],
+    // Add Next.js plugin
+    plugins: {
+      '@next/next': nextPlugin,
+    },
+    // Add rules from Next.js
     rules: {
+      ...nextPlugin.configs.recommended.rules,
+      // Deaktiviere die Regel für unbenutzte Variablen im Produktionsbuild
       '@typescript-eslint/no-unused-vars': 'off',
-      'no-unused-vars': 'off'
-    }
+      'no-unused-vars': 'off',
+    },
   },
   {
-    plugins: {
-      '@next/next': nextPlugin
+    // Set parser options
+    languageOptions: {
+      parserOptions: {
+        project: true,
+        tsconfigRootDir: fileURLToPath(new URL('.', import.meta.url)),
+      },
     },
-    rules: {
-      '@next/next/no-html-link-for-pages': 'off'
-    }
   }
-];
+);
