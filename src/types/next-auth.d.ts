@@ -1,11 +1,12 @@
 import 'next-auth';
-import { DefaultSession } from 'next-auth';
+import { DefaultSession, DefaultUser } from 'next-auth';
+import { JWT } from 'next-auth/jwt';
 
 declare module 'next-auth' {
   /**
    * Returned by `useSession`, `getSession` and received as a prop on the `SessionProvider` React Context
    */
-  interface Session {
+  interface Session extends DefaultSession {
     user: {
       /** The user's id. */
       id: string;
@@ -18,7 +19,7 @@ declare module 'next-auth' {
    * The shape of the user object returned in the OAuth providers' `profile` callback,
    * or the second parameter of the `session` callback, when using a database.
    */
-  interface User {
+  interface User extends DefaultUser {
     /** The user's role. */
     role?: string;
   }

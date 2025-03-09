@@ -8,7 +8,7 @@ import {
   generateFinalVideo
 } from '@/utils/aws-batch-utils';
 import { getServerSession } from 'next-auth';
-import { authOptions } from '../auth/[...nextauth]/route';
+import { authOptions } from '@/lib/auth';
 import { addVideoGenerationJob } from '@/lib/queue';
 import db from '@/lib/db';
 

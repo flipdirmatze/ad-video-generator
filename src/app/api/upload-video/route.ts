@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 import { uploadToS3 } from '@/lib/storage';
 import { getServerSession } from 'next-auth';
-import { authOptions } from '../auth/[...nextauth]/route';
+import { authOptions } from '@/lib/auth';
 import db from '@/lib/db';
 
 export async function POST(request: Request) {

@@ -33,11 +33,10 @@ export default tseslint.config(
     },
   },
   {
-    // Set parser options
+    // Set parser options without project reference for Vercel compatibility
     languageOptions: {
       parserOptions: {
-        project: true,
-        tsconfigRootDir: fileURLToPath(new URL('.', import.meta.url)),
+        project: false,
       },
     },
   }
