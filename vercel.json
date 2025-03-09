@@ -1,1 +1,1 @@
-{"installCommand": "npm install --no-optional"}
+{"installCommand": "npm install --omit=optional"}
