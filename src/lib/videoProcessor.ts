@@ -5,7 +5,7 @@ import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import db from '@/lib/db';
 import os from 'os';
-// @ts-expect-error - Node-fetch hat keine Typdefinitionen
+// HTTP-Client für Netzwerkanfragen
 import fetch from 'node-fetch';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
