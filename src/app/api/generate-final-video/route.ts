@@ -41,6 +41,7 @@ type VideoRequest = {
 type ErrorResponse = {
   error: string;
   code: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   details?: any;
   suggestions?: string[];
 }

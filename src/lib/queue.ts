@@ -8,6 +8,7 @@ import { submitAwsBatchJob } from '@/utils/aws-batch-utils';
 /**
  * Fügt einen Videobearbeitungsjob zur AWS Batch-Warteschlange hinzu
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function addVideoGenerationJob(data: any) {
   try {
     // Extrahiere relevante Daten für den AWS Batch-Job

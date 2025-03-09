@@ -12,6 +12,7 @@ import Project from '@/models/Project';
  */
 const db = {
   video: {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     create: async ({ data }: { data: any }) => {
       await dbConnect();
       const videoId = data.id || uuidv4();
@@ -25,6 +26,7 @@ const db = {
       return video;
     },
     
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     findMany: async ({ where, orderBy }: { where: any, orderBy?: any }) => {
       await dbConnect();
       let query = Video.find(where);
@@ -40,6 +42,7 @@ const db = {
       return query;
     },
     
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     findUnique: async ({ where }: { where: any }) => {
       await dbConnect();
       return Video.findOne(where);
@@ -47,6 +50,7 @@ const db = {
   },
   
   project: {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     create: async ({ data }: { data: any }) => {
       await dbConnect();
       const projectId = data.id || uuidv4();
@@ -60,6 +64,7 @@ const db = {
       return project;
     },
     
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     findMany: async ({ where, orderBy }: { where: any, orderBy?: any }) => {
       await dbConnect();
       let query = Project.find(where);
@@ -75,11 +80,13 @@ const db = {
       return query;
     },
     
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     findUnique: async ({ where }: { where: any }) => {
       await dbConnect();
       return Project.findOne(where);
     },
     
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     update: async ({ where, data }: { where: any, data: any }) => {
       await dbConnect();
       return Project.findOneAndUpdate(where, { $set: data }, { new: true });

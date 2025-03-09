@@ -27,6 +27,7 @@ type VideoSegment = {
 type ErrorResponse = {
   error: string;
   code: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   details?: any;
   suggestions?: string[];
 }
@@ -227,11 +228,13 @@ export default function EditorPage() {
             return prev.map(video => {
               // Try to find a matching file in the uploads directory
               // First try by exact ID match
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
               const matchByExactId = data.files.find((file: any) => 
                 file.id === video.id
               );
               
               // Then try by ID prefix in filename
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
               const matchByFileName = !matchByExactId && data.files.find((file: any) => 
                 file.name.startsWith(video.id) || 
                 video.filepath === `/uploads/${file.name}`
@@ -502,6 +505,7 @@ export default function EditorPage() {
                 <div>
                   <div className="font-bold mb-1">Verfügbare Videos auf dem Server:</div>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 mt-2">
+                    {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                     {availableUploads.map((file: any) => (
                       <div key={file.name} className="badge badge-success gap-1 p-3">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
@@ -521,6 +525,7 @@ export default function EditorPage() {
         {uploadedVideos.some(video => {
           // For each selected video, check if there's a matching file on the server
           return selectedVideos.includes(video.id) && 
+                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                  !availableUploads.some((file: any) => 
                    file.id === video.id || // Check by ID
                    file.name.startsWith(video.id) || // Check by ID prefix
@@ -539,6 +544,7 @@ export default function EditorPage() {
                       {uploadedVideos
                         .filter(video => {
                           return selectedVideos.includes(video.id) && 
+                                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                                  !availableUploads.some((file: any) => 
                                    file.id === video.id || 
                                    file.name.startsWith(video.id) || 

@@ -5,9 +5,10 @@ import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import db from '@/lib/db';
 import os from 'os';
-// @ts-ignore
+// @ts-expect-error - Node-fetch hat keine Typdefinitionen
 import fetch from 'node-fetch';
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function processVideo(data: any) {
   const { projectId, userId, segments, voiceoverUrl } = data;
   const tempDir = path.join(os.tmpdir(), `video-project-${projectId}`);

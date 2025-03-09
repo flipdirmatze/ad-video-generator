@@ -35,6 +35,7 @@ export const submitAwsBatchJob = async (
   jobType: string,
   inputVideoUrl: string,
   outputKey?: string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   additionalParams?: Record<string, any>
 ): Promise<{ jobId: string; jobName: string }> => {
   try {
@@ -181,6 +182,7 @@ export const concatVideosWithoutReencoding = async (
  * Erstellt das endgültige Video mit allen Anpassungen durch Delegieren an AWS Batch
  */
 export const generateFinalVideo = async (
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   templateData: any,
   outputFileName: string
 ): Promise<string> => {

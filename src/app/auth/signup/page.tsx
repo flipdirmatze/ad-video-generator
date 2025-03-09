@@ -34,6 +34,7 @@ export default function SignUp() {
 
     try {
       // Register user
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const response = await fetch('/api/auth/register', {
         method: 'POST',
         headers: {

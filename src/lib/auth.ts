@@ -8,6 +8,7 @@ import User from '@/models/User';
 import bcrypt from 'bcrypt';
 
 // Extraktion gemeinsamer Logik in Funktionen
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const getUserFromCredentials = async (credentials: any) => {
   if (!credentials?.email || !credentials?.password) {
     throw new Error('Email and password are required');
@@ -76,6 +77,7 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, user }) {
       // Add role to JWT token when user signs in
       if (user) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         token.role = (user as any).role || 'user';
         token.id = user.id;
       }

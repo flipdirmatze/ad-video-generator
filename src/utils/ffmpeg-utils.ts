@@ -35,6 +35,7 @@ export const submitAwsBatchJob = async (
   jobType: string,
   inputVideoUrl: string,
   outputKey?: string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   additionalParams?: Record<string, any>
 ): Promise<{ jobId: string; jobName: string }> => {
   try {
@@ -56,7 +57,7 @@ export const submitAwsBatchJob = async (
       const errorData = await response.json();
       throw new Error(`AWS Batch API-Fehler: ${errorData.error || response.statusText}`);
     }
-
+    
     const data = await response.json();
     return {
       jobId: data.jobId,
@@ -131,9 +132,9 @@ export const combineVideosWithVoiceover = async (
       VIDEO_SEGMENTS: JSON.stringify(videoSegments),
     }
   );
-  
+
   // Simuliere Fortschritt für die UI
-  if (progressCallback) {
+      if (progressCallback) {
     let progress = 0;
     const interval = setInterval(() => {
       progress += 5;
@@ -141,7 +142,7 @@ export const combineVideosWithVoiceover = async (
         progressCallback(progress);
       } else {
         clearInterval(interval);
-      }
+          }
     }, 500);
   }
   
@@ -181,6 +182,7 @@ export const concatVideosWithoutReencoding = async (
  * Erstellt das endgültige Video mit allen Anpassungen durch Delegieren an AWS Batch
  */
 export const generateFinalVideo = async (
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   templateData: any,
   outputFileName: string
 ): Promise<string> => {

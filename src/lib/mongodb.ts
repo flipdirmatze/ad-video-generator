@@ -10,18 +10,27 @@ const options = {};
 let client;
 let clientPromise: Promise<MongoClient>;
 
+// Add global type for caching
+const globalWithMongo = global as typeof globalThis & {
+  mongo: { conn: any; promise: any };
+};
+
+// Initialize mongo property if it doesn't exist
+if (!('mongo' in global)) {
+  (global as any).mongo = {
+    conn: null,
+    promise: null
+  };
+}
+
 if (process.env.NODE_ENV === 'development') {
   // In development mode, use a global variable so that the value
   // is preserved across module reloads caused by HMR (Hot Module Replacement).
-  let globalWithMongo = global as typeof globalThis & {
-    _mongoClientPromise?: Promise<MongoClient>;
-  };
-
-  if (!globalWithMongo._mongoClientPromise) {
+  if (!globalWithMongo.mongo.conn) {
     client = new MongoClient(uri, options);
-    globalWithMongo._mongoClientPromise = client.connect();
+    globalWithMongo.mongo.conn = client.connect();
   }
-  clientPromise = globalWithMongo._mongoClientPromise;
+  clientPromise = globalWithMongo.mongo.conn;
 } else {
   // In production mode, it's best to not use a global variable.
   client = new MongoClient(uri, options);
