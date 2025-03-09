@@ -3,7 +3,7 @@ import { getSignedDownloadUrl, uploadToS3 } from './storage';
 import fs from 'fs-extra';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
-import prisma from '@/lib/prisma';
+import db from '@/lib/db';
 import os from 'os';
 import fetch from 'node-fetch';
 
@@ -13,7 +13,7 @@ export async function processVideo(data: any) {
   
   try {
     // Update project status
-    await prisma.project.update({
+    await db.project.update({
       where: { id: projectId },
       data: { status: 'PROCESSING' }
     });
@@ -46,7 +46,7 @@ export async function processVideo(data: any) {
       console.log(`[Job ${projectId}] Verarbeite Segment für Video ${segment.videoId}`);
       
       // Get video from database
-      const video = await prisma.video.findUnique({
+      const video = await db.video.findUnique({
         where: { id: segment.videoId }
       });
       
@@ -112,7 +112,7 @@ export async function processVideo(data: any) {
     console.log(`[Job ${projectId}] Finales Video hochgeladen: ${finalVideoUrl}`);
     
     // Update project
-    await prisma.project.update({
+    await db.project.update({
       where: { id: projectId },
       data: {
         status: 'COMPLETED',
@@ -131,7 +131,7 @@ export async function processVideo(data: any) {
     console.error(`[Job ${projectId}] Fehler bei der Videoverarbeitung:`, error);
     
     // Update project with error
-    await prisma.project.update({
+    await db.project.update({
       where: { id: projectId },
       data: {
         status: 'FAILED',

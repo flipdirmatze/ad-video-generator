@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { uploadToS3 } from '@/lib/storage';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../auth/[...nextauth]/route';
-import prisma from '@/lib/prisma'; // Annahme, dass Sie zu Prisma wechseln für bessere Typsicherheit
+import db from '@/lib/db';
 
 export async function POST(request: Request) {
   try {
@@ -41,8 +41,8 @@ export async function POST(request: Request) {
     // Upload to S3
     const fileUrl = await uploadToS3(buffer, uniqueFileName, file.type);
     
-    // Save metadata to database
-    const videoRecord = await prisma.video.create({
+    // Save metadata to database using Mongoose instead of Prisma
+    const videoRecord = await db.video.create({
       data: {
         id: uniqueId,
         name: file.name,

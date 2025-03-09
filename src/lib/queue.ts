@@ -1,45 +1,43 @@
-import { Queue, QueueScheduler, Worker } from 'bullmq';
-import { processVideo } from './videoProcessor';
-import Redis from 'ioredis';
+/**
+ * AWS Batch-basierte Warteschlange für Videobearbeitung
+ * Diese Datei ersetzt die frühere BullMQ-Implementierung
+ */
 
-const connection = new Redis(process.env.REDIS_URL || 'redis://localhost:6379');
+import { submitAwsBatchJob } from '@/utils/aws-batch-utils';
 
-// Create a queue
-export const videoQueue = new Queue('video-processing', { connection });
-new QueueScheduler('video-processing', { connection });
-
-// Create a worker
-const worker = new Worker('video-processing', 
-  async job => {
-    try {
-      console.log(`Processing job ${job.id}: ${job.name}`);
-      
-      const result = await processVideo(job.data);
-      return result;
-    } catch (error) {
-      console.error(`Error processing job ${job.id}:`, error);
-      throw error;
-    }
-  },
-  { connection }
-);
-
-worker.on('completed', job => {
-  console.log(`Job ${job.id} completed`);
-});
-
-worker.on('failed', (job, error) => {
-  console.error(`Job ${job?.id} failed:`, error);
-});
-
+/**
+ * Fügt einen Videobearbeitungsjob zur AWS Batch-Warteschlange hinzu
+ */
 export async function addVideoGenerationJob(data: any) {
-  return videoQueue.add('generate-video', data, {
-    attempts: 3,
-    backoff: {
-      type: 'exponential',
-      delay: 5000,
-    },
-    removeOnComplete: false,
-    removeOnFail: false,
-  });
+  try {
+    // Extrahiere relevante Daten für den AWS Batch-Job
+    const { projectId, userId, segments, voiceoverUrl } = data;
+    
+    // Erstelle einen eindeutigen Output-Dateinamen
+    const outputFileName = `${projectId || 'project'}-${Date.now()}.mp4`;
+    
+    // Sende den Job an AWS Batch
+    const jobResult = await submitAwsBatchJob(
+      'generate-final',
+      // Wir verwenden die URL des ersten Segments als Eingabe-Referenz,
+      // aber AWS Batch verarbeitet alle Segmente
+      segments[0]?.videoUrl || '',
+      outputFileName,
+      {
+        PROJECT_ID: projectId,
+        USER_ID: userId,
+        SEGMENTS: JSON.stringify(segments),
+        VOICEOVER_URL: voiceoverUrl,
+      }
+    );
+    
+    // Gib ein ähnliches Objekt wie BullMQ zurück, um Kompatibilität zu wahren
+    return {
+      id: jobResult.jobId,
+      name: jobResult.jobName
+    };
+  } catch (error) {
+    console.error('Error adding job to AWS Batch:', error);
+    throw error;
+  }
 } 

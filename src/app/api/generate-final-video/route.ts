@@ -3,18 +3,14 @@ import path from 'path';
 import fs from 'fs-extra';
 import { v4 as uuidv4 } from 'uuid';
 import { 
-  VideoSegment, 
-  getTempDir, 
-  downloadFile, 
-  combineVideosWithVoiceover, 
-  cleanupTempFiles,
-  checkFFmpegAvailability,
-  getVideoInfo
-} from '@/utils/ffmpeg-utils';
+  VideoSegment,
+  combineVideosWithVoiceover,
+  generateFinalVideo
+} from '@/utils/aws-batch-utils';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../auth/[...nextauth]/route';
 import { addVideoGenerationJob } from '@/lib/queue';
-import prisma from '@/lib/prisma';
+import db from '@/lib/db';
 
 // Ensure the output directory exists
 async function ensureOutputDir() {
@@ -65,8 +61,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'No video segments provided' }, { status: 400 });
     }
     
-    // Create record in database
-    const project = await prisma.project.create({
+    // Create record in database using Mongoose instead of Prisma
+    const project = await db.project.create({
       data: {
         userId: session.user.id,
         status: 'PROCESSING',
@@ -76,7 +72,7 @@ export async function POST(request: Request) {
       },
     });
     
-    // Add job to queue
+    // Add job to queue - using AWS Batch via queue abstraction
     const job = await addVideoGenerationJob({
       projectId: project.id,
       userId: session.user.id,
@@ -87,10 +83,10 @@ export async function POST(request: Request) {
     
     return NextResponse.json({
       success: true,
-      message: 'Video generation started',
+      message: 'Video generation started on AWS Batch',
       projectId: project.id,
       jobId: job.id,
-      estimatedTime: "Your video will be ready in a few minutes"
+      estimatedTime: "Your video will be processed on AWS Batch and will be ready in a few minutes"
     });
   } catch (error) {
     console.error('Error starting video generation:', error);

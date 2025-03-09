@@ -1,4 +1,4 @@
-import mongoose, { Schema, model, models } from 'mongoose';
+import mongoose from 'mongoose';
 import { IUser } from './User';
 
 // 1. Create an interface representing a document in MongoDB
@@ -20,27 +20,61 @@ export interface IVideo {
 }
 
 // 2. Create a Schema corresponding to the document interface
-const videoSchema = new Schema<IVideo>(
-  {
-    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-    name: { type: String, required: true },
-    originalFilename: { type: String, required: true },
-    size: { type: Number, required: true },
-    type: { type: String, required: true },
-    path: { type: String, required: true },
-    url: { type: String, required: true },
-    tags: [{ type: String }],
-    width: Number,
-    height: Number,
-    duration: Number,
-    isPublic: { type: Boolean, default: false },
+const VideoSchema = new mongoose.Schema({
+  id: {
+    type: String,
+    required: true,
+    unique: true
   },
-  {
-    timestamps: true,
+  userId: {
+    type: String,
+    required: true
+  },
+  name: {
+    type: String,
+    required: true
+  },
+  url: {
+    type: String,
+    required: true
+  },
+  size: {
+    type: Number,
+    default: 0
+  },
+  type: {
+    type: String,
+    default: 'video/mp4'
+  },
+  tags: {
+    type: [String],
+    default: []
+  },
+  duration: {
+    type: Number,
+    default: 0
+  },
+  width: {
+    type: Number,
+    default: 1920
+  },
+  height: {
+    type: Number,
+    default: 1080
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now
+  },
+  updatedAt: {
+    type: Date,
+    default: Date.now
   }
-);
+}, {
+  timestamps: true
+});
 
 // 3. Create a Model
-export const Video = models.Video || model<IVideo>('Video', videoSchema);
+const Video = mongoose.models.Video || mongoose.model('Video', VideoSchema);
 
 export default Video; 

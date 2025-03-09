@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
-import prisma from '@/lib/prisma';
+import db from '@/lib/db';
 
 export async function GET() {
   try {
@@ -12,7 +12,7 @@ export async function GET() {
     }
     
     // Get user's projects
-    const projects = await prisma.project.findMany({
+    const projects = await db.project.findMany({
       where: {
         userId: session.user.id,
       },
