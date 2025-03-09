@@ -12,6 +12,7 @@
     "@auth/mongodb-adapter": "^3.8.0",
     "@aws-sdk/client-batch": "^3.495.0",
     "@aws-sdk/client-s3": "^3.758.0",
+    "@aws-sdk/s3-request-presigner": "^3.758.0",
     "@heroicons/react": "^2.2.0",
     "bcrypt": "^5.1.1",
     "fs-extra": "^11.3.0",
