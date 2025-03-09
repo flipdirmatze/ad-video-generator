@@ -5,10 +5,14 @@ import db from '@/lib/db';
 
 export async function GET() {
   try {
-    // Authenticate user
+    // Get the session
     const session = await getServerSession(authOptions);
+    
     if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json(
+        { error: 'You must be signed in to access projects' },
+        { status: 401 }
+      );
     }
     
     // Get user's projects
@@ -18,21 +22,25 @@ export async function GET() {
       },
       orderBy: {
         createdAt: 'desc',
-      },
-      select: {
-        id: true,
-        status: true,
-        outputUrl: true,
-        createdAt: true,
-        error: true,
-      },
+      }
     });
+
+    // Map projects to include only required fields
+    const simplifiedProjects = projects.map(project => ({
+      id: project.id,
+      status: project.status,
+      outputUrl: project.outputUrl,
+      createdAt: project.createdAt,
+      updatedAt: project.updatedAt,
+    }));
     
-    return NextResponse.json({ projects });
+    return NextResponse.json({
+      projects: simplifiedProjects
+    });
   } catch (error) {
-    console.error('Error fetching user projects:', error);
+    console.error('Error fetching projects:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch projects', details: error instanceof Error ? error.message : String(error) },
+      { error: 'Failed to fetch projects' },
       { status: 500 }
     );
   }

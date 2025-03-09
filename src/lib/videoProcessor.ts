@@ -5,6 +5,7 @@ import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import db from '@/lib/db';
 import os from 'os';
+// @ts-ignore
 import fetch from 'node-fetch';
 
 export async function processVideo(data: any) {

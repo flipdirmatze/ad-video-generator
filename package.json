@@ -32,6 +32,7 @@
     "@types/bcrypt": "^5.0.2",
     "@types/fs-extra": "^11.0.4",
     "@types/node": "^20",
+    "@types/node-fetch": "^2.6.12",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/react-dropzone": "^4.2.2",
