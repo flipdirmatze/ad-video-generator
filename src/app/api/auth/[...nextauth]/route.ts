@@ -21,13 +21,13 @@ interface CustomJWT extends JWT {
 
 // Extend the Session interface
 interface CustomSession extends Session {
-  user?: {
-    id?: string;
-    name?: string;
-    email?: string;
-    image?: string;
-    role?: string;
-  };
+  user: {
+    id: string;
+    role: string;
+    name?: string | null;
+    email?: string | null;
+    image?: string | null;
+  }
 }
 
 // Extraktion gemeinsamer Logik in Funktionen
@@ -62,7 +62,7 @@ const getUserFromCredentials = async (credentials: any) => {
   };
 };
 
-export const authOptions: NextAuthOptions = {
+const authOptions: NextAuthOptions = {
   adapter: MongoDBAdapter(clientPromise),
   providers: [
     GoogleProvider({
