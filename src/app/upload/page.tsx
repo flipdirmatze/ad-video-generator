@@ -1,21 +1,25 @@
 'use client'
 
-import React, { useState, useRef, useEffect } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { ArrowUpTrayIcon, XMarkIcon, TagIcon, ArrowRightIcon, CheckCircleIcon, FilmIcon } from '@heroicons/react/24/outline'
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 
-// Define the structure for uploaded video objects
+// Definiere den Typ für hochgeladene Videos
 type UploadedVideo = {
-  id: string;      // Unique identifier for the video
-  name: string;    // Original filename
-  size: number;    // File size in bytes
-  type: string;    // MIME type of the video
-  url: string;     // Local object URL for preview
-  tags: string[];  // Array of user-defined tags
-  filepath?: string; // Server path for the uploaded video
+  id: string;
+  name: string;
+  size: number;
+  type: string;
+  url: string;
+  tags: string[];
+  filepath?: string;
+  key?: string; // S3 key for the file
 }
+
+// S3-Bucket-Ordner-Typ
+type S3Folder = 'uploads' | 'processed' | 'final' | 'audio';
 
 export default function UploadPage() {
   const { data: session, status } = useSession()
@@ -111,6 +115,89 @@ export default function UploadPage() {
     }
   }
 
+  // Direkt zu S3 hochladen mit Presigned URL
+  const uploadToS3 = async (
+    file: File, 
+    videoId: string,
+    folder: S3Folder = 'uploads'
+  ): Promise<{ key: string; url: string; fileUrl: string }> => {
+    try {
+      // 1. Presigned URL von unserer API anfordern
+      const presignedResponse = await fetch('/api/get-upload-url', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          fileName: file.name,
+          contentType: file.type,
+          folder,
+        }),
+      });
+
+      if (!presignedResponse.ok) {
+        const errorData = await presignedResponse.json();
+        throw new Error(errorData.message || 'Fehler beim Generieren der Upload-URL');
+      }
+
+      const { uploadUrl, fileUrl, key } = await presignedResponse.json();
+
+      // 2. Die Datei direkt zu S3 hochladen
+      const uploadResponse = await fetch(uploadUrl, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': file.type,
+        },
+        body: file,
+      });
+
+      if (!uploadResponse.ok) {
+        throw new Error('Fehler beim Hochladen zu S3');
+      }
+
+      // 3. Jetzt die Metadaten in unserer Datenbank speichern
+      const metaResponse = await fetch('/api/upload-video', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          videoId,
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          key,
+          url: fileUrl,
+          tags: []
+        }),
+      });
+
+      if (!metaResponse.ok) {
+        throw new Error('Fehler beim Speichern der Metadaten');
+      }
+
+      return { key, url: uploadUrl, fileUrl };
+    } catch (error) {
+      console.error('S3 Upload Error:', error);
+      throw error;
+    }
+  };
+
+  // Upload progress simulator (der wirkliche S3-Upload hat keinen Fortschrittsindikator)
+  const simulateProgress = (videoId: string) => {
+    let progress = 0;
+    const interval = setInterval(() => {
+      progress += Math.random() * 15;
+      if (progress > 95) {
+        progress = 96;
+        clearInterval(interval);
+      }
+      setUploadProgress(prev => ({ ...prev, [videoId]: Math.min(Math.floor(progress), 96) }));
+    }, 300);
+
+    return () => clearInterval(interval);
+  };
+
   const handleFiles = async (files: FileList) => {
     setError(null)
     
@@ -129,7 +216,7 @@ export default function UploadPage() {
         continue
       }
       
-      // Create object URL for the file
+      // Create object URL for the file (für lokale Vorschau)
       const url = URL.createObjectURL(file)
       
       // Generate a unique ID for the video
@@ -151,38 +238,34 @@ export default function UploadPage() {
       setIsUploading(prev => ({ ...prev, [videoId]: true }))
       setUploadProgress(prev => ({ ...prev, [videoId]: 0 }))
       
-      // Upload to server
+      // Starte die Fortschrittsanzeigen-Simulation
+      const stopSimulation = simulateProgress(videoId);
+      
+      // Direkt zu S3 hochladen
       try {
-        // Create form data
-        const formData = new FormData()
-        formData.append('file', file)
-        formData.append('tags', JSON.stringify([]))
-        formData.append('videoId', videoId)  // Add video ID to form data
+        const { key, fileUrl } = await uploadToS3(file, videoId);
         
-        // Upload file
-        const response = await fetch('/api/upload-video', {
-          method: 'POST',
-          body: formData
-        })
-        
-        if (!response.ok) {
-          throw new Error(`Upload failed: ${response.statusText}`)
-        }
-        
-        const data = await response.json()
-        
-        // Update the video with the server filepath
+        // Update the video with the S3 information
         setUploadedVideos(prev => 
           prev.map(video => 
             video.id === videoId
-              ? { ...video, filepath: data.fileUrl }
+              ? { ...video, filepath: fileUrl, key }
               : video
           )
-        )
+        );
+        
+        // Upload erfolgreich abgeschlossen - setze Fortschritt auf 100%
+        setUploadProgress(prev => ({ ...prev, [videoId]: 100 }));
       } catch (error) {
         console.error('Error uploading file:', error)
         setError(`Failed to upload ${file.name}. ${error instanceof Error ? error.message : ''}`)
+        
+        // Entferne das Video aus der Liste bei Fehler
+        setUploadedVideos(prev => prev.filter(video => video.id !== videoId));
       } finally {
+        // Stop progress simulation
+        stopSimulation();
+        
         // Mark as no longer uploading
         setIsUploading(prev => ({ ...prev, [videoId]: false }))
       }
@@ -213,44 +296,66 @@ export default function UploadPage() {
     else return (bytes / 1073741824).toFixed(1) + ' GB'
   }
 
-  const handleTagAdd = (id: string) => {
-    if (!currentTag.trim()) return
+  // Add tag to a video
+  const addTag = (videoId: string) => {
+    if (!currentTag.trim()) return;
     
-    setUploadedVideos(prev => 
-      prev.map(video => {
-        if (video.id === id && !video.tags.includes(currentTag.trim())) {
-          return {
-            ...video,
-            tags: [...video.tags, currentTag.trim()]
-          }
-        }
-        return video
-      })
-    )
-    
-    setCurrentTag('')
-  }
-
-  const handleTagRemove = (videoId: string, tagToRemove: string) => {
     setUploadedVideos(prev => 
       prev.map(video => {
         if (video.id === videoId) {
-          return {
-            ...video,
-            tags: video.tags.filter(tag => tag !== tagToRemove)
+          const updatedTags = [...video.tags, currentTag.trim()];
+          
+          // Wenn das Video bereits auf S3 ist, aktualisiere die Tags auch in der Datenbank
+          if (video.key) {
+            fetch('/api/update-video-tags', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                videoId,
+                tags: updatedTags
+              }),
+            }).catch(err => console.error('Error updating tags:', err));
           }
+          
+          return { ...video, tags: updatedTags };
         }
-        return video
+        return video;
       })
-    )
-  }
+    );
+    
+    setCurrentTag('');
+  };
 
-  const handleTagKeyPress = (e: React.KeyboardEvent, id: string) => {
-    if (e.key === 'Enter') {
-      e.preventDefault()
-      handleTagAdd(id)
-    }
-  }
+  // Remove tag from a video
+  const removeTag = (videoId: string, tagIndex: number) => {
+    setUploadedVideos(prev => 
+      prev.map(video => {
+        if (video.id === videoId) {
+          const updatedTags = [...video.tags];
+          updatedTags.splice(tagIndex, 1);
+          
+          // Wenn das Video bereits auf S3 ist, aktualisiere die Tags auch in der Datenbank
+          if (video.key) {
+            fetch('/api/update-video-tags', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                videoId,
+                tags: updatedTags
+              }),
+            }).catch(err => console.error('Error updating tags:', err));
+          }
+          
+          return { ...video, tags: updatedTags };
+        }
+        return video;
+      })
+    );
+  };
 
   return (
     <main className="container py-12 md:py-20">
@@ -332,78 +437,93 @@ export default function UploadPage() {
                   </div>
                   
                   <div className="card-body p-4">
-                    <h3 className="card-title text-base">{video.name}</h3>
-                    
-                    {/* Video ID for reference */}
-                    <div className="text-xs text-gray-500 mt-1">
-                      ID: <span className="font-mono">{video.id}</span>
-                    </div>
-                    
-                    {/* Server filepath if available */}
-                    {video.filepath && (
-                      <div className="text-xs text-green-600 mt-1 overflow-hidden text-ellipsis">
-                        ✓ Uploaded to: <span className="font-mono">{video.filepath}</span>
-                      </div>
-                    )}
-                    
-                    {/* Tags section */}
-                    <div className="flex flex-wrap gap-1 mt-2">
-                      {video.tags.map(tag => (
-                        <div key={`${video.id}-${tag}`} className="badge badge-primary badge-sm gap-1">
-                          {tag}
-                          <button onClick={() => handleTagRemove(video.id, tag)}>
-                            <XMarkIcon className="h-3 w-3" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                    
-                    {/* Add tag input (only show for selected video) */}
-                    {selectedVideoId === video.id && (
-                      <div className="mt-2 flex">
-                        <div className="input-group">
-                          <input
-                            type="text"
-                            placeholder="Add tag"
-                            className="input input-sm input-bordered flex-grow"
-                            value={currentTag}
-                            onChange={e => setCurrentTag(e.target.value)}
-                            onKeyPress={e => handleTagKeyPress(e, video.id)}
-                          />
-                          <button 
-                            className="btn btn-sm btn-square"
-                            onClick={() => handleTagAdd(video.id)}
-                          >
-                            <TagIcon className="h-4 w-4" />
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                    
-                    {/* Upload status */}
-                    {isUploading[video.id] && (
-                      <div className="mt-2">
-                        <progress className="progress progress-primary w-full" value={uploadProgress[video.id] || 0} max="100"></progress>
-                        <p className="text-xs text-center mt-1">Uploading... {Math.round(uploadProgress[video.id] || 0)}%</p>
-                      </div>
-                    )}
-                    
-                    <div className="card-actions justify-between mt-3">
-                      <button
-                        className="btn btn-sm btn-ghost gap-1"
-                        onClick={() => setSelectedVideoId(selectedVideoId === video.id ? null : video.id)}
-                      >
-                        <TagIcon className="h-4 w-4" />
-                        {selectedVideoId === video.id ? 'Done' : 'Tags'}
-                      </button>
-                      
-                      <button
-                        className="btn btn-sm btn-error gap-1"
+                    <div className="flex justify-between items-start">
+                      <h3 className="card-title text-sm truncate mr-2">{video.name}</h3>
+                      <button 
                         onClick={() => removeVideo(video.id)}
+                        className="btn btn-sm btn-circle btn-ghost"
                       >
                         <XMarkIcon className="h-4 w-4" />
-                        Remove
                       </button>
+                    </div>
+                    
+                    {/* Upload Progress */}
+                    {isUploading[video.id] && (
+                      <div className="mt-2">
+                        <div className="flex justify-between text-xs mb-1">
+                          <span>Uploading...</span>
+                          <span>{uploadProgress[video.id] || 0}%</span>
+                        </div>
+                        <div className="w-full bg-gray-700 rounded-full h-2">
+                          <div 
+                            className="bg-primary h-2 rounded-full" 
+                            style={{ width: `${uploadProgress[video.id] || 0}%` }}
+                          ></div>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* S3 Status */}
+                    {video.filepath && !isUploading[video.id] && (
+                      <div className="mt-2 flex items-center text-xs text-green-400">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" viewBox="0 0 20 20" fill="currentColor">
+                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                        </svg>
+                        Uploaded to S3
+                      </div>
+                    )}
+                    
+                    {/* Tags Section */}
+                    <div className="mt-3">
+                      <div className="flex items-center">
+                        <TagIcon className="h-4 w-4 mr-1 text-gray-400" />
+                        <span className="text-xs text-gray-400">Tags:</span>
+                      </div>
+                      
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {video.tags.map((tag, index) => (
+                          <div key={index} className="badge badge-sm badge-secondary flex items-center gap-1">
+                            <span>{tag}</span>
+                            <button onClick={() => removeTag(video.id, index)} className="h-3 w-3 flex items-center justify-center">
+                              <XMarkIcon className="h-2 w-2" />
+                            </button>
+                          </div>
+                        ))}
+                        
+                        {video.tags.length === 0 && (
+                          <span className="text-xs text-gray-500">No tags yet</span>
+                        )}
+                      </div>
+                      
+                      {/* Add Tag Input */}
+                      {selectedVideoId === video.id && (
+                        <div className="mt-2 flex items-center gap-1">
+                          <input
+                            type="text"
+                            value={currentTag}
+                            onChange={(e) => setCurrentTag(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && addTag(video.id)}
+                            placeholder="Add tag..."
+                            className="input input-xs input-bordered flex-1"
+                          />
+                          <button
+                            onClick={() => addTag(video.id)}
+                            className="btn btn-xs btn-primary"
+                            disabled={!currentTag.trim()}
+                          >
+                            Add
+                          </button>
+                        </div>
+                      )}
+                      
+                      {selectedVideoId !== video.id && (
+                        <button
+                          onClick={() => setSelectedVideoId(video.id)}
+                          className="btn btn-xs btn-ghost mt-1"
+                        >
+                          + Add Tag
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
