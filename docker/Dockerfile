@@ -8,21 +8,22 @@ RUN apt-get update && apt-get install -y \
     ffmpeg \
     python3 \
     python3-pip \
+    python3-venv \
     curl \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Installiere AWS CLI für einfachere S3-Interaktion
-RUN pip3 install --no-cache-dir awscli
+# Installiere AWS CLI mit der --break-system-packages Option
+RUN pip3 install --no-cache-dir awscli --break-system-packages
 
 # Arbeitsverzeichnis erstellen
 WORKDIR /app
 
 # Package.json und package-lock.json kopieren
-COPY package*.json ./
+COPY docker/package.json ./
 
 # Abhängigkeiten installieren
-RUN npm ci --production
+RUN npm install
 
 # Skripte kopieren
 COPY docker/scripts/ /app/

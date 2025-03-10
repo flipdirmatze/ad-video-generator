@@ -1,0 +1,28 @@
+# Befehle zum Hochladen des Docker-Images auf AWS ECR
+
+# 1. Bei AWS ECR anmelden (führe dies auf deinem lokalen System aus):
+aws ecr get-login-password --region eu-central-1 | docker login --username AWS --password-stdin 585768181583.dkr.ecr.eu-central-1.amazonaws.com
+
+# 2. ECR-Repository erstellen (falls noch nicht vorhanden):
+aws ecr create-repository --repository-name video-processor --region eu-central-1
+
+# 3. Docker-Image für ECR taggen:
+docker tag video-processor:latest 585768181583.dkr.ecr.eu-central-1.amazonaws.com/video-processor:latest
+
+# 4. Docker-Image zu ECR pushen:
+docker push 585768181583.dkr.ecr.eu-central-1.amazonaws.com/video-processor:latest
+
+# Nach dem Hochladen:
+# 1. AWS Batch-Umgebung einrichten:
+#    - Compute-Umgebung erstellen (video-processing-env)
+#    - Job-Queue erstellen (video-processing-queue)
+#    - Job-Definition erstellen (video-processor-job)
+
+# 2. Setze diese Umgebungsvariablen in deiner Next.js-Anwendung:
+# AWS_ACCESS_KEY_ID=xxx
+# AWS_SECRET_ACCESS_KEY=xxx
+# AWS_REGION=eu-central-1
+# S3_BUCKET_NAME=dein-bucket-name
+# AWS_BATCH_JOB_DEFINITION=video-processor-job
+# AWS_BATCH_JOB_QUEUE=video-processing-queue
+# BATCH_CALLBACK_SECRET=dein-geheimer-schlüssel 
