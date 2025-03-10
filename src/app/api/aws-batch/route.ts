@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
 
     // Konfiguriere die Auftragsdefinition basierend auf dem Job-Typ
     let jobDefinition = process.env.AWS_BATCH_JOB_DEFINITION || 'video-processing-job';
-    let jobQueue = process.env.AWS_BATCH_JOB_QUEUE || 'video-processing-queue';
+    const jobQueue = process.env.AWS_BATCH_JOB_QUEUE || 'video-processing-queue';
 
     // Spezifische Jobdefinitionen für verschiedene Verarbeitungstypen
     switch (jobType) {

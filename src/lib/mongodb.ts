@@ -10,14 +10,20 @@ const options = {};
 let client;
 let clientPromise: Promise<MongoClient>;
 
+// Definiere einen Typ für die MongoDB-Verbindungsinformationen
+type MongoConnection = {
+  conn: Promise<MongoClient> | null;
+  promise: Promise<MongoClient> | null;
+};
+
 // Add global type for caching
 const globalWithMongo = global as typeof globalThis & {
-  mongo: { conn: any; promise: any };
+  mongo: MongoConnection;
 };
 
 // Initialize mongo property if it doesn't exist
 if (!('mongo' in global)) {
-  (global as any).mongo = {
+  (global as typeof globalThis & { mongo?: MongoConnection }).mongo = {
     conn: null,
     promise: null
   };

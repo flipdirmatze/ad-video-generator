@@ -34,7 +34,6 @@ export default function SignUp() {
 
     try {
       // Register user
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const response = await fetch('/api/auth/register', {
         method: 'POST',
         headers: {
@@ -67,9 +66,10 @@ export default function SignUp() {
         router.push('/');
         router.refresh();
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Registration error:', err);
-      setError(err.message || 'An unexpected error occurred. Please try again.');
+      const errorMessage = err instanceof Error ? err.message : 'An unexpected error occurred. Please try again.';
+      setError(errorMessage);
     } finally {
       setIsLoading(false);
     }
