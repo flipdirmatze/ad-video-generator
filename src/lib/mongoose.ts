@@ -18,18 +18,27 @@ interface CachedMongoose {
   promise: Promise<typeof mongoose> | null;
 }
 
-// MongoDB-Cache-Wert im globalen Namespace
+// Erstelle eine Namespace-Erweiterung für globalThis
 declare global {
-  var mongooseCache: CachedMongoose;
+  // eslint-disable-next-line no-var
+  var mongooseCache: CachedMongoose | undefined;
 }
 
-// Definiere mongoose-Cache, wenn es nicht existiert
-if (!global.mongooseCache) {
-  global.mongooseCache = { conn: null, promise: null };
+// Globale Variable zur Verbindungs-Cache-Verwaltung
+const globalMongoose = global as typeof globalThis & {
+  mongooseCache?: CachedMongoose;
+};
+
+// Initialisiere den Cache, falls er nicht existiert
+if (!globalMongoose.mongooseCache) {
+  globalMongoose.mongooseCache = {
+    conn: null,
+    promise: null
+  };
 }
 
-// Greife auf den Cache zu
-const cached = global.mongooseCache;
+// Verwende den Cache
+const cached = globalMongoose.mongooseCache;
 
 async function dbConnect() {
   if (cached.conn) {

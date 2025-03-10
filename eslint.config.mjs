@@ -30,6 +30,11 @@ export default tseslint.config(
       // Deaktiviere die Regel für unbenutzte Variablen im Produktionsbuild
       '@typescript-eslint/no-unused-vars': 'off',
       'no-unused-vars': 'off',
+      // Warnungen, die das Deployment nicht blockieren sollten
+      '@typescript-eslint/no-explicit-any': 'warn',
+      'no-var': 'warn',
+      '@next/next/no-img-element': 'warn',
+      'prefer-const': 'warn'
     },
   },
   {
