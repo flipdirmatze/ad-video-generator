@@ -14,6 +14,7 @@ type UploadedVideo = {
   url: string;
   tags: string[];
   filepath?: string;
+  key?: string; // S3-Key des Videos
 }
 
 type VideoSegment = {
@@ -72,6 +73,10 @@ export default function EditorPage() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const animationRef = useRef<number | null>(null)
   const isMounted = useRef(false)
+  
+  // Zusätzliche State für Projekt-Tracking
+  const [projectId, setProjectId] = useState<string | null>(null);
+  const [jobId, setJobId] = useState<string | null>(null);
 
   // ------------------- HOOKS SECTION -------------------
   
@@ -91,19 +96,29 @@ export default function EditorPage() {
     if (typeof window !== 'undefined' && !isMounted.current) {
       isMounted.current = true;
       
-      const savedVoiceover = localStorage.getItem('voiceoverUrl')
-      const savedScript = localStorage.getItem('voiceoverScript')
+      const savedVoiceoverData = localStorage.getItem('voiceoverData');
+      if (savedVoiceoverData) {
+        try {
+          const voiceoverData = JSON.parse(savedVoiceoverData);
+          // Für die lokale Vorschau die dataUrl verwenden
+          setVoiceoverUrl(voiceoverData.dataUrl);
+          // Für die Backend-Integration voiceoverId speichern
+          setVoiceoverScript(localStorage.getItem('voiceoverScript') || '');
+        } catch (e) {
+          console.error('Error parsing saved voiceover data:', e);
+        }
+      } else {
+        // Fallback für ältere Version
+        const savedVoiceover = localStorage.getItem('voiceoverUrl');
+        if (savedVoiceover) {
+          setVoiceoverUrl(savedVoiceover);
+          setVoiceoverScript(localStorage.getItem('voiceoverScript') || '');
+        }
+      }
+      
       const savedVideos = localStorage.getItem('uploadedVideos')
       const savedFinalVideo = localStorage.getItem('finalVideoUrl')
       const savedSegments = localStorage.getItem('videoSegments')
-      
-      if (savedVoiceover) {
-        setVoiceoverUrl(savedVoiceover)
-      }
-      
-      if (savedScript) {
-        setVoiceoverScript(savedScript)
-      }
       
       if (savedVideos) {
         try {
@@ -375,10 +390,10 @@ export default function EditorPage() {
     })
   }, []);
 
-  // Generate final video
+  // Generate final video with AWS Batch
   const handleGenerateVideo = async () => {
-    if (!voiceoverUrl || videoSegments.length === 0) {
-      setError('Bitte fügen Sie einen Voiceover und mindestens ein Videosegment hinzu');
+    if (!videoSegments.length) {
+      setError('Bitte fügen Sie mindestens ein Videosegment hinzu');
       return;
     }
     
@@ -387,46 +402,79 @@ export default function EditorPage() {
     setError(null);
     
     try {
-      const response = await fetch('/api/generate-final-video', {
+      // Für jedes Segment den S3-Key ermitteln
+      const segmentsWithKeys = videoSegments.map(segment => {
+        const video = uploadedVideos.find(v => v.id === segment.videoId);
+        const videoKey = video?.key || `uploads/${video?.id}.${video?.type.split('/')[1]}`;
+        
+        return {
+          ...segment,
+          videoKey
+        };
+      });
+      
+      // Voiceover ID aus localStorage holen
+      let voiceoverId = null;
+      const savedVoiceoverData = localStorage.getItem('voiceoverData');
+      if (savedVoiceoverData) {
+        try {
+          const voiceoverData = JSON.parse(savedVoiceoverData);
+          if (voiceoverData.voiceoverId && voiceoverData.voiceoverId !== 'legacy' && voiceoverData.voiceoverId !== 'local') {
+            voiceoverId = voiceoverData.voiceoverId;
+          }
+        } catch (e) {
+          console.error('Error parsing saved voiceover data:', e);
+        }
+      }
+      
+      // Die neue API für die Videogenerierung aufrufen
+      const response = await fetch('/api/generate-video', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          segments: videoSegments,
-          voiceoverUrl,
-          voiceoverScript
+          segments: segmentsWithKeys,
+          voiceoverId,
+          title: 'Ad Video'
         })
       });
       
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Fehler bei der Generierung');
+        throw new Error(errorData.error || errorData.message || 'Fehler bei der Generierung');
       }
       
       const data = await response.json();
       
-      // Start polling for job status
-      const projectId = data.projectId;
+      // Projekt- und Job-ID speichern für Status-Tracking
+      setProjectId(data.projectId);
+      setJobId(data.jobId);
       setGenerationProgress(20);
       
-      // Initiieren des Polling
+      // Polling für Job-Status starten
       const statusInterval = setInterval(async () => {
-        const statusResponse = await fetch(`/api/project-status/${projectId}`);
+        const statusResponse = await fetch(`/api/project-status/${data.projectId}`);
+        
+        if (!statusResponse.ok) {
+          console.error('Error fetching project status');
+          return;
+        }
+        
         const statusData = await statusResponse.json();
         
-        if (statusData.status === 'COMPLETED') {
+        if (statusData.status === 'completed') {
           clearInterval(statusInterval);
           setFinalVideoUrl(statusData.outputUrl);
           setIsGenerating(false);
           setGenerationProgress(100);
-        } else if (statusData.status === 'FAILED') {
+        } else if (statusData.status === 'failed') {
           clearInterval(statusInterval);
           setError(`Fehler bei der Verarbeitung: ${statusData.error || 'Unbekannter Fehler'}`);
           setIsGenerating(false);
-        } else if (statusData.status === 'PROCESSING') {
-          // Update progress estimation
-          setGenerationProgress(Math.min(90, statusData.progress || 50));
+        } else if (statusData.status === 'processing') {
+          // Update progress estimation - for AWS Batch, this is an approximation
+          setGenerationProgress(Math.min(90, statusData.progress || 60));
         }
-      }, 3000);
+      }, 5000); // Alle 5 Sekunden abfragen
       
     } catch (error) {
       setError(`Fehler: ${error instanceof Error ? error.message : 'Unbekannter Fehler'}`);

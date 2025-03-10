@@ -1,46 +1,76 @@
-import mongoose from 'mongoose';
+import mongoose, { Schema } from 'mongoose';
+import { IUser } from './User';
 
-const ProjectSchema = new mongoose.Schema({
-  id: {
-    type: String,
-    required: true,
-    unique: true
+export interface IProject {
+  userId: mongoose.Types.ObjectId | IUser;
+  title: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  segments: Array<{
+    videoId: string;
+    videoKey: string;
+    startTime: number;
+    duration: number;
+    position: number;
+  }>;
+  voiceoverId?: mongoose.Types.ObjectId | null;
+  outputKey?: string;
+  outputUrl?: string;
+  batchJobId?: string;
+  batchJobName?: string;
+  error?: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const ProjectSchema = new Schema<IProject>({
+  userId: { 
+    type: Schema.Types.ObjectId, 
+    ref: 'User', 
+    required: true 
   },
-  userId: {
-    type: String,
-    required: true
+  title: { 
+    type: String, 
+    required: true 
   },
   status: {
     type: String,
-    enum: ['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED'],
-    default: 'PENDING'
+    enum: ['pending', 'processing', 'completed', 'failed'],
+    default: 'pending',
+    required: true
   },
-  segments: {
-    type: [],
-    default: []
+  segments: [{
+    videoId: String,
+    videoKey: String,
+    startTime: Number,
+    duration: Number,
+    position: Number
+  }],
+  voiceoverId: {
+    type: Schema.Types.ObjectId,
+    ref: 'Voiceover',
+    default: null
   },
-  voiceoverScript: {
-    type: String
-  },
-  voiceoverUrl: {
+  outputKey: {
     type: String
   },
   outputUrl: {
     type: String
   },
-  createdAt: {
-    type: Date,
-    default: Date.now
+  batchJobId: {
+    type: String
   },
-  updatedAt: {
-    type: Date,
-    default: Date.now
+  batchJobName: {
+    type: String
+  },
+  error: {
+    type: String,
+    default: null
   }
 }, {
   timestamps: true
 });
 
 // Verwende einen existierenden Mongoose-Model oder erstelle einen neuen
-const Project = mongoose.models.Project || mongoose.model('Project', ProjectSchema);
+const Project = mongoose.models.Project || mongoose.model<IProject>('Project', ProjectSchema);
 
 export default Project; 

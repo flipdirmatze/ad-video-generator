@@ -6,19 +6,25 @@ import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 
+type VoiceoverData = {
+  dataUrl: string; // Base64-URL für Browser-Vorschau
+  url: string; // S3-URL für dauerhafte Speicherung
+  voiceoverId: string;
+  fileName: string;
+};
+
 export default function VoiceoverPage() {
   // State-Hooks
   const { data: session, status } = useSession()
   const router = useRouter()
   const [script, setScript] = useState('')
   const [isGenerating, setIsGenerating] = useState(false)
-  const [voiceoverUrl, setVoiceoverUrl] = useState<string | null>(null)
+  const [voiceoverData, setVoiceoverData] = useState<VoiceoverData | null>(null)
   const [isPlaying, setIsPlaying] = useState(false)
   const [audioElement, setAudioElement] = useState<HTMLAudioElement | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
-  // Effect-Hooks - Alle an oberster Ebene
   // Authentifizierungsprüfung
   useEffect(() => {
     if (!isLoading && status !== 'loading') {
@@ -29,11 +35,26 @@ export default function VoiceoverPage() {
     setIsLoading(false)
   }, [status, isLoading, router])
 
-  // Check if we have a saved voiceover
+  // Gespeicherte Voiceover-Daten laden
   useEffect(() => {
-    const savedVoiceover = localStorage.getItem('voiceoverUrl');
-    if (savedVoiceover) {
-      setVoiceoverUrl(savedVoiceover);
+    const savedVoiceoverData = localStorage.getItem('voiceoverData');
+    if (savedVoiceoverData) {
+      try {
+        setVoiceoverData(JSON.parse(savedVoiceoverData));
+      } catch (e) {
+        console.error('Error parsing saved voiceover data:', e);
+      }
+    } else {
+      // Fallback für ältere Version
+      const savedVoiceover = localStorage.getItem('voiceoverUrl');
+      if (savedVoiceover) {
+        setVoiceoverData({
+          dataUrl: savedVoiceover,
+          url: savedVoiceover, // Legacy: dataUrl und url sind identisch
+          voiceoverId: 'legacy',
+          fileName: 'voiceover.mp3'
+        });
+      }
     }
   }, []);
 
@@ -45,12 +66,15 @@ export default function VoiceoverPage() {
     }
   }, [script]);
 
-  // Callback-Hooks - Ebenfalls an oberster Ebene
+  // Audio-Wiedergabe steuern
   const togglePlay = useCallback(() => {
-    if (!voiceoverUrl) return;
+    if (!voiceoverData) return;
+
+    // Die dataUrl für die Browser-Wiedergabe verwenden
+    const audioUrl = voiceoverData.dataUrl;
 
     if (!audioElement) {
-      const audio = new Audio(voiceoverUrl)
+      const audio = new Audio(audioUrl)
       audio.addEventListener('ended', () => setIsPlaying(false))
       setAudioElement(audio)
       audio.play()
@@ -63,9 +87,21 @@ export default function VoiceoverPage() {
       }
       setIsPlaying(!isPlaying)
     }
-  }, [voiceoverUrl, audioElement, isPlaying]);
+  }, [voiceoverData, audioElement, isPlaying]);
 
-  // Handler-Funktionen - Diese sind keine Hooks
+  const handleReset = () => {
+    if (audioElement) {
+      audioElement.pause();
+      setAudioElement(null);
+    }
+    setVoiceoverData(null);
+    setIsPlaying(false);
+    localStorage.removeItem('voiceoverData');
+    localStorage.removeItem('voiceoverUrl'); // Legacy-Eintrag auch entfernen
+    localStorage.removeItem('voiceoverScript');
+  };
+
+  // Voiceover-Generierung
   const handleGenerateVoiceover = async () => {
     if (!script.trim()) return
     
@@ -85,11 +121,19 @@ export default function VoiceoverPage() {
         throw new Error(data.error || 'Failed to generate voiceover')
       }
       
-      setVoiceoverUrl(data.url)
+      // Neue Datenstruktur mit allen relevanten Informationen
+      const newVoiceoverData: VoiceoverData = {
+        dataUrl: data.dataUrl || data.url, // Fallback für Kompatibilität
+        url: data.url,
+        voiceoverId: data.voiceoverId || 'local',
+        fileName: data.fileName || 'voiceover.mp3'
+      };
       
-      // Save to localStorage
-      localStorage.setItem('voiceoverUrl', data.url);
-      // Also save the script
+      setVoiceoverData(newVoiceoverData);
+      
+      // Als JSON in localStorage speichern
+      localStorage.setItem('voiceoverData', JSON.stringify(newVoiceoverData));
+      // Auch das Script speichern
       localStorage.setItem('voiceoverScript', script);
     } catch (error) {
       console.error('Failed to generate voiceover:', error)
@@ -99,71 +143,49 @@ export default function VoiceoverPage() {
     }
   }
 
-  const handleReset = () => {
-    // Stop audio if playing
-    if (audioElement && isPlaying) {
-      audioElement.pause();
-      setIsPlaying(false);
-    }
-    
-    // Clear audio element
-    setAudioElement(null);
-    
-    // Remove from localStorage
-    localStorage.removeItem('voiceoverUrl');
-    localStorage.removeItem('voiceoverScript');
-    
-    // Clear state
-    setVoiceoverUrl(null);
-    
-    // Optionally, you can decide whether to clear the script input or keep it
-    // setScript('');
-    
-    setError(null);
-  };
-
-  // Bedingte Renderings - Nach allen Hooks
+  // Zeige Ladeindikator während der Authentifizierung
   if (isLoading || status === 'loading') {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-900">
         <div className="w-16 h-16 border-4 border-purple-600 border-t-transparent rounded-full animate-spin"></div>
       </div>
-    )
+    );
   }
 
-  if (!session) {
-    return null // Dies sollte nicht gerendert werden, da wir umleiten
-  }
-
-  // Hauptrender
   return (
-    <div className="container py-12">
-      <div className="max-w-3xl mx-auto">
-        <div className="text-center mb-12">
-          <h1 className="text-4xl font-bold sm:text-5xl bg-gradient-to-r from-white to-white/80 bg-clip-text text-transparent">
-            Create Your Voiceover
+    <main className="min-h-screen">
+      <div className="container mx-auto py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-4xl mx-auto">
+          <h1 className="text-3xl font-bold tracking-tight text-white sm:text-4xl">
+            Generate a Voiceover
           </h1>
           <p className="mt-4 text-lg text-white/60">
-            Write your script and let AI generate a professional voiceover
+            Write your script below and generate a professional voiceover using AI.
+            This voiceover will be used for your video.
           </p>
-        </div>
-        
-        <div className="relative rounded-2xl border border-white/10 bg-background-light/50 p-8 backdrop-blur-xl">
-          <div className="absolute inset-0 bg-gradient-to-b from-primary/5 to-transparent rounded-2xl" />
-          <div className="relative">
-            <textarea
-              value={script}
-              onChange={(e) => setScript(e.target.value)}
-              placeholder="Enter your script here..."
-              className="w-full h-40 p-4 rounded-lg bg-white/5 border border-white/10 text-white placeholder-white/40 focus:outline-none focus:border-primary/50 transition-colors"
-            />
+
+          <div className="mt-8">
+            <label htmlFor="script" className="block text-sm font-medium text-white/80">
+              Script
+            </label>
+            <div className="mt-1">
+              <textarea
+                id="script"
+                name="script"
+                rows={6}
+                className="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-700 bg-gray-800 text-white rounded-md p-4"
+                placeholder="Write your voiceover script here..."
+                value={script}
+                onChange={(e) => setScript(e.target.value)}
+              />
+            </div>
             
             <div className="mt-6 flex justify-between items-center">
               <div className="text-sm text-white/40">
                 {script.length} characters
               </div>
               <div className="flex gap-2">
-                {voiceoverUrl && (
+                {voiceoverData && (
                   <button
                     onClick={handleReset}
                     className="inline-flex items-center px-4 py-3 text-sm font-medium text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg hover:bg-red-500/20 transition-colors"
@@ -198,7 +220,7 @@ export default function VoiceoverPage() {
               </div>
             )}
 
-            {voiceoverUrl && (
+            {voiceoverData && (
               <div className="mt-8 p-4 rounded-lg bg-white/5 border border-white/10">
                 <div className="flex items-center justify-between">
                   <div className="text-white/80">Your Voiceover</div>
@@ -228,68 +250,48 @@ export default function VoiceoverPage() {
                     </Link>
                   </div>
                 </div>
+                {/* Zeige Voiceover-ID an, wenn sie aus S3 stammt */}
+                {voiceoverData.voiceoverId && voiceoverData.voiceoverId !== 'legacy' && (
+                  <div className="mt-2 text-xs text-white/40">
+                    Voiceover gespeichert in S3 mit ID: {voiceoverData.voiceoverId}
+                  </div>
+                )}
               </div>
             )}
           </div>
         </div>
 
         {/* Guidelines */}
-        <div className="mt-12 grid gap-8 md:grid-cols-2">
-          <div className="relative rounded-2xl border border-white/10 bg-background-light/50 p-6 backdrop-blur-xl">
-            <div className="absolute inset-0 bg-gradient-to-b from-primary/5 to-transparent rounded-2xl" />
-            <div className="relative">
-              <h3 className="text-xl font-semibold text-white mb-4">
-                Script Guidelines
-              </h3>
-              <ul className="space-y-3 text-white/60">
-                <li className="flex items-center">
-                  <span className="mr-2">•</span>
-                  Keep it concise and clear
-                </li>
-                <li className="flex items-center">
-                  <span className="mr-2">•</span>
-                  Use natural, conversational language
-                </li>
-                <li className="flex items-center">
-                  <span className="mr-2">•</span>
-                  Include pauses with punctuation
-                </li>
-                <li className="flex items-center">
-                  <span className="mr-2">•</span>
-                  Aim for 30-60 seconds of speech
-                </li>
-              </ul>
+        <div className="max-w-4xl mx-auto mt-16">
+          <h2 className="text-xl font-semibold text-white">Tips for Great Voiceovers</h2>
+          <div className="mt-4 grid grid-cols-1 gap-6 sm:grid-cols-2">
+            <div className="p-4 rounded-lg bg-white/5 border border-white/10">
+              <h3 className="text-lg font-medium text-white/90">Keep it Conversational</h3>
+              <p className="mt-2 text-sm text-white/60">
+                Write like you speak. Avoid complex sentences and jargon that might sound unnatural when spoken.
+              </p>
             </div>
-          </div>
-
-          <div className="relative rounded-2xl border border-white/10 bg-background-light/50 p-6 backdrop-blur-xl">
-            <div className="absolute inset-0 bg-gradient-to-b from-primary/5 to-transparent rounded-2xl" />
-            <div className="relative">
-              <h3 className="text-xl font-semibold text-white mb-4">
-                Tips for Better Results
-              </h3>
-              <ul className="space-y-3 text-white/60">
-                <li className="flex items-center">
-                  <span className="mr-2">•</span>
-                  Test different tones and pacing
-                </li>
-                <li className="flex items-center">
-                  <span className="mr-2">•</span>
-                  Use emphasis marks for key points
-                </li>
-                <li className="flex items-center">
-                  <span className="mr-2">•</span>
-                  Break long sentences into shorter ones
-                </li>
-                <li className="flex items-center">
-                  <span className="mr-2">•</span>
-                  Preview before finalizing
-                </li>
-              </ul>
+            <div className="p-4 rounded-lg bg-white/5 border border-white/10">
+              <h3 className="text-lg font-medium text-white/90">Consider Pacing</h3>
+              <p className="mt-2 text-sm text-white/60">
+                Add commas and periods to control pacing. This helps the AI understand where to pause naturally.
+              </p>
+            </div>
+            <div className="p-4 rounded-lg bg-white/5 border border-white/10">
+              <h3 className="text-lg font-medium text-white/90">Match Your Video Length</h3>
+              <p className="mt-2 text-sm text-white/60">
+                A typical speaking pace is about 150 words per minute. Plan your script according to your video length.
+              </p>
+            </div>
+            <div className="p-4 rounded-lg bg-white/5 border border-white/10">
+              <h3 className="text-lg font-medium text-white/90">Test and Iterate</h3>
+              <p className="mt-2 text-sm text-white/60">
+                Generate multiple versions and listen to how they sound. Tweak your script based on the results.
+              </p>
             </div>
           </div>
         </div>
       </div>
-    </div>
+    </main>
   )
 } 
