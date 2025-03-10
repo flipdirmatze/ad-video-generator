@@ -1,6 +1,7 @@
 import 'next-auth';
 import { DefaultSession, DefaultUser } from 'next-auth';
 import { JWT } from 'next-auth/jwt';
+import { SubscriptionPlan, IUserLimits, IUserStats } from '@/models/User';
 
 declare module 'next-auth' {
   /**
@@ -12,6 +13,16 @@ declare module 'next-auth' {
       id: string;
       /** The user's role. */
       role: string;
+      /** Subscription plan (free, premium, enterprise) */
+      subscriptionPlan: SubscriptionPlan;
+      /** Whether the subscription is active */
+      subscriptionActive: boolean;
+      /** User's limits based on subscription */
+      limits?: IUserLimits;
+      /** User's usage statistics */
+      stats?: IUserStats;
+      /** Optional username */
+      username?: string;
     } & DefaultSession['user'];
   }
 
@@ -22,6 +33,16 @@ declare module 'next-auth' {
   interface User extends DefaultUser {
     /** The user's role. */
     role?: string;
+    /** Subscription plan */
+    subscriptionPlan?: SubscriptionPlan;
+    /** Whether the subscription is active */
+    subscriptionActive?: boolean;
+    /** User's limits based on subscription */
+    limits?: IUserLimits;
+    /** User's usage statistics */
+    stats?: IUserStats;
+    /** Optional username */
+    username?: string;
   }
 }
 
@@ -32,5 +53,13 @@ declare module 'next-auth/jwt' {
     role?: string;
     /** The user's id. */
     id?: string;
+    /** Subscription plan */
+    subscriptionPlan?: SubscriptionPlan;
+    /** Whether the subscription is active */
+    subscriptionActive?: boolean;
+    /** User's limits (simplified to avoid token size issues) */
+    hasLimits?: boolean;
+    /** Provider used for authentication */
+    provider?: string;
   }
 } 

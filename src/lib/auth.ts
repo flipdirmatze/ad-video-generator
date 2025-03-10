@@ -36,13 +36,18 @@ const getUserFromCredentials = async (credentials: Credentials) => {
     throw new Error('Invalid password');
   }
 
-  // Return user object
+  // Return user object including subscription info
   return {
     id: user._id.toString(),
     name: user.name,
     email: user.email,
     image: user.image,
     role: user.role,
+    username: user.username,
+    subscriptionPlan: user.subscriptionPlan || 'free',
+    subscriptionActive: user.subscriptionActive ?? true,
+    limits: user.limits,
+    stats: user.stats
   };
 };
 
@@ -63,6 +68,9 @@ export const authOptions: NextAuthOptions = {
           image: profile.picture,
           // Setzen der Standard-Rolle für Google-Anmeldungen
           role: 'user',
+          // Setzen des Standard-Abonnements für neue Benutzer
+          subscriptionPlan: 'free',
+          subscriptionActive: true
         };
       },
     }),
@@ -108,6 +116,11 @@ export const authOptions: NextAuthOptions = {
       if (user) {
         token.role = user.role || 'user';
         token.id = user.id;
+        
+        // Füge Abonnement-Informationen hinzu
+        token.subscriptionPlan = user.subscriptionPlan || 'free';
+        token.subscriptionActive = user.subscriptionActive ?? true;
+        token.hasLimits = !!user.limits;
       }
       
       // Zusätzliche Informationen über den Provider speichern
@@ -118,13 +131,28 @@ export const authOptions: NextAuthOptions = {
       return token;
     },
     
-    async session({ session, token }) {
+    async session({ session, token, user }) {
       // Füge Rolle und ID zur Session hinzu
       if (session.user) {
         session.user.role = token.role as string;
         session.user.id = token.id as string;
-        // Wir könnten hier auch den Provider hinzufügen, wenn gewünscht
-        // session.user.provider = token.provider as string;
+        session.user.subscriptionPlan = token.subscriptionPlan || 'free';
+        session.user.subscriptionActive = token.subscriptionActive ?? true;
+        
+        // Wenn der Adapter verwendet wird, ist user verfügbar
+        if (user) {
+          // Füge zusätzliche Informationen aus der Datenbank hinzu
+          try {
+            const dbUser = await User.findById(token.id);
+            if (dbUser) {
+              session.user.limits = dbUser.limits;
+              session.user.stats = dbUser.stats;
+              session.user.username = dbUser.username;
+            }
+          } catch (error) {
+            console.error('Error fetching user details for session:', error);
+          }
+        }
       }
       return session;
     },
