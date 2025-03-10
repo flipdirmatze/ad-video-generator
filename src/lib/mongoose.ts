@@ -19,15 +19,12 @@ interface CachedMongoose {
 }
 
 // MongoDB-Cache-Wert im globalen Namespace
-// eslint-disable-next-line no-var
 declare global {
-  // eslint-disable-next-line no-var
   var mongooseCache: CachedMongoose;
 }
 
 // Definiere mongoose-Cache, wenn es nicht existiert
 if (!global.mongooseCache) {
-  // eslint-disable-next-line no-var
   global.mongooseCache = { conn: null, promise: null };
 }
 
