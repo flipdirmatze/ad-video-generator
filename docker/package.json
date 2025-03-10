@@ -1,0 +1,16 @@
+{
+  "name": "video-processor",
+  "version": "1.0.0",
+  "description": "Video processing with FFmpeg for AWS Batch",
+  "main": "process-video.js",
+  "scripts": {
+    "start": "node process-video.js"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.400.0",
+    "@aws-sdk/s3-request-presigner": "^3.400.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+} 
