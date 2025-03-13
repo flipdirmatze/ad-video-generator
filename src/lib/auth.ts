@@ -89,6 +89,7 @@ export const authOptions: NextAuthOptions = {
           return await getUserFromCredentials(credentials as Credentials);
         } catch (error) {
           console.error('Authentication error:', error);
+          // Explizit null zurückgeben und keinen Fehler werfen
           return null;
         }
       }

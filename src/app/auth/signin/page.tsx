@@ -24,7 +24,13 @@ export default function SignIn() {
         redirect: false,
       });
 
-      if (result?.error) {
+      if (!result) {
+        setError('Anmeldeserver nicht erreichbar. Bitte versuchen Sie es später erneut.');
+        setIsLoading(false);
+        return;
+      }
+
+      if (result.error) {
         setError(result.error);
         setIsLoading(false);
         return;
@@ -34,7 +40,7 @@ export default function SignIn() {
       router.refresh();
     } catch (err) {
       console.error('Sign in error:', err);
-      setError('An unexpected error occurred. Please try again.');
+      setError('Ein unerwarteter Fehler ist aufgetreten. Bitte versuchen Sie es später erneut.');
       setIsLoading(false);
     }
   };
