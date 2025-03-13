@@ -2,7 +2,7 @@
 
 import { useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { errorMessages } from './page';
+import { errorMessages } from './errorMessages';
 
 export default function ErrorContent() {
   const searchParams = useSearchParams();
