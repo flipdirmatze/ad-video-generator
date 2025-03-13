@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import dbConnect from '@/lib/mongoose';
@@ -14,13 +14,18 @@ const batchClient = new BatchClient({
   },
 });
 
+// Spezielle Next.js-App-Router-Typisierungen
+interface ProjectParams {
+  id: string;
+}
+
 /**
  * API-Route zum Abfragen des Projekt-Status
  * GET /api/project-status/{id}
  */
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: ProjectParams }
 ) {
   try {
     // Authentifizierung prüfen
