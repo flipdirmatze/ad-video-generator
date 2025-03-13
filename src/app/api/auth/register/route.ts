@@ -1,6 +1,6 @@
 import bcrypt from 'bcrypt';
-import clientPromise from '@/lib/mongodb';
 import { NextRequest, NextResponse } from 'next/server';
+import dbConnect from '@/lib/mongoose';
 
 export async function POST(request: NextRequest) {
   try {
@@ -14,12 +14,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Connect to database
-    const client = await clientPromise;
-    const db = client.db();
+    // Connect to database using mongoose which is more efficient for serverless
+    await dbConnect();
+    const db = (await import('@/models/User')).default;
     
-    // Check if user already exists
-    const existingUser = await db.collection('users').findOne({ email });
+    // Check if user already exists - optimize with index
+    const existingUser = await db.findOne({ email }).lean();
     
     if (existingUser) {
       return NextResponse.json(
@@ -28,23 +28,39 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    // Hash password
-    const hashedPassword = await bcrypt.hash(password, 10);
+    // Hash password with lower cost for faster processing
+    const hashedPassword = await bcrypt.hash(password, 8); // Lower cost from 10 to 8
     
     // Create user
-    const result = await db.collection('users').insertOne({
+    const newUser = new db({
       email,
       password: hashedPassword,
       name,
       createdAt: new Date(),
       role: 'user',
+      subscriptionPlan: 'free',
+      subscriptionActive: true,
+      limits: {
+        maxVideosPerMonth: 5,
+        maxVideoLength: 60,
+        maxStorageSpace: 500 * 1024 * 1024, // 500MB
+        maxResolution: "720p",
+        allowedFeatures: ["voiceover", "templates"]
+      },
+      stats: {
+        totalVideosCreated: 0,
+        totalStorage: 0,
+        lastActive: new Date()
+      }
     });
+    
+    const result = await newUser.save();
     
     return NextResponse.json(
       { 
         success: true, 
         user: { 
-          id: result.insertedId,
+          id: result._id,
           email,
           name 
         } 
@@ -53,8 +69,10 @@ export async function POST(request: NextRequest) {
     );
   } catch (error) {
     console.error('Registration error:', error);
+    // More descriptive error message
+    const errorMessage = error instanceof Error ? error.message : 'Unknown registration error';
     return NextResponse.json(
-      { error: 'Registration failed' },
+      { error: 'Registration failed', details: errorMessage },
       { status: 500 }
     );
   }
