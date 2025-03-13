@@ -135,24 +135,33 @@ export const authOptions: NextAuthOptions = {
     async session({ session, token, user }) {
       // Füge Rolle und ID zur Session hinzu
       if (session.user) {
-        session.user.role = token.role as string;
-        session.user.id = token.id as string;
-        session.user.subscriptionPlan = token.subscriptionPlan || 'free';
-        session.user.subscriptionActive = token.subscriptionActive ?? true;
-        
-        // Wenn der Adapter verwendet wird, ist user verfügbar
-        if (user) {
-          // Füge zusätzliche Informationen aus der Datenbank hinzu
-          try {
-            const dbUser = await User.findById(token.id);
-            if (dbUser) {
-              session.user.limits = dbUser.limits;
-              session.user.stats = dbUser.stats;
-              session.user.username = dbUser.username;
+        try {
+          session.user.role = token.role as string || 'user';
+          session.user.id = token.id as string;
+          session.user.subscriptionPlan = token.subscriptionPlan || 'free';
+          session.user.subscriptionActive = token.subscriptionActive ?? true;
+          
+          // Wenn der Adapter verwendet wird, ist user verfügbar
+          if (user) {
+            // Füge zusätzliche Informationen aus der Datenbank hinzu
+            try {
+              const dbUser = await User.findById(token.id);
+              if (dbUser) {
+                session.user.limits = dbUser.limits;
+                session.user.stats = dbUser.stats;
+                session.user.username = dbUser.username;
+              }
+            } catch (error) {
+              console.error('Error fetching user details for session:', error);
+              // Fehler beim Abrufen von Benutzerdetails sollten die Session nicht blockieren
             }
-          } catch (error) {
-            console.error('Error fetching user details for session:', error);
           }
+        } catch (error) {
+          console.error('Error building session:', error);
+          // Mindestanforderungen für die Session sicherstellen
+          session.user.role = 'user';
+          session.user.subscriptionPlan = 'free';
+          session.user.subscriptionActive = true;
         }
       }
       return session;

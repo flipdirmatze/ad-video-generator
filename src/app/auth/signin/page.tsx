@@ -18,11 +18,20 @@ export default function SignIn() {
     setError('');
 
     try {
-      const result = await signIn('credentials', {
-        email,
-        password,
-        redirect: false,
-      });
+      let result;
+      try {
+        result = await signIn('credentials', {
+          email,
+          password,
+          redirect: false,
+          callbackUrl: '/'
+        });
+      } catch (signInError) {
+        console.error('SignIn execution error:', signInError);
+        setError('Beim Anmeldevorgang ist ein Fehler aufgetreten. Bitte versuchen Sie es später erneut.');
+        setIsLoading(false);
+        return;
+      }
 
       if (!result) {
         setError('Anmeldeserver nicht erreichbar. Bitte versuchen Sie es später erneut.');
@@ -39,7 +48,7 @@ export default function SignIn() {
       router.push('/');
       router.refresh();
     } catch (err) {
-      console.error('Sign in error:', err);
+      console.error('Sign in general error:', err);
       setError('Ein unerwarteter Fehler ist aufgetreten. Bitte versuchen Sie es später erneut.');
       setIsLoading(false);
     }
