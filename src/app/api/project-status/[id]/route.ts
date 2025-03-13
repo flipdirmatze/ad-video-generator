@@ -14,18 +14,13 @@ const batchClient = new BatchClient({
   },
 });
 
-// Spezielle Next.js-App-Router-Typisierungen
-interface ProjectParams {
-  id: string;
-}
-
 /**
  * API-Route zum Abfragen des Projekt-Status
  * GET /api/project-status/{id}
  */
 export async function GET(
   request: Request,
-  { params }: { params: ProjectParams }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // Authentifizierung prüfen
@@ -34,7 +29,9 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const projectId = params.id;
+    // Dynamische Parameter extrahieren (als Promise in Next.js 15.2.1)
+    const { id: projectId } = await params;
+    
     if (!projectId) {
       return NextResponse.json({ error: 'Project ID is required' }, { status: 400 });
     }
