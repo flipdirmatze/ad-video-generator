@@ -14,18 +14,13 @@ const batchClient = new BatchClient({
   },
 });
 
-// Korrekte Typdefinition für den Next.js App Router
-type Props = {
-  params: { id: string }
-}
-
 /**
  * API-Route zum Abfragen des Projekt-Status
  * GET /api/project-status/{id}
  */
 export async function GET(
-  request: NextRequest,
-  { params }: Props
+  request: Request,
+  { params }: { params: { id: string } }
 ) {
   try {
     // Authentifizierung prüfen
