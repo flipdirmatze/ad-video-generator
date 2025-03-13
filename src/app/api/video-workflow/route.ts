@@ -162,7 +162,7 @@ export async function POST(request: NextRequest) {
     await project.save();
     
     // Starte den AWS Batch-Job
-    const jobParams: Record<string, any> = {
+    const jobParams: Record<string, string | number | boolean> = {
       PROJECT_ID: project._id.toString(),
       USER_ID: userId,
       SEGMENTS: JSON.stringify(segments),

@@ -20,7 +20,7 @@ const batchClient = new BatchClient({
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: { id: string } }
 ) {
   try {
     // Authentifizierung prüfen
@@ -29,7 +29,7 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const projectId = params.id;
+    const projectId = context.params.id;
     if (!projectId) {
       return NextResponse.json({ error: 'Project ID is required' }, { status: 400 });
     }
