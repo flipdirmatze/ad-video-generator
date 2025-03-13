@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { createCompleteVideoJob, VideoSegmentParams } from '@/lib/aws-batch';
 import dbConnect from '@/lib/mongoose';
 import ProjectModel from '@/models/Project';
 import Voiceover from '@/models/Voiceover';
@@ -61,47 +60,44 @@ export async function POST(request: Request) {
     const outputFileName = generateUniqueFileName(`${title.toLowerCase().replace(/\s+/g, '-')}.mp4`);
     const outputKey = `final/${session.user.id}/${outputFileName}`;
 
-    // Segmente für AWS Batch formatieren
-    const videoSegments: VideoSegmentParams[] = segments.map(segment => ({
-      videoKey: segment.videoKey,
-      startTime: segment.startTime,
-      duration: segment.duration,
-      position: segment.position
-    }));
-
-    // Projekt in Datenbank anlegen
-    const project = new ProjectModel({
-      userId: session.user.id,
-      title: title,
-      status: 'processing',
-      segments: segments,
-      voiceoverId: voiceoverId || null,
-      outputKey,
-      outputUrl: null, // Wird später aktualisiert, wenn das Video fertig ist
-      createdAt: new Date(),
-      updatedAt: new Date()
+    // Statt direkt AWS Batch aufzurufen, verwenden wir den neuen Workflow-API
+    const workflowResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/video-workflow`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        workflowType: 'video_generation',
+        userId: session.user.id,
+        title: title,
+        data: {
+          segments: segments.map(segment => ({
+            videoKey: segment.videoKey,
+            startTime: segment.startTime,
+            duration: segment.duration,
+            position: segment.position
+          })),
+          voiceoverKey: voiceoverKey,
+          outputKey: outputKey
+        }
+      })
     });
 
-    // Batch-Job starten
-    const { jobId, jobName } = await createCompleteVideoJob(
-      videoSegments,
-      outputKey,
-      voiceoverKey,
-      session.user.id
-    );
+    if (!workflowResponse.ok) {
+      const errorData = await workflowResponse.json();
+      throw new Error(errorData.message || 'Fehler beim Starten des Video-Workflows');
+    }
 
-    // Projekt mit Job-Informationen aktualisieren
-    project.batchJobId = jobId;
-    project.batchJobName = jobName;
-    await project.save();
+    const workflowData = await workflowResponse.json();
 
+    // Wir geben die gleiche Antwort zurück, damit bestehende Clients nicht geändert werden müssen
     return NextResponse.json({
       success: true,
       message: 'Video generation started',
-      projectId: project._id,
-      jobId,
-      jobName,
-      estimatedTime: "Your video will be processed on AWS Batch and will be ready in a few minutes"
+      projectId: workflowData.projectId,
+      jobId: workflowData.jobId,
+      jobName: workflowData.jobName,
+      estimatedTime: "Your video will be processed and will be ready in a few minutes"
     });
   } catch (error) {
     console.error('Error generating video:', error);
