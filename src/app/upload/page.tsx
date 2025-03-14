@@ -71,17 +71,54 @@ export default function UploadPage() {
       return video.url;
     }
     
-    // Versuchen, die URL direkt zu verwenden
+    // Für S3-URLs versuchen, eine signierte URL zu erhalten
     try {
-      // URL im Cache speichern
+      // Extrahiere den S3-Key aus der URL
+      // Typisches Format: https://bucket-name.s3.region.amazonaws.com/key/to/object.mp4
+      let key = '';
+      
+      if (video.key) {
+        // Wenn der S3-Key direkt verfügbar ist
+        key = video.key;
+      } else if (video.url.includes('amazonaws.com')) {
+        // Sonst aus der URL extrahieren
+        const urlParts = video.url.split('.amazonaws.com/');
+        if (urlParts.length > 1) {
+          key = urlParts[1];
+        }
+      }
+      
+      if (key) {
+        // Signierte URL vom Server holen
+        const response = await fetch(`/api/get-signed-url?key=${encodeURIComponent(key)}`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success && data.url) {
+            // URL im Cache speichern
+            setVideoPlaybackUrls(prev => ({
+              ...prev,
+              [video.id]: data.url
+            }));
+            return data.url;
+          }
+        }
+      }
+      
+      // Fallback zur Original-URL
       setVideoPlaybackUrls(prev => ({
         ...prev,
         [video.id]: video.url
       }));
       return video.url;
     } catch (e) {
-      console.warn(`Failed to access video URL directly: ${video.url}`);
-      return video.url; // Fallback zur originalen URL
+      console.warn(`Failed to get signed URL for video ${video.name}:`, e);
+      
+      // Fallback zur Original-URL
+      setVideoPlaybackUrls(prev => ({
+        ...prev,
+        [video.id]: video.url
+      }));
+      return video.url;
     }
   }, [videoPlaybackUrls]);
   
@@ -682,28 +719,34 @@ export default function UploadPage() {
                   className={`relative group rounded-lg overflow-hidden ${getVideoFormat(video) || ''}`}
                 >
                   <video 
-                    className="w-full h-full object-cover rounded-lg" 
                     src={videoPlaybackUrls[video.id] || video.url}
-                    autoPlay={false}
+                    className="w-full h-full object-contain"
                     controls
-                    muted
-                    loop
-                    poster="/images/video-placeholder.svg"
+                    controlsList="nodownload"
                     preload="metadata"
+                    playsInline
+                    muted
+                    crossOrigin="anonymous" 
+                    poster="/images/video-placeholder.svg"
+                    onLoadStart={() => console.log(`Starting to load video: ${video.name}`)}
+                    onLoadedMetadata={() => console.log(`Metadata loaded for video: ${video.name}`)}
                     onError={(e) => {
-                      console.error(`Error loading video ${video.name}:`, e);
-                      // Optional: Bei Wiedergabefehlern einen Fallback anzeigen
+                      console.error(`Video playback error for ${video.name}:`, e);
+                      // Zeige ein Fallback-Element bei Fehler
                       const target = e.target as HTMLVideoElement;
                       target.style.display = 'none';
                       const parent = target.parentElement;
                       if (parent) {
+                        // Erstelle ein Fallback-Bild, wenn das Video nicht geladen werden kann
                         const fallback = document.createElement('div');
-                        fallback.className = 'w-full h-full flex items-center justify-center bg-gray-900 text-white';
+                        fallback.className = 'flex items-center justify-center w-full h-full bg-gray-900';
                         fallback.innerHTML = `
-                          <div class="text-center p-4">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mx-auto text-red-500 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          <div class="flex flex-col items-center text-center p-4">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 text-gray-500 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                             </svg>
+                            <span class="text-sm text-gray-400">Video kann nicht abgespielt werden</span>
+                            <span class="text-xs text-gray-500 mt-1">${video.name}</span>
                           </div>
                         `;
                         parent.appendChild(fallback);
