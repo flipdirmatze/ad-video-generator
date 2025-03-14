@@ -14,7 +14,7 @@ export type S3BucketFolder = 'uploads' | 'processed' | 'final' | 'audio';
 
 // S3 Client Konfiguration
 const s3Config: S3ClientConfig = {
-  region: process.env.AWS_REGION,
+  region: process.env.AWS_REGION || 'eu-central-1', // Fallback auf eu-central-1
   credentials: process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY ? {
     accessKeyId: process.env.AWS_ACCESS_KEY_ID,
     secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
@@ -25,21 +25,25 @@ const s3Config: S3ClientConfig = {
 let s3Client: S3Client;
 try {
   if (!process.env.AWS_REGION) {
-    console.warn('AWS_REGION ist nicht definiert. Bitte Umgebungsvariablen überprüfen.');
+    console.warn('AWS_REGION ist nicht definiert. Fallback auf eu-central-1.');
   }
   if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY) {
-    console.warn('AWS Credentials sind nicht vollständig. Bitte Umgebungsvariablen überprüfen.');
+    console.warn('AWS Credentials sind nicht vollständig. S3-Operationen könnten fehlschlagen.');
   }
   s3Client = new S3Client(s3Config);
-  console.log('S3 Client erfolgreich konfiguriert mit Region:', process.env.AWS_REGION);
+  console.log('S3 Client erfolgreich konfiguriert mit Region:', s3Config.region);
 } catch (err) {
   console.error('Fehler bei der Initialisierung des S3 Clients:', err);
-  // Fallback für Tests/Entwicklung
-  s3Client = new S3Client({ region: 'us-east-1' });
+  // Fallback für Tests/Entwicklung - mit expliziten Werten
+  s3Client = new S3Client({ 
+    region: 'eu-central-1',
+    // Keine Credentials hier, um keine sensiblen Daten zu loggen
+  });
+  console.warn('S3 Client mit Fallback-Konfiguration initialisiert - kann im Produktionsmodus fehlschlagen');
 }
 
 // Bucket Name aus Umgebungsvariablen mit Fallback für Entwicklung
-const bucketName = process.env.S3_BUCKET_NAME || 'dummy-bucket-for-development';
+const bucketName = process.env.S3_BUCKET_NAME || 'ad-video-generator-bucket';
 
 /**
  * Upload einer Datei direkt zu S3
@@ -122,7 +126,8 @@ export async function getSignedDownloadUrl(key: string, expiresIn: number = 3600
  * Generiert einen öffentlichen S3-URL für eine Datei
  */
 export function getS3Url(key: string): string {
-  return `https://${bucketName}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`;
+  const region = process.env.AWS_REGION || 'eu-central-1'; // Fallback auf eu-central-1 wenn keine Region gesetzt ist
+  return `https://${bucketName}.s3.${region}.amazonaws.com/${key}`;
 }
 
 /**

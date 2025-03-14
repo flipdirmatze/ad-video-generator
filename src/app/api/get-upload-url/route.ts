@@ -79,18 +79,37 @@ export async function POST(request: NextRequest) {
       });
     } catch (s3Error) {
       console.error('Error generating S3 presigned URL:', s3Error);
+
+      // Prüfe auf bekannte AWS Fehlermuster
+      let errorMessage = 'Failed to generate S3 upload URL';
+      let details = s3Error instanceof Error ? s3Error.message : String(s3Error);
+      let statusCode = 500;
+
+      // Überprüfe auf häufige Fehler
+      if (details.includes('credentials')) {
+        errorMessage = 'AWS Authentication failed';
+        details = 'The server cannot authenticate with AWS. Please check credentials.';
+      } else if (details.includes('region')) {
+        errorMessage = 'AWS Region configuration issue';
+        details = 'There is a problem with the AWS region configuration.';
+      } else if (details.includes('bucket') || details.includes('Bucket')) {
+        errorMessage = 'S3 Bucket access failed';
+        details = `The S3 bucket '${process.env.S3_BUCKET_NAME}' may not exist or is not accessible.`;
+      }
+
       return NextResponse.json(
         { 
-          error: 'Failed to generate S3 upload URL', 
-          details: s3Error instanceof Error ? s3Error.message : String(s3Error),
+          error: errorMessage, 
+          details: details,
+          timestamp: new Date().toISOString(),
           awsConfig: {
             region: process.env.AWS_REGION ? 'Configured' : 'Missing',
             accessKey: process.env.AWS_ACCESS_KEY_ID ? 'Configured' : 'Missing',
             secretKey: process.env.AWS_SECRET_ACCESS_KEY ? 'Configured' : 'Missing',
-            bucket: process.env.S3_BUCKET_NAME
+            bucket: process.env.S3_BUCKET_NAME || 'Not configured'
           }
         },
-        { status: 500 }
+        { status: statusCode }
       );
     }
   } catch (error) {
