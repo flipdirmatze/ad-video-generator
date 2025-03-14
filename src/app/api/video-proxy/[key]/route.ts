@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { S3Client, GetObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { Readable } from 'stream';
 
 // Konfiguriere S3 Client
 const s3Client = new S3Client({
@@ -102,45 +101,53 @@ export async function GET(
 
     try {
       // Objekt von S3 abrufen
-      const { Body, ContentType, ContentLength } = await s3Client.send(command);
+      const s3Response = await s3Client.send(command);
       
-      if (!Body) {
+      if (!s3Response.Body) {
         console.error(`Video-Proxy: No body returned for key ${key}`);
         return NextResponse.json({ error: 'Video not found' }, { status: 404 });
       }
 
-      // Stream-Verarbeitung
+      // Die Videodate als binäre Daten abrufen - diese Methode ist sehr zuverlässig
+      // mit unterschiedlichen Versionen von AWS SDK
       const chunks: Uint8Array[] = [];
-      if (Body instanceof Readable) {
-        for await (const chunk of Body) {
-          chunks.push(chunk instanceof Uint8Array ? chunk : Buffer.from(chunk));
-        }
-      } else {
-        // Handle Blob
-        const blob = await Body.transformToByteArray();
-        chunks.push(blob);
+      
+      // @ts-ignore - handle es als SDKStream
+      for await (const chunk of s3Response.Body) {
+        chunks.push(chunk);
       }
+      
+      // Zu einem Uint8Array kombinieren
+      const contentLength = chunks.reduce((acc, chunk) => acc + chunk.length, 0);
+      const allBytes = new Uint8Array(contentLength);
+      
+      let offset = 0;
+      for (const chunk of chunks) {
+        allBytes.set(chunk, offset);
+        offset += chunk.length;
+      }
+      
+      console.log(`Video-Proxy: Successfully loaded video with key ${key}, size: ${contentLength} bytes`);
 
-      // Kombiniere alle Chunks zu einem Buffer
-      const buffer = Buffer.concat(chunks);
-      
-      console.log(`Video-Proxy: Successfully streamed video with key ${key}, size: ${buffer.length} bytes`);
-      
-      // Erstelle eine Response mit dem Video-Inhalt und den korrekten Headers
-      const response = new NextResponse(buffer);
-      
-      // Setze Content-Type Header
-      response.headers.set('Content-Type', ContentType || 'video/mp4');
-      
-      // Weitere wichtige Headers für Caching und CORS
-      response.headers.set('Cache-Control', 'public, max-age=86400');
-      response.headers.set('Accept-Ranges', 'bytes');
-      
-      if (ContentLength) {
-        response.headers.set('Content-Length', ContentLength.toString());
+      // Erstelle Headers für die Response
+      const headers = new Headers();
+      if (s3Response.ContentType) {
+        headers.set('Content-Type', s3Response.ContentType);
+      } else {
+        headers.set('Content-Type', 'video/mp4');
       }
       
-      return response;
+      headers.set('Cache-Control', 'public, max-age=86400');
+      headers.set('Accept-Ranges', 'bytes');
+      
+      if (contentLength) {
+        headers.set('Content-Length', contentLength.toString());
+      }
+      
+      // Erstelle eine standardkonforme Response mit den kompletten Daten
+      return new Response(allBytes, {
+        headers
+      });
     } catch (error) {
       console.error(`Video-Proxy: Error fetching from S3: ${error instanceof Error ? error.message : String(error)}`);
       return NextResponse.json(
