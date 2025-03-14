@@ -1,112 +1,132 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { listFiles, S3BucketFolder, getSignedDownloadUrl } from '@/lib/storage';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
+import dbConnect from '@/lib/mongoose';
+import VideoModel from '@/models/Video';
 
 /**
- * GET /api/media?folder=uploads&prefix=user1/&limit=20
- * Listet Medien in einem bestimmten S3-Bucket-Folder
+ * GET /api/media
+ * Gibt alle verfügbaren Videos des aktuell eingeloggten Benutzers zurück
  */
 export async function GET(request: NextRequest) {
   try {
     // Authentifizierung prüfen
     const session = await getServerSession(authOptions);
-    if (!session || !session.user) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Query-Parameter extrahieren
-    const searchParams = request.nextUrl.searchParams;
-    const folder = searchParams.get('folder') as S3BucketFolder || 'uploads';
-    const prefix = searchParams.get('prefix') || '';
-    const limit = parseInt(searchParams.get('limit') || '100', 10);
-
-    // Validiere folder-Parameter
-    if (!['uploads', 'processed', 'final', 'audio'].includes(folder)) {
-      return NextResponse.json(
-        { error: 'Invalid folder type' },
-        { status: 400 }
-      );
-    }
-
-    // Medien auflisten
-    const files = await listFiles(folder, prefix, limit);
-
-    // Nur für Admins alle Dateien anzeigen, sonst nur eigene
-    let filteredFiles = files;
+    const userId = session.user.id;
     
-    if (session.user.role !== 'admin') {
-      const userId = session.user.id;
-      // Filtere Dateien basierend auf Benutzer-ID falls diese in Pfad enthalten ist
-      // Hinweis: Dies setzt voraus, dass Dateipfade Benutzer-IDs enthalten
-      filteredFiles = files.filter(file => {
-        return file.key?.includes(`/${userId}/`) || !file.key?.includes('/');
-      });
-    }
-
+    // Verbindung zur Datenbank herstellen
+    await dbConnect();
+    
+    // Videos des Benutzers abfragen
+    const videos = await VideoModel.find({ userId })
+      .sort({ createdAt: -1 })
+      .lean();
+    
+    // Rückmeldung formatieren
+    const formattedVideos = videos.map(video => ({
+      id: video.id, // Hier die ID aus dem Mongoose-Dokument
+      _id: video._id ? video._id.toString() : undefined,
+      name: video.name,
+      path: video.path,
+      url: video.url,
+      size: video.size,
+      type: video.type,
+      tags: video.tags || [],
+      createdAt: video.createdAt,
+      isPublic: video.isPublic
+    }));
+    
+    // Erfolg zurückgeben
     return NextResponse.json({
       success: true,
-      files: filteredFiles
+      count: formattedVideos.length,
+      files: formattedVideos
     });
   } catch (error) {
-    console.error('Error listing files:', error);
+    console.error('Error fetching videos from database:', error);
     return NextResponse.json(
-      { error: 'Failed to list files' },
+      { 
+        error: 'Failed to fetch videos', 
+        details: error instanceof Error ? error.message : String(error) 
+      },
       { status: 500 }
     );
   }
 }
 
 /**
- * POST /api/media/url
- * Generiert eine signierte URL für einen spezifischen Medienschlüssel
+ * POST /api/media
+ * Aktualisiert die Metadaten eines Videos in der Datenbank
  */
 export async function POST(request: NextRequest) {
   try {
     // Authentifizierung prüfen
     const session = await getServerSession(authOptions);
-    if (!session || !session.user) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Request-Body-Daten parsen
+    const userId = session.user.id;
     const data = await request.json();
-    const { key } = data;
-
-    if (!key) {
-      return NextResponse.json(
-        { error: 'key is required' },
-        { status: 400 }
-      );
+    const { videoId, ...updateData } = data;
+    
+    if (!videoId) {
+      return NextResponse.json({ error: 'Video ID is required' }, { status: 400 });
     }
-
-    // Wenn nicht Admin, Zugriff auf fremde Dateien verhindern
-    if (session.user.role !== 'admin') {
-      if (!key.includes(`/${session.user.id}/`) && key.includes('/')) {
-        return NextResponse.json(
-          { error: 'Access denied to this resource' },
-          { status: 403 }
-        );
+    
+    // Verbindung zur Datenbank herstellen
+    await dbConnect();
+    
+    // Video finden und prüfen, ob es dem Benutzer gehört
+    const video = await VideoModel.findOne({ 
+      id: videoId,
+      userId 
+    });
+    
+    if (!video) {
+      return NextResponse.json({ error: 'Video not found or no permission' }, { status: 404 });
+    }
+    
+    // Erlaubte Felder definieren, die aktualisiert werden dürfen
+    const allowedFields = ['name', 'tags', 'isPublic'];
+    
+    // Nur erlaubte Felder aktualisieren
+    Object.keys(updateData).forEach(key => {
+      if (allowedFields.includes(key)) {
+        // @ts-ignore - Dynamisches Setzen von Eigenschaften
+        video[key] = updateData[key];
       }
-    }
-
-    // Signierte Download-URL erzeugen
-    const signedUrl = await getSignedDownloadUrl(key);
-
+    });
+    
+    // Aktualisierungsdatum setzen
+    video.updatedAt = new Date();
+    
+    // Speichern
+    await video.save();
+    
     return NextResponse.json({
       success: true,
-      url: signedUrl
+      message: 'Video updated successfully',
+      video: {
+        id: video.id,
+        _id: video._id.toString(),
+        name: video.name,
+        tags: video.tags,
+        isPublic: video.isPublic,
+        updatedAt: video.updatedAt
+      }
     });
   } catch (error) {
-    console.error('Error generating signed URL:', error);
+    console.error('Error updating video:', error);
     return NextResponse.json(
-      { error: 'Failed to generate signed URL' },
+      { 
+        error: 'Failed to update video', 
+        details: error instanceof Error ? error.message : String(error) 
+      },
       { status: 500 }
     );
   }
