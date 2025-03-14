@@ -17,6 +17,8 @@ export interface IVideo {
   height?: number;
   duration?: number;
   isPublic: boolean;
+  status?: string; // 'draft', 'processing', 'complete'
+  progress?: number; // 0-100 für Fortschrittsanzeige
   createdAt: Date;
   updatedAt: Date;
 }
@@ -52,6 +54,17 @@ const VideoSchema = new mongoose.Schema({
   tags: {
     type: [String],
     default: []
+  },
+  status: {
+    type: String,
+    enum: ['draft', 'processing', 'complete'],
+    default: 'draft'
+  },
+  progress: {
+    type: Number,
+    min: 0,
+    max: 100,
+    default: 0
   },
   duration: {
     type: Number,

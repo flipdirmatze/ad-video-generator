@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs-extra';
 import path from 'path';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
+import dbConnect from '@/lib/mongoose';
+import VideoModel from '@/models/Video';
 
 interface FileInfo {
   name: string;
@@ -27,14 +31,23 @@ const getFileId = (filename: string): string => {
 
 export async function GET() {
   try {
+    // Authentifizierung prüfen
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     // Path to the uploads directory
     const uploadsDir = path.join(process.cwd(), 'public', 'uploads');
     
     // Check if directory exists
     if (!fs.existsSync(uploadsDir)) {
+      await fs.mkdir(uploadsDir, { recursive: true });
+      console.log(`Created uploads directory: ${uploadsDir}`);
+      
       return NextResponse.json({
         files: [],
-        message: 'Uploads directory does not exist'
+        message: 'Uploads directory created'
       });
     }
     
@@ -63,12 +76,49 @@ export async function GET() {
     
     // Sort by last modified date, newest first
     videoFiles.sort((a, b) => b.lastModified.getTime() - a.lastModified.getTime());
+
+    // Verbindung zur Datenbank herstellen
+    await dbConnect();
+    
+    // Videos aus der Datenbank abrufen
+    const dbVideos = await VideoModel.find({ 
+      userId: session.user.id 
+    }).lean();
+    
+    // Dateibasierte Videos und Datenbankeinträge kombinieren
+    const combinedFiles = [...videoFiles];
+    
+    // Videos aus der Datenbank hinzufügen, die nicht als Datei gefunden wurden
+    for (const dbVideo of dbVideos) {
+      // Prüfe, ob das Video bereits im Ergebnis-Array vorhanden ist
+      const existingVideoIndex = combinedFiles.findIndex(
+        file => 
+          file.id === dbVideo.id || 
+          file.path === dbVideo.path ||
+          file.path === `/uploads/${dbVideo.id}.mp4`
+      );
+      
+      if (existingVideoIndex >= 0) {
+        // Video bereits vorhanden, ID aus Datenbank ergänzen
+        combinedFiles[existingVideoIndex].id = dbVideo.id;
+      } else {
+        // Video nicht vorhanden, aus Datenbank hinzufügen
+        combinedFiles.push({
+          id: dbVideo.id,
+          name: dbVideo.name,
+          path: dbVideo.path,
+          size: dbVideo.size,
+          type: dbVideo.type,
+          lastModified: dbVideo.updatedAt || dbVideo.createdAt,
+        });
+      }
+    }
     
     return NextResponse.json({
-      files: videoFiles,
-      count: videoFiles.length,
-      baseNames: files.filter(f => path.extname(f).toLowerCase() === '.mp4'),
-      directory: uploadsDir
+      files: combinedFiles,
+      count: combinedFiles.length,
+      dbCount: dbVideos.length,
+      fsCount: videoFiles.length
     });
   } catch (error) {
     console.error('Error listing uploads:', error);
