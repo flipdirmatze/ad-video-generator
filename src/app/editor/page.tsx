@@ -17,13 +17,6 @@ type UploadedVideo = {
   key?: string; // S3-Key des Videos
 }
 
-type VideoSegment = {
-  videoId: string;
-  startTime: number;
-  duration: number;
-  position: number;
-}
-
 // Define error response type to match the backend
 type ErrorResponse = {
   error: string;
@@ -59,7 +52,6 @@ export default function EditorPage() {
   const [voiceoverScript, setVoiceoverScript] = useState<string>('')
   const [uploadedVideos, setUploadedVideos] = useState<UploadedVideo[]>([])
   const [selectedVideos, setSelectedVideos] = useState<string[]>([])
-  const [videoSegments, setVideoSegments] = useState<VideoSegment[]>([])
   const [availableUploads, setAvailableUploads] = useState<FileInfo[]>([])
   const [finalVideoUrl, setFinalVideoUrl] = useState<string | null>(null)
   
@@ -117,21 +109,12 @@ export default function EditorPage() {
       }
       
       const savedFinalVideo = localStorage.getItem('finalVideoUrl')
-      const savedSegments = localStorage.getItem('videoSegments')
       
       // Lade direkt Videos vom Server anstatt von localStorage
       fetchServerVideos();
       
       if (savedFinalVideo) {
         setFinalVideoUrl(savedFinalVideo)
-      }
-
-      if (savedSegments) {
-        try {
-          setVideoSegments(JSON.parse(savedSegments))
-        } catch (e) {
-          console.error('Error parsing saved segments:', e)
-        }
       }
       
       // Fetch available uploads from the server (for processing queue)
@@ -141,7 +124,7 @@ export default function EditorPage() {
   
   // HOOK 3: Set up final video playback
   useEffect(() => {
-    if (typeof window === 'undefined' || !finalVideoUrl || finalVideoUrl === 'generated' || !videoSegments.length) return
+    if (typeof window === 'undefined' || !finalVideoUrl || finalVideoUrl === 'generated') return
     
     // Set up canvas for video playback
     const canvas = canvasRef.current
@@ -160,7 +143,7 @@ export default function EditorPage() {
     const videoElements: {[key: string]: HTMLVideoElement} = {}
     
     // Create video elements for each unique video
-    const uniqueVideoIds = [...new Set(videoSegments.map(segment => segment.videoId))]
+    const uniqueVideoIds = [...new Set(selectedVideos)]
     uniqueVideoIds.forEach(videoId => {
       const video = uploadedVideos.find(v => v.id === videoId)
       if (video) {
@@ -194,7 +177,7 @@ export default function EditorPage() {
         video.src = ''
       })
     }
-  }, [finalVideoUrl, videoSegments, uploadedVideos, voiceoverUrl])
+  }, [finalVideoUrl, selectedVideos, uploadedVideos, voiceoverUrl])
 
   // HOOK 4: Set up video event listeners
   useEffect(() => {
@@ -227,7 +210,7 @@ export default function EditorPage() {
     }
   };
 
-  // Function to start video playback - defined outside of render/effects to prevent hydration issues
+  // Function to start video playback
   const startPlayback = useCallback(() => {
     if (typeof window === 'undefined') return;
     
@@ -254,12 +237,14 @@ export default function EditorPage() {
       cancelAnimationFrame(animationRef.current);
     }
     
-    // Load all video elements for the segments
+    // Einfachere Animation für direktes Abspielen der ausgewählten Videos
+    // Wir spielen jeweils das gesamte Video ab, ohne Segmentierung
+    
+    // Load all video elements for the selected videos
     const videoElements: {[key: string]: HTMLVideoElement} = {};
     
-    // Create video elements for each unique video
-    const uniqueVideoIds = [...new Set(videoSegments.map(segment => segment.videoId))];
-    uniqueVideoIds.forEach(videoId => {
+    // Create video elements for each selected video
+    selectedVideos.forEach(videoId => {
       const video = uploadedVideos.find(v => v.id === videoId);
       if (video) {
         const videoElement = document.createElement('video');
@@ -271,23 +256,44 @@ export default function EditorPage() {
       }
     });
     
+    // Berechne die Dauer jedes Videos (standardmäßig 10 Sekunden)
+    const videoDurations = selectedVideos.map(() => 10); // Standard: 10 Sekunden pro Video
+    
+    // Berechne die Positionen, an denen jedes Video beginnt
+    const videoPositions: number[] = [];
+    let currentPosition = 0;
+    
+    for (const duration of videoDurations) {
+      videoPositions.push(currentPosition);
+      currentPosition += duration;
+    }
+    
     // Animation function
     const animate = () => {
       if (!audio || !ctx) return;
       
       const currentTime = audio.currentTime;
       
-      // Find the current segment
-      const currentSegment = videoSegments.find(segment => 
-        currentTime >= segment.position && 
-        currentTime < segment.position + segment.duration
-      );
+      // Find the current video based on the audio time
+      let currentVideoIndex = -1;
       
-      if (currentSegment) {
-        const videoElement = videoElements[currentSegment.videoId];
+      for (let i = 0; i < selectedVideos.length; i++) {
+        const startTime = videoPositions[i];
+        const endTime = startTime + videoDurations[i];
+        
+        if (currentTime >= startTime && currentTime < endTime) {
+          currentVideoIndex = i;
+          break;
+        }
+      }
+      
+      if (currentVideoIndex >= 0) {
+        const videoId = selectedVideos[currentVideoIndex];
+        const videoElement = videoElements[videoId];
+        
         if (videoElement) {
           // Calculate time within the source video
-          const videoTime = currentSegment.startTime + (currentTime - currentSegment.position);
+          const videoTime = currentTime - videoPositions[currentVideoIndex];
           
           // Seek to the correct time in the video
           if (Math.abs(videoElement.currentTime - videoTime) > 0.2) {
@@ -298,7 +304,7 @@ export default function EditorPage() {
           ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
         }
       } else {
-        // If no segment found, show black
+        // If no video found, show black
         ctx.fillStyle = 'black';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
       }
@@ -313,7 +319,7 @@ export default function EditorPage() {
     
     // Start animation
     animationRef.current = requestAnimationFrame(animate);
-  }, [videoSegments, uploadedVideos]);
+  }, [selectedVideos, uploadedVideos]);
   
   // Function to stop video playback
   const stopPlayback = useCallback(() => {
@@ -342,81 +348,11 @@ export default function EditorPage() {
     })
   }, []);
 
-  // Neue Funktion zum Hinzufügen eines Videos zur Timeline
-  const addVideoToTimeline = useCallback((videoId: string) => {
-    const video = uploadedVideos.find(v => v.id === videoId);
-    if (!video) return;
-    
-    // Berechne die Position des neuen Segments (am Ende der bestehenden Segmente)
-    const totalDuration = videoSegments.reduce((total, segment) => {
-      return total + segment.duration;
-    }, 0);
-    
-    // Erstellung eines neuen Segments (Standardmäßig das gesamte Video)
-    const newSegment: VideoSegment = {
-      videoId: video.id,
-      startTime: 0, // Beginne am Anfang des Videos
-      duration: 10, // Standard: 10 Sekunden oder die Videolänge, wenn bekannt
-      position: totalDuration // Position nach allen bestehenden Segmenten
-    };
-    
-    // Füge das neue Segment zur Timeline hinzu
-    setVideoSegments(prev => [...prev, newSegment]);
-    
-    // Speichere es auch in localStorage
-    const updatedSegments = [...videoSegments, newSegment];
-    localStorage.setItem('videoSegments', JSON.stringify(updatedSegments));
-    
-    // Zeige Erfolgsmeldung
-    setError(null);
-  }, [uploadedVideos, videoSegments]);
-
-  // Automatisch Segmente für alle ausgewählten Videos erstellen
-  const createSegmentsFromSelectedVideos = useCallback(() => {
-    if (!selectedVideos.length) return false;
-    
-    // Leere bestehende Segmente
-    setVideoSegments([]);
-    
-    // Position für die Platzierung der Segmente
-    let currentPosition = 0;
-    
-    // Erstelle für jedes ausgewählte Video ein Segment
-    const newSegments = selectedVideos.map(videoId => {
-      const video = uploadedVideos.find(v => v.id === videoId);
-      if (!video) return null;
-      
-      // Erstelle ein neues Segment
-      const segment: VideoSegment = {
-        videoId,
-        startTime: 0, // Am Anfang des Videos starten
-        duration: 10, // Standard: 10 Sekunden pro Video
-        position: currentPosition
-      };
-      
-      // Aktualisiere die Position für das nächste Segment
-      currentPosition += segment.duration;
-      
-      return segment;
-    }).filter(Boolean) as VideoSegment[];
-    
-    // Aktualisiere den State und speichere in localStorage
-    setVideoSegments(newSegments);
-    localStorage.setItem('videoSegments', JSON.stringify(newSegments));
-    
-    return newSegments.length > 0;
-  }, [selectedVideos, uploadedVideos]);
-
   // Generate final video with AWS Batch
   const handleGenerateVideo = async () => {
-    // Wenn keine Videosegmente vorhanden sind, erstelle automatisch welche
-    if (!videoSegments.length) {
-      const segmentsCreated = createSegmentsFromSelectedVideos();
-      
-      if (!segmentsCreated) {
-        setError('Bitte wählen Sie mindestens ein Video aus und fügen Sie es zur Timeline hinzu');
-        return;
-      }
+    if (selectedVideos.length === 0) {
+      setError('Bitte wählen Sie mindestens ein Video aus');
+      return;
     }
     
     setIsGenerating(true);
@@ -424,16 +360,21 @@ export default function EditorPage() {
     setError(null);
     
     try {
-      // Für jedes Segment den S3-Key ermitteln
-      const segmentsWithKeys = videoSegments.map(segment => {
-        const video = uploadedVideos.find(v => v.id === segment.videoId);
-        const videoKey = video?.key || `uploads/${video?.id}.${video?.type.split('/')[1]}`;
+      // Für jedes ausgewählte Video den S3-Key ermitteln
+      const segmentsWithKeys = selectedVideos.map((videoId, index) => {
+        const video = uploadedVideos.find(v => v.id === videoId);
+        if (!video) return null;
+        
+        const videoKey = video.key || `uploads/${video.id}.${video.type.split('/')[1]}`;
         
         return {
-          ...segment,
-          videoKey
+          videoId: video.id,
+          videoKey,
+          startTime: 0, // Start am Anfang des Videos
+          duration: 10, // Standard-Länge von 10 Sekunden pro Video
+          position: index // Position basierend auf der Reihenfolge in selectedVideos
         };
-      });
+      }).filter(Boolean);
       
       // Voiceover ID aus localStorage holen
       let voiceoverId = null;
@@ -465,39 +406,20 @@ export default function EditorPage() {
         throw new Error(errorData.error || errorData.message || 'Fehler bei der Generierung');
       }
       
-      const data = await response.json();
+      // Antwort verarbeiten
+      const responseData = await response.json();
+      console.log('Video generation response:', responseData);
       
-      // Projekt- und Job-ID speichern für Status-Tracking
-      setProjectId(data.projectId);
-      setJobId(data.jobId);
-      setGenerationProgress(20);
+      // Projekt-ID und Job-ID speichern
+      setProjectId(responseData.projectId);
+      setJobId(responseData.jobId);
       
-      // Polling für Job-Status starten
-      const statusInterval = setInterval(async () => {
-        const statusResponse = await fetch(`/api/project-status/${data.projectId}`);
-        
-        if (!statusResponse.ok) {
-          console.error('Error fetching project status');
-          return;
-        }
-        
-        const statusData = await statusResponse.json();
-        
-        if (statusData.status === 'completed') {
-          clearInterval(statusInterval);
-          setFinalVideoUrl(statusData.outputUrl);
-          setIsGenerating(false);
-          setGenerationProgress(100);
-        } else if (statusData.status === 'failed') {
-          clearInterval(statusInterval);
-          setError(`Fehler bei der Verarbeitung: ${statusData.error || 'Unbekannter Fehler'}`);
-          setIsGenerating(false);
-        } else if (statusData.status === 'processing') {
-          // Update progress estimation - for AWS Batch, this is an approximation
-          setGenerationProgress(Math.min(90, statusData.progress || 60));
-        }
-      }, 5000); // Alle 5 Sekunden abfragen
+      // Die alten States aktualisieren, um Abwärtskompatibilität zu gewährleisten
+      setGenerationProgress(100);
+      setFinalVideoUrl('generated');
       
+      // Erfolgsmeldung anzeigen
+      setError(null);
     } catch (error) {
       setError(`Fehler: ${error instanceof Error ? error.message : 'Unbekannter Fehler'}`);
       setIsGenerating(false);
@@ -598,10 +520,7 @@ export default function EditorPage() {
                     {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                     {availableUploads.map((file: any) => (
                       <div key={file.name} className="badge badge-success gap-1 p-3">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75l3 3m0 0l3-3m-3 3v-7.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        {file.name} {file.id && <span className="text-xs ml-1">({file.id})</span>}
+                        <span className="truncate max-w-[200px]">{file.name}</span>
                       </div>
                     ))}
                   </div>
@@ -611,193 +530,157 @@ export default function EditorPage() {
           </div>
         )}
         
-        {/* Videos that will not work warning */}
-        {uploadedVideos.some(video => {
-          // For each selected video, check if there's a matching file on the server
-          return selectedVideos.includes(video.id) && 
-                 // Eine verbesserte und zuverlässigere Überprüfungsmethode verwenden
-                 !availableUploads.some((file) => {
-                   // Prüfung über exakte ID-Übereinstimmung (am zuverlässigsten)
-                   if (file.id && video.id && file.id === video.id) {
-                     return true;
-                   }
-                   
-                   // Prüfung über Dateiname - nur wenn er exakt den Namen hat (nicht nur enthält)
-                   if (file.name && video.name && file.name === video.name) {
-                     return true;
-                   }
-                   
-                   // Fallback-Prüfung nur wenn die vorherigen fehlschlagen
-                   if (video.filepath && file.path && file.path === video.filepath) {
-                     return true;
-                   }
-                   
-                   return false;
-                 });
-        }) && (
-          <div className="mb-6">
-            <div className="alert alert-warning shadow-lg">
-              <div>
-                <svg xmlns="http://www.w3.org/2000/svg" className="stroke-current flex-shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-                <div>
-                  <div className="font-bold">Achtung: Einige ausgewählte Videos sind nicht auf dem Server verfügbar!</div>
-                  <div className="mt-2">
-                    <p>Die folgenden Videos müssen zuerst über die Upload-Seite hochgeladen werden:</p>
-                    <ul className="list-disc list-inside mt-1">
-                      {uploadedVideos
-                        .filter(video => {
-                          return selectedVideos.includes(video.id) && 
-                                 // Die gleiche verbesserte Überprüfungsmethode wie oben verwenden
-                                 !availableUploads.some((file) => {
-                                   // Prüfung über exakte ID-Übereinstimmung (am zuverlässigsten)
-                                   if (file.id && video.id && file.id === video.id) {
-                                     return true;
-                                   }
-                                   
-                                   // Prüfung über Dateiname - nur wenn er exakt den Namen hat
-                                   if (file.name && video.name && file.name === video.name) {
-                                     return true;
-                                   }
-                                   
-                                   // Fallback-Prüfung nur wenn die vorherigen fehlschlagen
-                                   if (video.filepath && file.path && file.path === video.filepath) {
-                                     return true;
-                                   }
-                                   
-                                   return false;
-                                 });
-                        })
-                        .map(video => (
-                          <li key={video.id} className="text-sm">{video.name} (ID: {video.id})</li>
-                        ))
-                      }
-                    </ul>
-                    <Link href="/upload" className="btn btn-sm btn-warning mt-3">Zur Upload-Seite</Link>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-        
+        {/* Main grid layout */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="col-span-1">
-            {/* Voiceover Preview */}
-            {voiceoverUrl ? (
-              <div className="mb-8 card-gradient p-6 rounded-xl">
-                <div className="flex items-center mb-4">
-                  <SpeakerWaveIcon className="h-6 w-6 text-primary mr-2" />
-                  <h2 className="text-xl font-semibold">Your Voiceover</h2>
-                </div>
-                
-                {voiceoverScript && (
-                  <div className="mb-4 p-4 bg-white/5 rounded-lg">
-                    <p className="text-white/80 italic">"{voiceoverScript}"</p>
-                  </div>
-                )}
-                
-                <audio 
-                  controls 
-                  className="w-full rounded-lg" 
-                  src={voiceoverUrl}
-                  ref={audioRef}
-                />
-              </div>
-            ) : (
-              <div className="mb-8 card-gradient p-6 rounded-xl text-center">
-                <div className="flex flex-col items-center mb-4">
-                  <SpeakerWaveIcon className="h-12 w-12 text-primary/50 mb-3" />
-                  <h2 className="text-xl font-semibold">No Voiceover Found</h2>
-                  <p className="text-white/60 mt-2">You need to create a voiceover before generating your ad.</p>
-                </div>
-                <Link 
-                  href="/voiceover" 
-                  className="inline-flex items-center px-5 py-2.5 mt-2 text-sm font-medium text-white bg-gradient-to-r from-primary to-primary-light rounded-lg shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 transform hover:scale-105 transition-all duration-300"
-                >
-                  Create Voiceover
-                  <ArrowRightIcon className="ml-2 h-4 w-4" />
-                </Link>
-              </div>
-            )}
-
-            {/* Video Selection */}
-            <div className="mb-8">
-              <div className="flex items-center mb-4">
+          {/* Left Column - Upload Selection */}
+          <div>
+            <div className="card-gradient p-6 rounded-xl mb-6">
+              <div className="flex items-center mb-6">
                 <FilmIcon className="h-6 w-6 text-primary mr-2" />
-                <h2 className="text-xl font-semibold">Select Videos for Your Ad</h2>
+                <h2 className="text-xl font-semibold">Your Videos</h2>
               </div>
               
               {uploadedVideos.length === 0 ? (
-                <div className="text-center p-8 card-gradient rounded-xl">
-                  <FilmIcon className="h-12 w-12 text-primary/50 mx-auto mb-3" />
-                  <p className="text-white/60 mb-4">No videos uploaded yet</p>
-                  <Link 
-                    href="/upload" 
-                    className="inline-flex items-center px-5 py-2.5 text-sm font-medium text-white bg-gradient-to-r from-primary to-primary-light rounded-lg shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 transform hover:scale-105 transition-all duration-300"
-                  >
+                <div className="text-center py-8">
+                  <FilmIcon className="h-12 w-12 mx-auto text-white/40 mb-3" />
+                  <p className="text-white/60">No videos available</p>
+                  <Link href="/upload" className="btn btn-primary btn-sm mt-4">
                     Upload Videos
-                    <ArrowRightIcon className="ml-2 h-4 w-4" />
                   </Link>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {uploadedVideos.map(video => (
-                    <div 
-                      key={video.id} 
-                      className={`card-gradient rounded-xl overflow-hidden transform transition-all duration-300 hover:scale-102 ${
-                        selectedVideos.includes(video.id) ? 'ring-2 ring-primary' : ''
-                      }`}
-                    >
-                      <video 
-                        src={video.url} 
-                        className="w-full h-40 object-cover bg-gray-900" 
-                        onClick={() => toggleVideoSelection(video.id)}
-                      />
-                      <div className="p-4">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <h3 className="font-medium truncate text-white">{video.name}</h3>
-                            <p className="text-sm text-white/60">{formatFileSize(video.size)}</p>
+                <div className="space-y-3">
+                  {uploadedVideos.map(video => {
+                    const isSelected = selectedVideos.includes(video.id);
+                    const videoExists = availableUploads.some(
+                      file => 
+                        file.id === video.id || 
+                        file.name === video.name ||
+                        (video.filepath && file.path === video.filepath)
+                    );
+                    
+                    return (
+                      <div 
+                        key={video.id} 
+                        className={`border rounded-lg overflow-hidden relative ${
+                          isSelected 
+                            ? 'border-primary bg-primary/10' 
+                            : 'border-white/10 bg-white/5'
+                        } transition-all`}
+                      >
+                        <div className="flex items-start p-3">
+                          <div className="flex-shrink-0 w-24 h-16 bg-black rounded overflow-hidden mr-3">
+                            <video 
+                              src={video.url} 
+                              className="w-full h-full object-cover"
+                              preload="metadata"
+                            />
                           </div>
-                          <div className="flex">
-                            {selectedVideos.includes(video.id) && (
-                              <button
-                                onClick={() => addVideoToTimeline(video.id)}
-                                className="p-1.5 mr-1 rounded-full transition-all duration-300 bg-green-500/20 text-green-400 hover:bg-green-500/40"
-                                title="Add to timeline"
+                          <div className="flex-grow">
+                            <div className="flex justify-between">
+                              <div>
+                                <h3 className="font-medium truncate">{video.name}</h3>
+                                <div className="flex items-center mt-1">
+                                  {!videoExists && (
+                                    <span className="text-xs text-yellow-400 flex items-center mr-2">
+                                      <ExclamationTriangleIcon className="w-3 h-3 mr-1" />
+                                      Nicht verfügbar
+                                    </span>
+                                  )}
+                                  <span className="text-xs text-white/60">
+                                    {formatFileSize(video.size)}
+                                  </span>
+                                </div>
+                              </div>
+                              <button 
+                                onClick={() => toggleVideoSelection(video.id)}
+                                className={`h-6 w-6 rounded-full border flex items-center justify-center ${
+                                  isSelected 
+                                    ? 'bg-primary border-primary text-white' 
+                                    : 'border-white/30 text-white/30'
+                                }`}
                               >
-                                <ArrowRightIcon className="h-5 w-5" />
+                                {isSelected && <CheckCircleIcon className="h-5 w-5" />}
                               </button>
-                            )}
-                            <button 
-                              onClick={() => toggleVideoSelection(video.id)}
-                              className={`p-1.5 rounded-full transition-all duration-300 ${
-                                selectedVideos.includes(video.id) 
-                                  ? 'bg-primary/20 text-primary' 
-                                  : 'bg-white/10 text-white/40 hover:bg-white/20'
-                              }`}
-                            >
-                              <CheckCircleIcon className="h-5 w-5" />
-                            </button>
+                            </div>
                           </div>
                         </div>
                         
-                        {video.tags.length > 0 && (
-                          <div className="mt-3 flex flex-wrap gap-1.5">
-                            {video.tags.map(tag => (
-                              <span key={tag} className="px-2 py-0.5 bg-white/10 text-white/70 text-xs rounded-full">
-                                {tag}
-                              </span>
+                        {video.tags && video.tags.length > 0 && (
+                          <div className="px-3 pb-3 flex flex-wrap gap-1">
+                            {video.tags.map((tag, idx) => (
+                              <span key={idx} className="badge badge-xs badge-secondary">{tag}</span>
                             ))}
                           </div>
                         )}
                       </div>
-                    </div>
-                  ))}
+                    )
+                  })}
+                  
+                  <div className="mt-4">
+                    <Link href="/upload" className="btn btn-outline btn-sm btn-block">
+                      Upload More Videos
+                    </Link>
+                  </div>
+                </div>
+              )}
+            </div>
+            
+            {/* Voiceover Section */}
+            <div className="card-gradient p-6 rounded-xl">
+              <div className="flex items-center mb-6">
+                <SpeakerWaveIcon className="h-6 w-6 text-primary mr-2" />
+                <h2 className="text-xl font-semibold">Voiceover</h2>
+              </div>
+              
+              <div className="mb-4">
+                <textarea 
+                  value={voiceoverScript}
+                  onChange={(e) => setVoiceoverScript(e.target.value)}
+                  placeholder="Enter your voiceover script here..."
+                  className="textarea textarea-bordered w-full h-32 bg-white/5 border-white/10 focus:border-primary"
+                />
+              </div>
+              
+              <button 
+                onClick={handleGenerateVideo}
+                disabled={!voiceoverScript.trim() || isGenerating}
+                className="btn btn-primary btn-block"
+              >
+                {isGenerating ? (
+                  <>
+                    <ArrowPathIcon className="h-5 w-5 mr-2 animate-spin" />
+                    Generating...
+                  </>
+                ) : voiceoverUrl ? (
+                  <>
+                    <ArrowPathIcon className="h-5 w-5 mr-2" />
+                    Regenerate Voiceover
+                  </>
+                ) : (
+                  <>
+                    <SpeakerWaveIcon className="h-5 w-5 mr-2" />
+                    Generate Voiceover
+                  </>
+                )}
+              </button>
+              
+              {voiceoverUrl && (
+                <div className="mt-4 p-3 bg-white/5 rounded-lg">
+                  <div className="flex items-center">
+                    <audio 
+                      ref={audioRef}
+                      src={voiceoverUrl} 
+                      controls 
+                      className="w-full audio-player" 
+                    />
+                  </div>
                 </div>
               )}
             </div>
           </div>
+          
+          {/* Right Column: Output Video */}
           <div className="col-span-2">
             {/* Video Generation */}
             <div className="mb-8 card-gradient p-6 rounded-xl">
@@ -806,167 +689,20 @@ export default function EditorPage() {
                   <SparklesIcon className="h-6 w-6 text-primary mr-2" />
                   <h2 className="text-xl font-semibold">Generate Your Ad</h2>
                 </div>
-                <div className="flex gap-2">
-                  {selectedVideos.length > 0 && videoSegments.length === 0 && (
-                    <button
-                      onClick={createSegmentsFromSelectedVideos}
-                      className="inline-flex items-center px-5 py-2.5 text-sm font-medium rounded-lg bg-white/10 text-white hover:bg-white/20 transition-all duration-300"
-                    >
-                      <FilmIcon className="h-5 w-5 mr-2" />
-                      Create Timeline
-                    </button>
-                  )}
-                  <button
-                    onClick={handleGenerateVideo}
-                    disabled={isGenerating || selectedVideos.length === 0 || !voiceoverUrl}
-                    className={`inline-flex items-center px-5 py-2.5 text-sm font-medium rounded-lg transition-all duration-300 ${
-                      isGenerating || selectedVideos.length === 0 || !voiceoverUrl
-                        ? 'bg-white/10 text-white/40 cursor-not-allowed'
-                        : 'bg-gradient-to-r from-primary to-primary-light text-white shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 transform hover:scale-105'
-                    }`}
-                  >
-                    {isGenerating ? (
-                      <>
-                        <ArrowPathIcon className="h-5 w-5 mr-2 animate-spin" />
-                        Generating...
-                      </>
-                    ) : (
-                      <>
-                        <SparklesIcon className="h-5 w-5 mr-2" />
-                        Generate Ad
-                      </>
-                    )}
-                  </button>
-                </div>
               </div>
-
-              {/* Add warning if blob URLs are detected */}
-              {selectedVideos.length > 0 && 
-               uploadedVideos.filter(v => selectedVideos.includes(v.id) && v.url.startsWith('blob:') && !v.filepath).length > 0 && (
-                <div className="mb-4 p-4 bg-amber-50/20 border border-amber-200/30 rounded-lg">
-                  <div className="flex items-start">
-                    <ExclamationTriangleIcon className="h-6 w-6 text-amber-500 mr-3 flex-shrink-0 mt-0.5" />
-                    <div>
-                      <h3 className="text-lg font-semibold text-amber-300 mb-2">Some selected videos need to be uploaded</h3>
-                      <p className="text-amber-200/80">
-                        One or more selected videos are temporary blob URLs that cannot be processed on the server.
-                        Please use the Upload page first to upload these videos to the server.
-                      </p>
-                      <div className="mt-3">
-                        <Link
-                          href="/upload"
-                          className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-amber-500 to-amber-600 rounded-lg shadow-lg hover:shadow-xl transition-all duration-300"
-                        >
-                          Go to Upload Page
-                          <ArrowRightIcon className="ml-2 h-4 w-4" />
-                        </Link>
-                      </div>
+              
+              {/* Warnung, wenn keine Videos ausgewählt sind */}
+              {uploadedVideos.length > 0 && selectedVideos.length === 0 && (
+                <div className="alert alert-warning mb-6">
+                  <div className="flex">
+                    <ExclamationTriangleIcon className="h-6 w-6 flex-shrink-0" />
+                    <div className="ml-3">
+                      <p>Bitte wählen Sie mindestens ein Video aus, um eine Werbung zu generieren.</p>
                     </div>
                   </div>
                 </div>
               )}
-
-              {/* Error message */}
-              {error && (
-                <div className="mb-8 p-4 bg-red-50 border border-red-200 rounded-lg glass-error">
-                  <div className="flex items-start">
-                    <ExclamationTriangleIcon className="h-6 w-6 text-red-500 mr-3 flex-shrink-0 mt-0.5" />
-                    <div>
-                      <h3 className="text-lg font-semibold text-red-800 mb-2">Error</h3>
-                      <div className="text-red-700">{error}</div>
-                      
-                      {errorDetails?.suggestions && errorDetails.suggestions.length > 0 && (
-                        <div className="mt-3">
-                          <h4 className="text-sm font-semibold text-red-800 mb-1">Troubleshooting suggestions:</h4>
-                          <ul className="list-disc pl-5 text-sm text-red-700">
-                            {errorDetails.suggestions.map((suggestion, index) => (
-                              <li key={index}>{suggestion}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                      
-                      {errorDetails?.code && (
-                        <div className="mt-2 text-xs text-red-600">
-                          Error code: {errorDetails.code}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  <button 
-                    className="mt-3 text-sm text-red-600 hover:text-red-800 flex items-center"
-                    onClick={() => {
-                      setError(null);
-                      setErrorDetails(null);
-                    }}
-                  >
-                    <XMarkIcon className="h-4 w-4 mr-1" />
-                    Dismiss
-                  </button>
-                </div>
-              )}
-
-              {isGenerating && (
-                <div className="mb-6">
-                  <div className="h-3 w-full bg-white/10 rounded-full overflow-hidden">
-                    <div 
-                      className="h-full bg-gradient-to-r from-primary to-primary-light transition-all duration-300 ease-out animate-pulse-slow"
-                      style={{ width: `${generationProgress}%` }}
-                    ></div>
-                  </div>
-                  <p className="text-sm text-white/70 mt-3 flex items-center">
-                    <ArrowPathIcon className="h-4 w-4 mr-2 animate-spin" />
-                    {generationProgress < 30 && "Analyzing videos and voiceover..."}
-                    {generationProgress >= 30 && generationProgress < 60 && "Creating video segments..."}
-                    {generationProgress >= 60 && generationProgress < 90 && "Combining audio and video..."}
-                    {generationProgress >= 90 && "Finalizing your ad..."}
-                  </p>
-                </div>
-              )}
-
-              {/* Video Segments Visualization */}
-              {videoSegments.length > 0 && (
-                <div className="mb-6 p-5 bg-white/5 rounded-lg border border-white/10">
-                  <h3 className="font-medium mb-3 flex items-center">
-                    <FilmIcon className="h-5 w-5 text-primary mr-2" />
-                    Video Timeline
-                  </h3>
-                  <div className="relative h-14 bg-white/5 rounded-lg overflow-hidden mb-2">
-                    {videoSegments.map((segment, index) => {
-                      const video = uploadedVideos.find(v => v.id === segment.videoId);
-                      const startPercent = (segment.position / 30) * 100;
-                      const widthPercent = (segment.duration / 30) * 100;
-                      
-                      return (
-                        <div
-                          key={index}
-                          className="absolute h-full flex items-center justify-center text-xs text-white overflow-hidden transition-all duration-300 hover:brightness-110 hover:z-10"
-                          style={{
-                            left: `${startPercent}%`,
-                            width: `${widthPercent}%`,
-                            backgroundColor: getColorForIndex(index),
-                          }}
-                          title={`${video?.name || 'Video'} (${segment.duration.toFixed(1)}s)`}
-                        >
-                          <span className="truncate px-2 font-medium">
-                            {widthPercent > 10 ? (video?.name || `Clip ${index + 1}`) : ''}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <div className="flex justify-between text-xs text-white/40">
-                    <span>0s</span>
-                    <span>15s</span>
-                    <span>30s</span>
-                  </div>
-                  <p className="text-sm text-white/70 mt-4 flex items-center">
-                    <FilmIcon className="h-4 w-4 mr-2 text-primary" />
-                    Your ad combines {videoSegments.length} video segments with your voiceover.
-                  </p>
-                </div>
-              )}
-
+              
               {/* Final Video Preview */}
               {finalVideoUrl && (
                 <div className="bg-black/50 rounded-lg overflow-hidden border border-white/10">
@@ -992,46 +728,94 @@ export default function EditorPage() {
                     ) : (
                       <video 
                         ref={videoRef}
-                        className="w-full h-full" 
+                        src={finalVideoUrl} 
                         controls
-                        onPlay={() => setIsPlaying(true)}
-                        onPause={() => setIsPlaying(false)}
-                        onEnded={() => setIsPlaying(false)}
-                        onTimeUpdate={handleVideoEvents}
-                      >
-                        <source src={finalVideoUrl} type="video/mp4" />
-                        Your browser does not support the video tag.
-                      </video>
+                        className="w-full h-full" 
+                      />
                     )}
                   </div>
-                  
-                  <div className="p-5 bg-white/5">
-                    <h3 className="font-medium mb-2 flex items-center">
-                      <SparklesIcon className="h-5 w-5 text-primary mr-2" />
-                      Your Generated Ad
-                    </h3>
-                    <p className="text-white/70 text-sm mb-4">
-                      This is a preview of your ad with the voiceover combined with your selected videos.
-                    </p>
-                    <div className="flex flex-wrap gap-3">
-                      <a 
-                        href={finalVideoUrl}
-                        download="my-ad-video.mp4"
-                        className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-primary to-primary-light rounded-lg shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 transform hover:scale-105 transition-all duration-300"
-                      >
-                        Download Video
-                      </a>
-                      <button
-                        onClick={() => {
-                          setFinalVideoUrl(null);
-                          localStorage.removeItem('finalVideoUrl');
-                        }}
-                        className="inline-flex items-center px-4 py-2 text-sm font-medium text-white/70 bg-white/10 rounded-lg hover:bg-white/20 transition-all duration-300"
-                      >
-                        Create New Video
-                      </button>
+                </div>
+              )}
+              
+              {/* Generate Button */}
+              <div className="mt-6">
+                <button 
+                  onClick={handleGenerateVideo}
+                  disabled={isGenerating || selectedVideos.length === 0}
+                  className="btn btn-primary btn-block btn-lg"
+                >
+                  {isGenerating ? (
+                    <div className="flex items-center">
+                      <ArrowPathIcon className="h-5 w-5 mr-2 animate-spin" />
+                      <span>Generating Video ({generationProgress}%)</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center">
+                      <SparklesIcon className="h-5 w-5 mr-2" />
+                      <span>Generate Ad</span>
+                    </div>
+                  )}
+                </button>
+                
+                {projectId && (
+                  <div className="mt-2 flex justify-center text-white/40 text-sm">
+                    <ClockIcon className="h-4 w-4 mr-1" />
+                    <span>Project ID: {projectId.substring(0, 8)}</span>
+                  </div>
+                )}
+              </div>
+              
+              {/* Error Display */}
+              {error && (
+                <div className="mt-4 p-4 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400">
+                  <div className="flex items-start">
+                    <ExclamationTriangleIcon className="h-5 w-5 flex-shrink-0 mt-0.5 mr-2" />
+                    <div>
+                      <p>{error}</p>
+                      {errorDetails && (
+                        <div className="mt-2 text-sm">
+                          <p className="font-medium">Details:</p>
+                          <pre className="mt-1 bg-red-500/5 p-2 rounded overflow-auto text-xs">
+                            {JSON.stringify(errorDetails, null, 2)}
+                          </pre>
+                        </div>
+                      )}
                     </div>
                   </div>
+                </div>
+              )}
+            </div>
+            
+            {/* Final Video Section */}
+            <div className="card-gradient p-6 rounded-xl">
+              <div className="flex items-center mb-6">
+                <FilmIcon className="h-6 w-6 text-primary mr-2" />
+                <h2 className="text-xl font-semibold">Final Video</h2>
+              </div>
+              
+              {isGenerating && (
+                <div className="p-8 text-center">
+                  <div className="inline-block rounded-full bg-primary/20 p-6 mb-4">
+                    <ArrowPathIcon className="h-8 w-8 text-primary animate-spin" />
+                  </div>
+                  <p className="text-lg font-medium">Generating your ad video...</p>
+                  <p className="text-white/60 mt-2">This may take a few minutes</p>
+                  <div className="mt-6 w-full bg-white/10 h-3 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-gradient-to-r from-primary to-secondary rounded-full transition-all duration-500"
+                      style={{ width: `${generationProgress}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+              
+              {!isGenerating && !finalVideoUrl && (
+                <div className="text-center py-12">
+                  <FilmIcon className="h-12 w-12 mx-auto text-white/30 mb-3" />
+                  <p className="text-white/60">No final video generated yet</p>
+                  <p className="text-white/40 text-sm mt-2">
+                    Select videos and generate your ad to see the result here
+                  </p>
                 </div>
               )}
             </div>
