@@ -112,7 +112,7 @@ export async function GET(
       // mit unterschiedlichen Versionen von AWS SDK
       const chunks: Uint8Array[] = [];
       
-      // @ts-ignore - handle es als SDKStream
+      // @ts-expect-error - S3 Body wird als SDKStream behandelt, was nicht vollständig typisiert ist
       for await (const chunk of s3Response.Body) {
         chunks.push(chunk);
       }
