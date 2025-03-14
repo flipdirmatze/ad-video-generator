@@ -46,6 +46,9 @@ export default function UploadPage() {
   const [pendingUploads, setPendingUploads] = useState<UploadedVideo[]>([])
   const [videoAspectRatios, setVideoAspectRatios] = useState<{[key: string]: string}>({})
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null)
+  // State für signierte URLs für Videowiedergabe
+  const [videoPlaybackUrls, setVideoPlaybackUrls] = useState<{[key: string]: string}>({})
+  const [videoToDelete, setVideoToDelete] = useState<UploadedVideo | null>(null)
 
   // Kombiniere permanente und temporäre Videos für die Anzeige
   const allVideos = [...uploadedVideos, ...pendingUploads];
@@ -55,6 +58,60 @@ export default function UploadPage() {
   // const loadVideoMetadata = useCallback((video: UploadedVideo) => {
   // ...
   // }, [videoAspectRatios]);
+  
+  // Funktion zum Abrufen einer signierten URL für die Videowiedergabe
+  const getVideoPlaybackUrl = useCallback(async (video: UploadedVideo): Promise<string> => {
+    // Wenn es bereits eine Playback-URL gibt, diese verwenden
+    if (videoPlaybackUrls[video.id]) {
+      return videoPlaybackUrls[video.id];
+    }
+    
+    // Für lokale Video-URLs (blob:) einfach die Original-URL verwenden
+    if (video.url.startsWith('blob:')) {
+      return video.url;
+    }
+    
+    // Versuchen, die URL direkt zu verwenden
+    try {
+      // URL im Cache speichern
+      setVideoPlaybackUrls(prev => ({
+        ...prev,
+        [video.id]: video.url
+      }));
+      return video.url;
+    } catch (e) {
+      console.warn(`Failed to access video URL directly: ${video.url}`);
+      return video.url; // Fallback zur originalen URL
+    }
+  }, [videoPlaybackUrls]);
+  
+  // Vorbereiten der Videowiedergabe beim Laden der Seite
+  useEffect(() => {
+    const prepareVideoPlayback = async () => {
+      const newUrls: {[key: string]: string} = {};
+      for (const video of allVideos) {
+        if (!videoPlaybackUrls[video.id]) {
+          try {
+            const url = await getVideoPlaybackUrl(video);
+            newUrls[video.id] = url;
+          } catch (e) {
+            console.error(`Error preparing video playback for ${video.name}:`, e);
+          }
+        }
+      }
+      
+      if (Object.keys(newUrls).length > 0) {
+        setVideoPlaybackUrls(prev => ({
+          ...prev,
+          ...newUrls
+        }));
+      }
+    };
+    
+    if (allVideos.length > 0) {
+      prepareVideoPlayback();
+    }
+  }, [allVideos, videoPlaybackUrls, getVideoPlaybackUrl]);
   
   // HOOK 3: Aspektverhältnisse verwalten
   // useEffect(() => {
@@ -619,148 +676,65 @@ export default function UploadPage() {
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-              {allVideos.map(video => {
-                // Bestimme den CSS-Klassen-String basierend auf dem Seitenverhältnis
-                const aspectRatioClass = getVideoFormat(video) === 'vertical' 
-                  ? 'aspect-[9/16]' 
-                  : getVideoFormat(video) === 'square' 
-                    ? 'aspect-square' 
-                    : 'aspect-video';
-                
-                return (
-                  <div 
-                    key={video.id} 
-                    className={`relative border rounded-lg overflow-hidden bg-gray-800 border-gray-700 hover:border-gray-500 transition-colors ${
-                      uploadProgress[video.id] && uploadProgress[video.id] < 100 ? 'opacity-70' : ''
-                    }`}
-                  >
-                    {/* Video preview mit dynamischem Seitenverhältnis */}
-                    <div className={`bg-black relative ${aspectRatioClass}`}>
-                      <video 
-                        src={video.url}
-                        className="w-full h-full object-contain"
-                        controls
-                        controlsList="nodownload"
-                        preload="metadata"
-                        // Um die Abspielbarkeit zu verbessern
-                        playsInline
-                        onError={(e) => console.error(`Video playback error for ${video.name}:`, e)}
-                      />
-                      
-                      {/* Upload progress indicator */}
-                      {uploadProgress[video.id] !== undefined && uploadProgress[video.id] < 100 && (
-                        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/70">
-                          <div className="w-2/3 h-2 bg-gray-700 rounded-full overflow-hidden">
-                            <div 
-                              className="h-full bg-purple-500 rounded-full"
-                              style={{ width: `${uploadProgress[video.id]}%` }}
-                            />
+              {allVideos.map((video) => (
+                <div 
+                  key={video.id} 
+                  className={`relative group rounded-lg overflow-hidden ${getVideoFormat(video) || ''}`}
+                >
+                  <video 
+                    className="w-full h-full object-cover rounded-lg" 
+                    src={videoPlaybackUrls[video.id] || video.url}
+                    autoPlay={false}
+                    controls
+                    muted
+                    loop
+                    poster="/images/video-placeholder.svg"
+                    preload="metadata"
+                    onError={(e) => {
+                      console.error(`Error loading video ${video.name}:`, e);
+                      // Optional: Bei Wiedergabefehlern einen Fallback anzeigen
+                      const target = e.target as HTMLVideoElement;
+                      target.style.display = 'none';
+                      const parent = target.parentElement;
+                      if (parent) {
+                        const fallback = document.createElement('div');
+                        fallback.className = 'w-full h-full flex items-center justify-center bg-gray-900 text-white';
+                        fallback.innerHTML = `
+                          <div class="text-center p-4">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mx-auto text-red-500 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
                           </div>
-                          <p className="mt-2 text-white text-sm">
-                            Uploading... {uploadProgress[video.id]}%
-                          </p>
-                        </div>
-                      )}
-                      
-                      {/* Upload complete indicator */}
-                      {uploadProgress[video.id] === 100 && (
-                        <div className="absolute top-2 right-2 bg-green-500/20 text-green-400 py-1 px-2 rounded-md flex items-center text-xs">
-                          <CheckCircleIcon className="h-4 w-4 mr-1" />
-                          Upload complete
-                        </div>
-                      )}
-                    </div>
-                    
-                    {/* Video details */}
-                    <div className="p-3">
-                      <div className="flex justify-between">
-                        <h3 className="font-medium truncate" title={video.name}>
-                          {video.name}
-                        </h3>
-                        
-                        {/* Remove button */}
-                        <button 
-                          onClick={() => removeVideo(video.id)}
-                          className={`${showDeleteConfirm === video.id ? 'text-red-500' : 'text-red-400 hover:text-red-300'}`}
-                          aria-label="Remove video"
-                        >
-                          <XMarkIcon className="h-5 w-5" />
-                        </button>
+                        `;
+                        parent.appendChild(fallback);
+                      }
+                    }}
+                  />
+                  
+                  {/* Upload progress indicator */}
+                  {uploadProgress[video.id] !== undefined && uploadProgress[video.id] < 100 && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/70">
+                      <div className="w-2/3 h-2 bg-gray-700 rounded-full overflow-hidden">
+                        <div 
+                          className="h-full bg-purple-500 rounded-full"
+                          style={{ width: `${uploadProgress[video.id]}%` }}
+                        />
                       </div>
-                      
-                      {/* Löschbestätigungsdialog */}
-                      {showDeleteConfirm === video.id && (
-                        <div className="mt-2 p-2 bg-red-500/10 border border-red-500/30 rounded text-xs">
-                          <p>Are you sure you want to delete this video?</p>
-                          <div className="mt-2 flex justify-end space-x-2">
-                            <button 
-                              onClick={cancelDelete}
-                              className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600"
-                            >
-                              Cancel
-                            </button>
-                            <button 
-                              onClick={() => removeVideo(video.id)}
-                              className="px-2 py-1 bg-red-600 rounded hover:bg-red-500"
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                      
-                      <p className="text-sm text-white/60 mt-1">
-                        {formatFileSize(video.size)}
+                      <p className="mt-2 text-white text-sm">
+                        Uploading... {uploadProgress[video.id]}%
                       </p>
-                      
-                      {/* Tags */}
-                      <div className="mt-2 flex flex-wrap gap-1">
-                        {video.tags.map((tag, index) => (
-                          <div key={`${video.id}-${tag}-${index}`} className="flex items-center bg-gray-700/50 rounded-md px-2 py-1 text-xs">
-                            {tag}
-                            <button 
-                              onClick={() => removeTag(video.id, index)}
-                              className="ml-1 text-gray-400 hover:text-gray-200"
-                              aria-label="Remove tag"
-                            >
-                              <XMarkIcon className="h-3 w-3" />
-                            </button>
-                          </div>
-                        ))}
-                        
-                        {/* Add tag button */}
-                        <button 
-                          onClick={() => setSelectedVideoId(selectedVideoId === video.id ? null : video.id)}
-                          className="flex items-center bg-gray-700/30 hover:bg-gray-700/50 rounded-md px-2 py-1 text-xs"
-                        >
-                          <TagIcon className="h-3 w-3 mr-1" />
-                          Add Tag
-                        </button>
-                      </div>
-                      
-                      {/* Add tag input - shows when the video is selected */}
-                      {selectedVideoId === video.id && (
-                        <div className="mt-3 flex">
-                          <input
-                            type="text"
-                            value={currentTag}
-                            onChange={(e) => setCurrentTag(e.target.value)}
-                            onKeyDown={(e) => e.key === 'Enter' && addTag(video.id)}
-                            placeholder="Enter a tag..."
-                            className="flex-1 bg-gray-700 border-gray-600 rounded-l-md py-1 px-2 text-sm focus:outline-none focus:border-gray-500"
-                          />
-                          <button
-                            onClick={() => addTag(video.id)}
-                            className="bg-purple-600 hover:bg-purple-500 text-white rounded-r-md px-2"
-                          >
-                            <CheckCircleIcon className="h-5 w-5" />
-                          </button>
-                        </div>
-                      )}
                     </div>
-                  </div>
-                )
-              })}
+                  )}
+                  
+                  {/* Upload complete indicator */}
+                  {uploadProgress[video.id] === 100 && (
+                    <div className="absolute top-2 right-2 bg-green-500/20 text-green-400 py-1 px-2 rounded-md flex items-center text-xs">
+                      <CheckCircleIcon className="h-4 w-4 mr-1" />
+                      Upload complete
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
           )}
         </div>
