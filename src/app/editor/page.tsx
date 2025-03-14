@@ -241,26 +241,33 @@ export default function EditorPage() {
           // Update video filepaths with actual server files if they exist
           setUploadedVideos(prev => {
             return prev.map(video => {
-              // Try to find a matching file in the uploads directory
-              // First try by exact ID match
+              // Verbesserte Logik zum Finden passender Dateien
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              const matchByExactId = data.files.find((file: any) => 
-                file.id === video.id
-              );
-              
-              // Then try by ID prefix in filename
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              const matchByFileName = !matchByExactId && data.files.find((file: any) => 
-                file.name.startsWith(video.id) || 
-                video.filepath === `/uploads/${file.name}`
-              );
-              
-              const matchingFile = matchByExactId || matchByFileName;
+              const matchingFile = data.files.find((file: any) => {
+                // Versuche verschiedene Arten des Abgleichs
+                return (
+                  // Direkter ID-Abgleich
+                  file.id === video.id ||
+                  // Dateiname enthält die ID
+                  file.name.includes(video.id) ||
+                  // Pfad-basierter Abgleich
+                  (video.filepath && (
+                    file.path === video.filepath ||
+                    video.filepath.includes(file.name) ||
+                    file.path.includes(video.id)
+                  )) ||
+                  // Namensabgleich (wenn Namen übereinstimmen)
+                  file.name === video.name
+                );
+              });
               
               if (matchingFile) {
+                console.log(`Found matching file for video ${video.id}:`, matchingFile);
                 return {
                   ...video,
-                  filepath: matchingFile.path
+                  filepath: matchingFile.path,
+                  // Wenn die ID in der Datenbank existiert, aber nicht im Video-Objekt, aktualisiere sie
+                  id: video.id || matchingFile.id
                 };
               }
               return video;
@@ -530,18 +537,6 @@ export default function EditorPage() {
         </div>
       </div>
       
-      {/* Warning about uploading videos first */}
-      <div className="max-w-7xl mx-auto p-4 mt-4">
-        <div className="alert alert-warning shadow-lg">
-          <div>
-            <svg xmlns="http://www.w3.org/2000/svg" className="stroke-current flex-shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-            <span>
-              <strong>Wichtig:</strong> Videos müssen zuerst auf der <Link href="/upload" className="underline font-bold">Upload-Seite</Link> hochgeladen werden, bevor sie hier kombiniert werden können. Blob-URLs können nicht serverseitig verarbeitet werden.
-            </span>
-          </div>
-        </div>
-      </div>
-      
       {/* Main content */}
       <div className="max-w-7xl mx-auto p-4 mt-4">
         {/* Warning about uploads matching */}
@@ -576,8 +571,11 @@ export default function EditorPage() {
                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
                  !availableUploads.some((file: any) => 
                    file.id === video.id || // Check by ID
-                   file.name.startsWith(video.id) || // Check by ID prefix
-                   (video.filepath && video.filepath === file.path) // Check by path
+                   file.name.includes(video.id) || // Check by ID-contained (geändert von startsWith)
+                   (video.filepath && (
+                     file.path === video.filepath ||
+                     file.path.includes(video.id)
+                   )) // Check by path
                  );
         }) && (
           <div className="mb-6">
@@ -595,8 +593,11 @@ export default function EditorPage() {
                                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
                                  !availableUploads.some((file: any) => 
                                    file.id === video.id || 
-                                   file.name.startsWith(video.id) || 
-                                   (video.filepath && video.filepath === file.path)
+                                   file.name.includes(video.id) || 
+                                   (video.filepath && (
+                                     file.path === video.filepath ||
+                                     file.path.includes(video.id)
+                                   ))
                                  );
                         })
                         .map(video => (
