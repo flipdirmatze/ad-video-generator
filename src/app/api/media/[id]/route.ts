@@ -10,13 +10,17 @@ interface IVideoDocument extends IVideo {
   _id?: mongoose.Types.ObjectId;
 }
 
+interface Params {
+  id: string;
+}
+
 /**
  * GET /api/media/[id]
  * Gibt ein einzelnes Video zurück
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Params }
 ) {
   try {
     // Authentifizierung prüfen
@@ -78,7 +82,7 @@ export async function GET(
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Params }
 ) {
   try {
     // Authentifizierung prüfen
