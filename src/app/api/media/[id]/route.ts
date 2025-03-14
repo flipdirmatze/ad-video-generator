@@ -20,7 +20,7 @@ interface Params {
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: Params }
+  { params }: { params: Promise<Params> }
 ) {
   try {
     // Authentifizierung prüfen
@@ -30,7 +30,8 @@ export async function GET(
     }
 
     const userId = session.user.id;
-    const videoId = params.id;
+    // Da params ein Promise ist, müssen wir darauf warten
+    const { id: videoId } = await params;
     
     // Verbindung zur Datenbank herstellen
     await dbConnect();
@@ -82,7 +83,7 @@ export async function GET(
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: Params }
+  { params }: { params: Promise<Params> }
 ) {
   try {
     // Authentifizierung prüfen
@@ -92,7 +93,8 @@ export async function DELETE(
     }
 
     const userId = session.user.id;
-    const videoId = params.id;
+    // Da params ein Promise ist, müssen wir darauf warten
+    const { id: videoId } = await params;
     
     // Verbindung zur Datenbank herstellen
     await dbConnect();
@@ -128,4 +130,4 @@ export async function DELETE(
       { status: 500 }
     );
   }
-} 
+}
