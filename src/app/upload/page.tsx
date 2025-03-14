@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { ArrowUpTrayIcon, XMarkIcon, TagIcon, ArrowRightIcon, CheckCircleIcon, FilmIcon } from '@heroicons/react/24/outline'
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
@@ -46,6 +46,13 @@ export default function UploadPage() {
   const [pendingUploads, setPendingUploads] = useState<UploadedVideo[]>([])
   const [videoAspectRatios, setVideoAspectRatios] = useState<{[key: string]: string}>({})
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null)
+
+  // Vor dem useEffect für Aspektverhältnisse:
+  // Kombiniere permanente und temporäre Videos für die Anzeige
+  const allVideos = [...uploadedVideos, ...pendingUploads];
+  
+  // Ref zum Speichern von bereits verarbeiteten Video-IDs
+  const processedVideoIds = useRef<Set<string>>(new Set());
 
   // HOOK 1: Authentifizierungs-Check und Redirect
   useEffect(() => {
@@ -499,13 +506,18 @@ export default function UploadPage() {
     }
   }
 
-  // Kombiniere permanente und temporäre Videos für die Anzeige
-  const allVideos = [...uploadedVideos, ...pendingUploads];
-
   // Neuer Hook: Bestimme die Seitenverhältnisse der Videos
   useEffect(() => {
     // Funktion, um das Seitenverhältnis eines Videos zu bestimmen
     const loadVideoMetadata = (video: UploadedVideo) => {
+      // Prüfen, ob das Video bereits verarbeitet wurde
+      if (processedVideoIds.current.has(video.id)) {
+        return;
+      }
+      
+      // Video als verarbeitet markieren
+      processedVideoIds.current.add(video.id);
+      
       const videoEl = document.createElement('video')
       videoEl.src = video.url
       videoEl.onloadedmetadata = () => {
@@ -524,11 +536,9 @@ export default function UploadPage() {
 
     // Für alle Videos das Seitenverhältnis bestimmen
     allVideos.forEach(video => {
-      if (!videoAspectRatios[video.id]) {
-        loadVideoMetadata(video)
-      }
+      loadVideoMetadata(video)
     })
-  }, [allVideos, videoAspectRatios])
+  }, [allVideos]) // Nur allVideos als Abhängigkeit
 
   return (
     <main className="container py-12 md:py-20">
