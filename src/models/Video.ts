@@ -1,8 +1,10 @@
 import mongoose from 'mongoose';
+import { v4 as uuidv4 } from 'uuid';
 import { IUser } from './User';
 
 // 1. Create an interface representing a document in MongoDB
 export interface IVideo {
+  id?: string; // Optional in der Interface-Definition, wird aber beim Speichern gesetzt
   userId: mongoose.Types.ObjectId | IUser;
   name: string;
   originalFilename: string;
@@ -24,7 +26,8 @@ const VideoSchema = new mongoose.Schema({
   id: {
     type: String,
     required: true,
-    unique: true
+    unique: true,
+    default: () => uuidv4() // Generiere automatisch eine UUID, wenn keine angegeben wird
   },
   userId: {
     type: String,
@@ -72,6 +75,14 @@ const VideoSchema = new mongoose.Schema({
   }
 }, {
   timestamps: true
+});
+
+// Pre-save Hook hinzufügen, der sicherstellt, dass id immer gesetzt ist
+VideoSchema.pre('save', function(next) {
+  if (!this.id) {
+    this.id = uuidv4();
+  }
+  next();
 });
 
 // 3. Create a Model
