@@ -22,7 +22,7 @@ const bucketName = process.env.S3_BUCKET_NAME || 'ad-video-generator-bucket';
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { key: string } }
+  { params }: { params: Promise<{ key: string }> }
 ) {
   try {
     // Authentifizierung - Optional, je nach Sicherheitsanforderungen
@@ -32,7 +32,8 @@ export async function GET(
     }
 
     // S3-Key aus Parametern extrahieren und decodieren
-    let key = decodeURIComponent(params.key);
+    const { key: paramKey } = await params;
+    let key = decodeURIComponent(paramKey);
     const originalKey = key;
     
     // Stelle sicher, dass der Key mit 'uploads/' beginnt
