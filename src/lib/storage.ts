@@ -14,18 +14,32 @@ export type S3BucketFolder = 'uploads' | 'processed' | 'final' | 'audio';
 
 // S3 Client Konfiguration
 const s3Config: S3ClientConfig = {
-  region: process.env.AWS_REGION!,
-  credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
-  },
+  region: process.env.AWS_REGION,
+  credentials: process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY ? {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+  } : undefined,
 };
 
-// S3 Client erstellen
-const s3Client = new S3Client(s3Config);
+// S3 Client erstellen - mit Fehlerprüfung
+let s3Client: S3Client;
+try {
+  if (!process.env.AWS_REGION) {
+    console.warn('AWS_REGION ist nicht definiert. Bitte Umgebungsvariablen überprüfen.');
+  }
+  if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY) {
+    console.warn('AWS Credentials sind nicht vollständig. Bitte Umgebungsvariablen überprüfen.');
+  }
+  s3Client = new S3Client(s3Config);
+  console.log('S3 Client erfolgreich konfiguriert mit Region:', process.env.AWS_REGION);
+} catch (err) {
+  console.error('Fehler bei der Initialisierung des S3 Clients:', err);
+  // Fallback für Tests/Entwicklung
+  s3Client = new S3Client({ region: 'us-east-1' });
+}
 
-// Bucket Name aus Umgebungsvariablen
-const bucketName = process.env.S3_BUCKET_NAME!;
+// Bucket Name aus Umgebungsvariablen mit Fallback für Entwicklung
+const bucketName = process.env.S3_BUCKET_NAME || 'dummy-bucket-for-development';
 
 /**
  * Upload einer Datei direkt zu S3
@@ -58,21 +72,38 @@ export async function getPresignedUploadUrl(
   folder: S3BucketFolder = 'uploads',
   expiresIn: number = 3600
 ) {
+  // Prüfe AWS Konfiguration
+  if (!process.env.AWS_REGION || !process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY || !bucketName) {
+    throw new Error('AWS Konfiguration ist unvollständig. Bitte AWS_REGION, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY und S3_BUCKET_NAME definieren.');
+  }
+  
+  console.log(`Generating presigned URL for ${fileName} in folder ${folder}`);
+  
   const key = `${folder}/${fileName}`;
   
-  const command = new PutObjectCommand({
-    Bucket: bucketName,
-    Key: key,
-    ContentType: contentType,
-  });
+  try {
+    const command = new PutObjectCommand({
+      Bucket: bucketName,
+      Key: key,
+      ContentType: contentType,
+    });
 
-  const url = await getSignedUrl(s3Client, command, { expiresIn });
-  
-  return {
-    url,
-    key,
-    fileUrl: getS3Url(key),
-  };
+    console.log(`PutObjectCommand erstellt für Bucket: ${bucketName}, Key: ${key}`);
+    
+    // Erhöhe Timeout für große Dateien
+    const url = await getSignedUrl(s3Client, command, { expiresIn });
+    
+    console.log(`Presigned URL erfolgreich generiert für ${key}`);
+    
+    return {
+      url,
+      key,
+      fileUrl: getS3Url(key),
+    };
+  } catch (error) {
+    console.error(`Fehler beim Generieren der Presigned URL für ${key}:`, error);
+    throw new Error(`Konnte keine Presigned URL generieren: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 
 /**
