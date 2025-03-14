@@ -75,23 +75,27 @@ export default function UploadPage() {
       return video.url;
     }
     
-    // Für S3-URLs versuchen, eine signierte URL zu erhalten
     try {
-      // Extrahiere den S3-Key aus der URL
+      // Extrahiere den S3-Key aus der URL oder den Metadaten
       let key = '';
       
       // Versuch 1: Verwende den expliziten Key, falls vorhanden
       if (video.key) {
-        console.log(`Using explicit key for ${video.name}: ${video.key}`);
         key = video.key;
+        console.log(`Using explicit key for ${video.name}: ${key}`);
       } 
-      // Versuch 2: Extrahiere aus dem Dateinamen, falls einfacher Name
-      else if (video.name && !video.name.includes('/') && !video.name.includes(':')) {
-        // Für einfache Dateinamen wie "1.mp4" verwenden wir "uploads/1.mp4"
-        console.log(`Using uploads/${video.name} as key for ${video.name}`);
+      // Versuch 2: Falls video.name "1.mp4" oder "2.mp4" Format hat, präfixe mit "uploads/"
+      else if (video.name && /^\d+\.mp4$/.test(video.name)) {
         key = `uploads/${video.name}`;
+        console.log(`Using uploads/${video.name} as key for ${video.name}`);
       }
-      // Versuch 3: Extrahiere aus der URL
+      // Versuch 3: Extrahiere aus dem Dateinamen, falls einfacher Name
+      else if (video.name && !video.name.includes('/') && !video.name.includes(':')) {
+        // Stelle sicher, dass der Schlüssel mit 'uploads/' beginnt
+        key = video.name.startsWith('uploads/') ? video.name : `uploads/${video.name}`;
+        console.log(`Using filename as key for ${video.name}: ${key}`);
+      }
+      // Versuch 4: Extrahiere aus der URL
       else if (video.url.includes('amazonaws.com')) {
         const urlParts = video.url.split('.amazonaws.com/');
         if (urlParts.length > 1) {
@@ -101,53 +105,42 @@ export default function UploadPage() {
       }
       
       if (!key) {
-        console.warn(`Could not determine S3 key for ${video.name}, using original URL`);
-        setVideoPlaybackUrls(prev => ({
-          ...prev,
-          [video.id]: video.url
-        }));
-        return video.url;
+        console.warn(`Could not determine key for ${video.name}, using video-proxy with filename`);
+        // Fallback: Verwende den Dateinamen als Key
+        key = `uploads/${video.name}`;
       }
       
-      // Signierte URL vom Server holen
-      console.log(`Requesting signed URL for key: ${key}`);
-      const response = await fetch(`/api/get-signed-url?key=${encodeURIComponent(key)}`);
+      // IMMER den Video-Proxy verwenden, auch wenn wir keinen Key haben
+      // Encode den Key für die URL
+      const encodedKey = encodeURIComponent(key);
       
-      if (!response.ok) {
-        throw new Error(`HTTP error ${response.status} when getting signed URL`);
-      }
+      // Erstelle die Proxy-URL
+      const proxyUrl = `/api/video-proxy/${encodedKey}`;
+      console.log(`Using video proxy for ${video.name}: ${proxyUrl}`);
       
-      const data = await response.json();
-      console.log(`Got response for ${video.name}:`, data);
-      
-      if (data.success && data.url) {
-        // URL im Cache speichern
-        console.log(`Using signed URL for ${video.name}: ${data.url.substring(0, 100)}...`);
-        setVideoPlaybackUrls(prev => ({
-          ...prev,
-          [video.id]: data.url
-        }));
-        return data.url;
-      } else if (data.usedFallback && data.url) {
-        // Fallback-URL verwenden
-        console.log(`Using fallback URL for ${video.name}: ${data.url}`);
-        setVideoPlaybackUrls(prev => ({
-          ...prev,
-          [video.id]: data.url
-        }));
-        return data.url;
-      } else {
-        throw new Error('No URL in response');
-      }
-    } catch (e) {
-      console.warn(`Failed to get signed URL for video ${video.name}:`, e);
-      
-      // Fallback zur Original-URL
+      // Speichere die URL im Cache
       setVideoPlaybackUrls(prev => ({
         ...prev,
-        [video.id]: video.url
+        [video.id]: proxyUrl
       }));
-      return video.url;
+      
+      return proxyUrl;
+    } catch (e) {
+      console.warn(`Failed to get playback URL for video ${video.name}:`, e);
+      
+      // Auch im Fehlerfall den Video-Proxy verwenden
+      const fallbackKey = `uploads/${video.name}`;
+      const encodedKey = encodeURIComponent(fallbackKey);
+      const proxyUrl = `/api/video-proxy/${encodedKey}`;
+      
+      console.log(`Using fallback video proxy for ${video.name}: ${proxyUrl}`);
+      
+      setVideoPlaybackUrls(prev => ({
+        ...prev,
+        [video.id]: proxyUrl
+      }));
+      
+      return proxyUrl;
     }
   }, [videoPlaybackUrls]);
   
@@ -257,9 +250,13 @@ export default function UploadPage() {
             }))
             
             setUploadedVideos(dbVideos)
+            
+            // Leere den Video-Playback-URL-Cache bei jedem Refresh
+            setVideoPlaybackUrls({})
           } else {
             // Wenn keine Videos vorhanden sind, leeres Array setzen
             setUploadedVideos([])
+            setVideoPlaybackUrls({})
           }
         } else {
           console.error('Failed to fetch videos from database')
@@ -339,6 +336,9 @@ export default function UploadPage() {
           
           setUploadedVideos(dbVideos)
           setPendingUploads([]) // Leere die pendingUploads-Liste nach erfolgreichem Refresh
+          
+          // Leere den Video-Playback-URL-Cache bei jedem Refresh, damit alle Videos neu geladen werden
+          setVideoPlaybackUrls({})
         }
       }
     } catch (error) {
@@ -417,16 +417,39 @@ export default function UploadPage() {
   // Upload progress simulator (der wirkliche S3-Upload hat keinen Fortschrittsindikator)
   const simulateProgress = (videoId: string) => {
     let progress = 0;
-    const interval = setInterval(() => {
-      progress += Math.random() * 15;
-      if (progress > 95) {
-        progress = 96;
+    let interval: NodeJS.Timeout | null = null;
+    
+    // Funktion zum Stoppen der Simulation
+    const stopSimulation = () => {
+      if (interval) {
         clearInterval(interval);
+        interval = null;
       }
-      setUploadProgress(prev => ({ ...prev, [videoId]: Math.min(Math.floor(progress), 96) }));
+      
+      // Setze den Fortschritt auf 100%, um sicherzustellen, dass die Anzeige korrekt abgeschlossen wird
+      setUploadProgress(prev => ({ ...prev, [videoId]: 100 }));
+    };
+    
+    // Starte die Interval-Simulation
+    interval = setInterval(() => {
+      // Exponentielles Fortschrittsmodell - schnell am Anfang, langsamer am Ende
+      if (progress < 30) {
+        progress += Math.random() * 10; // Schneller am Anfang
+      } else if (progress < 70) {
+        progress += Math.random() * 5; // Mittlere Geschwindigkeit
+      } else if (progress < 95) {
+        progress += Math.random() * 2; // Langsamer gegen Ende
+      } else {
+        // Ab 95% stoppt der simulierte Fortschritt und wartet auf die tatsächliche Fertigstellung
+        clearInterval(interval!);
+        interval = null;
+        return;
+      }
+      
+      setUploadProgress(prev => ({ ...prev, [videoId]: Math.min(Math.floor(progress), 95) }));
     }, 300);
 
-    return () => clearInterval(interval);
+    return stopSimulation;
   };
 
   const handleFiles = async (files: FileList) => {
@@ -475,21 +498,36 @@ export default function UploadPage() {
       
       // Direkt zu S3 hochladen
       try {
+        // Lege eine Timeout-Funktion an, die den Upload nach einer bestimmten Zeit (z.B. 60 Sekunden) als fehlgeschlagen markiert
+        const uploadTimeoutId = setTimeout(() => {
+          console.error(`Upload timeout for ${file.name}`);
+          setError(`Upload timeout for ${file.name}. Please try again or use a smaller file.`);
+          stopSimulation();
+          setIsUploading(prev => ({ ...prev, [videoId]: false }));
+          setPendingUploads(prev => prev.filter(video => video.id !== videoId));
+        }, 60000); // 60 Sekunden Timeout
+        
         const { key, fileUrl } = await uploadToS3(file, videoId);
         
-        // Aktualisiere die Fortschrittsanzeige auf 100%
-        setUploadProgress(prev => ({ ...prev, [videoId]: 100 }));
+        // Lösche den Timeout, da der Upload erfolgreich war
+        clearTimeout(uploadTimeoutId);
         
-        // Aktualisiere die Video-Liste vom Server
-        await refreshVideos();
+        // Stoppe die Simulation und setze den Fortschritt auf 100%
+        stopSimulation();
+        
+        // Aktualisiere die Video-Liste vom Server nach einer kurzen Verzögerung
+        setTimeout(async () => {
+          await refreshVideos();
+          setIsUploading(prev => ({ ...prev, [videoId]: false }));
+        }, 500);
       } catch (error) {
         console.error('Error uploading file:', error)
         setError(`Failed to upload ${file.name}. ${error instanceof Error ? error.message : ''}`)
         
         // Entferne das Video aus pendingUploads bei Fehler
         setPendingUploads(prev => prev.filter(video => video.id !== videoId));
-      } finally {
-        // Stop progress simulation
+        
+        // Stoppe die Simulation
         stopSimulation();
         
         // Mark as no longer uploading
@@ -760,28 +798,45 @@ export default function UploadPage() {
                     poster="/images/video-placeholder.svg"
                     onLoadStart={(e) => {
                       console.log(`Starting to load video: ${video.name}`);
-                      // Füge eine Fallback-Quelle hinzu, falls die erste fehlschlägt
+                      // Verbessere die Fallback-Strategie
                       const vidElement = e.target as HTMLVideoElement;
-                      if (!vidElement.querySelector('source')) {
-                        const source = document.createElement('source');
-                        source.src = videoPlaybackUrls[video.id] || video.url;
-                        source.type = 'video/mp4';
-                        vidElement.appendChild(source);
+                      
+                      // Entferne alte Quellen, falls vorhanden
+                      while (vidElement.firstChild) {
+                        vidElement.removeChild(vidElement.firstChild);
                       }
+                      
+                      // Primäre Quelle: Verwende den Video-Proxy
+                      let key = '';
+                      
+                      // Versuche, den Schlüssel zu bestimmen
+                      if (video.key) {
+                        key = video.key;
+                      } else if (/^\d+\.mp4$/.test(video.name)) {
+                        // Spezialfall für "1.mp4", "2.mp4" etc.
+                        key = `uploads/${video.name}`;
+                      } else {
+                        // Allgemeiner Fall
+                        key = video.name.startsWith('uploads/') ? video.name : `uploads/${video.name}`;
+                      }
+                      
+                      const encodedKey = encodeURIComponent(key);
+                      const proxyUrl = `/api/video-proxy/${encodedKey}`;
+                      
+                      // Erstelle die primäre Quelle
+                      const primarySource = document.createElement('source');
+                      primarySource.src = proxyUrl;
+                      primarySource.type = 'video/mp4';
+                      vidElement.appendChild(primarySource);
+                      
+                      // Setze auch die direkte src als Backup
+                      vidElement.src = proxyUrl;
                     }}
                     onLoadedMetadata={() => console.log(`Metadata loaded for video: ${video.name}`)}
                     onError={(e) => {
                       console.error(`Video playback error for ${video.name}:`, e);
-                      // Versuche es erneut mit Original-URL, falls eine signierte URL fehlschlägt
+                      // KEIN Fallback auf Original-URL, da diese direkt zu S3 geht und 403 auslöst
                       const vidElement = e.target as HTMLVideoElement;
-                      
-                      // Prüfe, ob wir eine signierte URL verwenden und sie fehlschlägt
-                      if (videoPlaybackUrls[video.id] && videoPlaybackUrls[video.id] !== video.url) {
-                        console.log(`Trying fallback to original URL for ${video.name}`);
-                        vidElement.src = video.url;
-                        vidElement.load();
-                        return; // Versuche es noch einmal, bevor wir den Fallback anzeigen
-                      }
                       
                       // Zeige ein Fallback-Element bei Fehler
                       vidElement.style.display = 'none';
