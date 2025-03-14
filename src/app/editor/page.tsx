@@ -342,11 +342,81 @@ export default function EditorPage() {
     })
   }, []);
 
+  // Neue Funktion zum Hinzufügen eines Videos zur Timeline
+  const addVideoToTimeline = useCallback((videoId: string) => {
+    const video = uploadedVideos.find(v => v.id === videoId);
+    if (!video) return;
+    
+    // Berechne die Position des neuen Segments (am Ende der bestehenden Segmente)
+    const totalDuration = videoSegments.reduce((total, segment) => {
+      return total + segment.duration;
+    }, 0);
+    
+    // Erstellung eines neuen Segments (Standardmäßig das gesamte Video)
+    const newSegment: VideoSegment = {
+      videoId: video.id,
+      startTime: 0, // Beginne am Anfang des Videos
+      duration: 10, // Standard: 10 Sekunden oder die Videolänge, wenn bekannt
+      position: totalDuration // Position nach allen bestehenden Segmenten
+    };
+    
+    // Füge das neue Segment zur Timeline hinzu
+    setVideoSegments(prev => [...prev, newSegment]);
+    
+    // Speichere es auch in localStorage
+    const updatedSegments = [...videoSegments, newSegment];
+    localStorage.setItem('videoSegments', JSON.stringify(updatedSegments));
+    
+    // Zeige Erfolgsmeldung
+    setError(null);
+  }, [uploadedVideos, videoSegments]);
+
+  // Automatisch Segmente für alle ausgewählten Videos erstellen
+  const createSegmentsFromSelectedVideos = useCallback(() => {
+    if (!selectedVideos.length) return false;
+    
+    // Leere bestehende Segmente
+    setVideoSegments([]);
+    
+    // Position für die Platzierung der Segmente
+    let currentPosition = 0;
+    
+    // Erstelle für jedes ausgewählte Video ein Segment
+    const newSegments = selectedVideos.map(videoId => {
+      const video = uploadedVideos.find(v => v.id === videoId);
+      if (!video) return null;
+      
+      // Erstelle ein neues Segment
+      const segment: VideoSegment = {
+        videoId,
+        startTime: 0, // Am Anfang des Videos starten
+        duration: 10, // Standard: 10 Sekunden pro Video
+        position: currentPosition
+      };
+      
+      // Aktualisiere die Position für das nächste Segment
+      currentPosition += segment.duration;
+      
+      return segment;
+    }).filter(Boolean) as VideoSegment[];
+    
+    // Aktualisiere den State und speichere in localStorage
+    setVideoSegments(newSegments);
+    localStorage.setItem('videoSegments', JSON.stringify(newSegments));
+    
+    return newSegments.length > 0;
+  }, [selectedVideos, uploadedVideos]);
+
   // Generate final video with AWS Batch
   const handleGenerateVideo = async () => {
+    // Wenn keine Videosegmente vorhanden sind, erstelle automatisch welche
     if (!videoSegments.length) {
-      setError('Bitte fügen Sie mindestens ein Videosegment hinzu');
-      return;
+      const segmentsCreated = createSegmentsFromSelectedVideos();
+      
+      if (!segmentsCreated) {
+        setError('Bitte wählen Sie mindestens ein Video aus und fügen Sie es zur Timeline hinzu');
+        return;
+      }
     }
     
     setIsGenerating(true);
@@ -545,15 +615,25 @@ export default function EditorPage() {
         {uploadedVideos.some(video => {
           // For each selected video, check if there's a matching file on the server
           return selectedVideos.includes(video.id) && 
-                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                 !availableUploads.some((file: any) => 
-                   (file.id && video.id && file.id === video.id) || // Check by ID with null check
-                   (file.name && video.id && file.name.includes(video.id)) || // Check by ID-contained with null check
-                   (video.filepath && file.path && (
-                     file.path === video.filepath ||
-                     file.path.includes(video.id)
-                   )) // Check by path with null check
-                 );
+                 // Eine verbesserte und zuverlässigere Überprüfungsmethode verwenden
+                 !availableUploads.some((file) => {
+                   // Prüfung über exakte ID-Übereinstimmung (am zuverlässigsten)
+                   if (file.id && video.id && file.id === video.id) {
+                     return true;
+                   }
+                   
+                   // Prüfung über Dateiname - nur wenn er exakt den Namen hat (nicht nur enthält)
+                   if (file.name && video.name && file.name === video.name) {
+                     return true;
+                   }
+                   
+                   // Fallback-Prüfung nur wenn die vorherigen fehlschlagen
+                   if (video.filepath && file.path && file.path === video.filepath) {
+                     return true;
+                   }
+                   
+                   return false;
+                 });
         }) && (
           <div className="mb-6">
             <div className="alert alert-warning shadow-lg">
@@ -567,15 +647,25 @@ export default function EditorPage() {
                       {uploadedVideos
                         .filter(video => {
                           return selectedVideos.includes(video.id) && 
-                                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                                 !availableUploads.some((file: any) => 
-                                   (file.id && video.id && file.id === video.id) || 
-                                   (file.name && video.id && file.name.includes(video.id)) || 
-                                   (video.filepath && file.path && (
-                                     file.path === video.filepath ||
-                                     (file.path && video.id && file.path.includes(video.id))
-                                   ))
-                                 );
+                                 // Die gleiche verbesserte Überprüfungsmethode wie oben verwenden
+                                 !availableUploads.some((file) => {
+                                   // Prüfung über exakte ID-Übereinstimmung (am zuverlässigsten)
+                                   if (file.id && video.id && file.id === video.id) {
+                                     return true;
+                                   }
+                                   
+                                   // Prüfung über Dateiname - nur wenn er exakt den Namen hat
+                                   if (file.name && video.name && file.name === video.name) {
+                                     return true;
+                                   }
+                                   
+                                   // Fallback-Prüfung nur wenn die vorherigen fehlschlagen
+                                   if (video.filepath && file.path && file.path === video.filepath) {
+                                     return true;
+                                   }
+                                   
+                                   return false;
+                                 });
                         })
                         .map(video => (
                           <li key={video.id} className="text-sm">{video.name} (ID: {video.id})</li>
@@ -669,16 +759,27 @@ export default function EditorPage() {
                             <h3 className="font-medium truncate text-white">{video.name}</h3>
                             <p className="text-sm text-white/60">{formatFileSize(video.size)}</p>
                           </div>
-                          <button 
-                            onClick={() => toggleVideoSelection(video.id)}
-                            className={`p-1.5 rounded-full transition-all duration-300 ${
-                              selectedVideos.includes(video.id) 
-                                ? 'bg-primary/20 text-primary' 
-                                : 'bg-white/10 text-white/40 hover:bg-white/20'
-                            }`}
-                          >
-                            <CheckCircleIcon className="h-6 w-6" />
-                          </button>
+                          <div className="flex">
+                            {selectedVideos.includes(video.id) && (
+                              <button
+                                onClick={() => addVideoToTimeline(video.id)}
+                                className="p-1.5 mr-1 rounded-full transition-all duration-300 bg-green-500/20 text-green-400 hover:bg-green-500/40"
+                                title="Add to timeline"
+                              >
+                                <ArrowRightIcon className="h-5 w-5" />
+                              </button>
+                            )}
+                            <button 
+                              onClick={() => toggleVideoSelection(video.id)}
+                              className={`p-1.5 rounded-full transition-all duration-300 ${
+                                selectedVideos.includes(video.id) 
+                                  ? 'bg-primary/20 text-primary' 
+                                  : 'bg-white/10 text-white/40 hover:bg-white/20'
+                              }`}
+                            >
+                              <CheckCircleIcon className="h-5 w-5" />
+                            </button>
+                          </div>
                         </div>
                         
                         {video.tags.length > 0 && (
@@ -705,27 +806,38 @@ export default function EditorPage() {
                   <SparklesIcon className="h-6 w-6 text-primary mr-2" />
                   <h2 className="text-xl font-semibold">Generate Your Ad</h2>
                 </div>
-                <button
-                  onClick={handleGenerateVideo}
-                  disabled={isGenerating || selectedVideos.length === 0 || !voiceoverUrl}
-                  className={`inline-flex items-center px-5 py-2.5 text-sm font-medium rounded-lg transition-all duration-300 ${
-                    isGenerating || selectedVideos.length === 0 || !voiceoverUrl
-                      ? 'bg-white/10 text-white/40 cursor-not-allowed'
-                      : 'bg-gradient-to-r from-primary to-primary-light text-white shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 transform hover:scale-105'
-                  }`}
-                >
-                  {isGenerating ? (
-                    <>
-                      <ArrowPathIcon className="h-5 w-5 mr-2 animate-spin" />
-                      Generating...
-                    </>
-                  ) : (
-                    <>
-                      <SparklesIcon className="h-5 w-5 mr-2" />
-                      Generate Ad
-                    </>
+                <div className="flex gap-2">
+                  {selectedVideos.length > 0 && videoSegments.length === 0 && (
+                    <button
+                      onClick={createSegmentsFromSelectedVideos}
+                      className="inline-flex items-center px-5 py-2.5 text-sm font-medium rounded-lg bg-white/10 text-white hover:bg-white/20 transition-all duration-300"
+                    >
+                      <FilmIcon className="h-5 w-5 mr-2" />
+                      Create Timeline
+                    </button>
                   )}
-                </button>
+                  <button
+                    onClick={handleGenerateVideo}
+                    disabled={isGenerating || selectedVideos.length === 0 || !voiceoverUrl}
+                    className={`inline-flex items-center px-5 py-2.5 text-sm font-medium rounded-lg transition-all duration-300 ${
+                      isGenerating || selectedVideos.length === 0 || !voiceoverUrl
+                        ? 'bg-white/10 text-white/40 cursor-not-allowed'
+                        : 'bg-gradient-to-r from-primary to-primary-light text-white shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 transform hover:scale-105'
+                    }`}
+                  >
+                    {isGenerating ? (
+                      <>
+                        <ArrowPathIcon className="h-5 w-5 mr-2 animate-spin" />
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <SparklesIcon className="h-5 w-5 mr-2" />
+                        Generate Ad
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
 
               {/* Add warning if blob URLs are detected */}

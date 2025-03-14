@@ -44,6 +44,8 @@ export default function UploadPage() {
   const [uploadProgress, setUploadProgress] = useState<{[key: string]: number}>({})
   // State für temporäre Videos, die noch hochgeladen werden (optimistisches UI)
   const [pendingUploads, setPendingUploads] = useState<UploadedVideo[]>([])
+  const [videoAspectRatios, setVideoAspectRatios] = useState<{[key: string]: string}>({})
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null)
 
   // HOOK 1: Authentifizierungs-Check und Redirect
   useEffect(() => {
@@ -321,6 +323,16 @@ export default function UploadPage() {
   }
 
   const removeVideo = async (id: string) => {
+    // Wenn der Löschbestätigungsdialog nicht für dieses Video angezeigt wird,
+    // zeige ihn an und führe die Löschung nicht sofort aus
+    if (showDeleteConfirm !== id) {
+      setShowDeleteConfirm(id)
+      return
+    }
+    
+    // Reset delete confirmation state
+    setShowDeleteConfirm(null)
+    
     try {
       // Prüfe, ob es sich um ein temporäres Video handelt
       const isPending = pendingUploads.some(video => video.id === id);
@@ -350,6 +362,11 @@ export default function UploadPage() {
       console.error('Error removing video:', error);
       setError(`Failed to remove video. ${error instanceof Error ? error.message : ''}`);
     }
+  }
+
+  // Funktion zum Abbrechen der Löschbestätigung
+  const cancelDelete = () => {
+    setShowDeleteConfirm(null)
   }
 
   const formatFileSize = (bytes: number) => {
@@ -485,9 +502,37 @@ export default function UploadPage() {
   // Kombiniere permanente und temporäre Videos für die Anzeige
   const allVideos = [...uploadedVideos, ...pendingUploads];
 
+  // Neuer Hook: Bestimme die Seitenverhältnisse der Videos
+  useEffect(() => {
+    // Funktion, um das Seitenverhältnis eines Videos zu bestimmen
+    const loadVideoMetadata = (video: UploadedVideo) => {
+      const videoEl = document.createElement('video')
+      videoEl.src = video.url
+      videoEl.onloadedmetadata = () => {
+        const aspectRatio = videoEl.videoWidth / videoEl.videoHeight
+        setVideoAspectRatios(prev => ({ 
+          ...prev, 
+          [video.id]: aspectRatio < 0.8 ? 'vertical' : aspectRatio > 1.3 ? 'horizontal' : 'square'
+        }))
+      }
+      videoEl.onerror = () => {
+        console.error(`Error loading video metadata for ${video.name}`)
+        // Standardmäßig horizontales Format annehmen
+        setVideoAspectRatios(prev => ({ ...prev, [video.id]: 'horizontal' }))
+      }
+    }
+
+    // Für alle Videos das Seitenverhältnis bestimmen
+    allVideos.forEach(video => {
+      if (!videoAspectRatios[video.id]) {
+        loadVideoMetadata(video)
+      }
+    })
+  }, [allVideos, videoAspectRatios])
+
   return (
     <main className="container py-12 md:py-20">
-      <div className="max-w-4xl mx-auto">
+      <div className="max-w-6xl mx-auto">
         <h1 className="text-3xl font-bold tracking-tight sm:text-4xl bg-gradient-to-r from-white to-white/80 bg-clip-text text-transparent">
           Upload Your Videos
         </h1>
@@ -551,116 +596,149 @@ export default function UploadPage() {
               <p>No videos have been uploaded yet</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {allVideos.map(video => (
-                <div 
-                  key={video.id} 
-                  className={`relative border rounded-lg overflow-hidden bg-gray-800 border-gray-700 hover:border-gray-500 transition-colors ${
-                    uploadProgress[video.id] && uploadProgress[video.id] < 100 ? 'opacity-70' : ''
-                  }`}
-                >
-                  {/* Video preview */}
-                  <div className="aspect-video bg-black relative">
-                    <video 
-                      src={video.url}
-                      className="w-full h-full object-contain"
-                      controls
-                    />
-                    
-                    {/* Upload progress indicator */}
-                    {uploadProgress[video.id] !== undefined && uploadProgress[video.id] < 100 && (
-                      <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/70">
-                        <div className="w-2/3 h-2 bg-gray-700 rounded-full overflow-hidden">
-                          <div 
-                            className="h-full bg-purple-500 rounded-full"
-                            style={{ width: `${uploadProgress[video.id]}%` }}
-                          />
-                        </div>
-                        <p className="mt-2 text-white text-sm">
-                          Uploading... {uploadProgress[video.id]}%
-                        </p>
-                      </div>
-                    )}
-                    
-                    {/* Upload complete indicator */}
-                    {uploadProgress[video.id] === 100 && (
-                      <div className="absolute top-2 right-2 bg-green-500/20 text-green-400 py-1 px-2 rounded-md flex items-center text-xs">
-                        <CheckCircleIcon className="h-4 w-4 mr-1" />
-                        Upload complete
-                      </div>
-                    )}
-                  </div>
-                  
-                  {/* Video details */}
-                  <div className="p-4">
-                    <div className="flex justify-between">
-                      <h3 className="font-medium truncate" title={video.name}>
-                        {video.name}
-                      </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              {allVideos.map(video => {
+                // Bestimme den CSS-Klassen-String basierend auf dem Seitenverhältnis
+                const aspectRatioClass = videoAspectRatios[video.id] === 'vertical' 
+                  ? 'aspect-[9/16]' 
+                  : videoAspectRatios[video.id] === 'square' 
+                    ? 'aspect-square' 
+                    : 'aspect-video';
+                
+                return (
+                  <div 
+                    key={video.id} 
+                    className={`relative border rounded-lg overflow-hidden bg-gray-800 border-gray-700 hover:border-gray-500 transition-colors ${
+                      uploadProgress[video.id] && uploadProgress[video.id] < 100 ? 'opacity-70' : ''
+                    }`}
+                  >
+                    {/* Video preview mit dynamischem Seitenverhältnis */}
+                    <div className={`bg-black relative ${aspectRatioClass}`}>
+                      <video 
+                        src={video.url}
+                        className="w-full h-full object-contain"
+                        controls
+                        controlsList="nodownload"
+                        preload="metadata"
+                        // Um die Abspielbarkeit zu verbessern
+                        playsInline
+                        onError={(e) => console.error(`Video playback error for ${video.name}:`, e)}
+                      />
                       
-                      {/* Remove button */}
-                      {uploadProgress[video.id] !== 100 && (
+                      {/* Upload progress indicator */}
+                      {uploadProgress[video.id] !== undefined && uploadProgress[video.id] < 100 && (
+                        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/70">
+                          <div className="w-2/3 h-2 bg-gray-700 rounded-full overflow-hidden">
+                            <div 
+                              className="h-full bg-purple-500 rounded-full"
+                              style={{ width: `${uploadProgress[video.id]}%` }}
+                            />
+                          </div>
+                          <p className="mt-2 text-white text-sm">
+                            Uploading... {uploadProgress[video.id]}%
+                          </p>
+                        </div>
+                      )}
+                      
+                      {/* Upload complete indicator */}
+                      {uploadProgress[video.id] === 100 && (
+                        <div className="absolute top-2 right-2 bg-green-500/20 text-green-400 py-1 px-2 rounded-md flex items-center text-xs">
+                          <CheckCircleIcon className="h-4 w-4 mr-1" />
+                          Upload complete
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* Video details */}
+                    <div className="p-3">
+                      <div className="flex justify-between">
+                        <h3 className="font-medium truncate" title={video.name}>
+                          {video.name}
+                        </h3>
+                        
+                        {/* Remove button */}
                         <button 
                           onClick={() => removeVideo(video.id)}
-                          className="text-red-400 hover:text-red-300"
+                          className={`${showDeleteConfirm === video.id ? 'text-red-500' : 'text-red-400 hover:text-red-300'}`}
                           aria-label="Remove video"
                         >
                           <XMarkIcon className="h-5 w-5" />
                         </button>
-                      )}
-                    </div>
-                    
-                    <p className="text-sm text-white/60 mt-1">
-                      {formatFileSize(video.size)}
-                    </p>
-                    
-                    {/* Tags */}
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {video.tags.map((tag, index) => (
-                        <div key={`${video.id}-${tag}-${index}`} className="flex items-center bg-gray-700/50 rounded-md px-2 py-1 text-xs">
-                          {tag}
-                          <button 
-                            onClick={() => removeTag(video.id, index)}
-                            className="ml-1 text-gray-400 hover:text-gray-200"
-                            aria-label="Remove tag"
-                          >
-                            <XMarkIcon className="h-3 w-3" />
-                          </button>
-                        </div>
-                      ))}
+                      </div>
                       
-                      {/* Add tag button */}
-                      <button 
-                        onClick={() => setSelectedVideoId(selectedVideoId === video.id ? null : video.id)}
-                        className="flex items-center bg-gray-700/30 hover:bg-gray-700/50 rounded-md px-2 py-1 text-xs"
-                      >
-                        <TagIcon className="h-3 w-3 mr-1" />
-                        Add Tag
-                      </button>
-                    </div>
-                    
-                    {/* Add tag input - shows when the video is selected */}
-                    {selectedVideoId === video.id && (
-                      <div className="mt-3 flex">
-                        <input
-                          type="text"
-                          value={currentTag}
-                          onChange={(e) => setCurrentTag(e.target.value)}
-                          onKeyDown={(e) => e.key === 'Enter' && addTag(video.id)}
-                          placeholder="Enter a tag..."
-                          className="flex-1 bg-gray-700 border-gray-600 rounded-l-md py-1 px-2 text-sm focus:outline-none focus:border-gray-500"
-                        />
-                        <button
-                          onClick={() => addTag(video.id)}
-                          className="bg-purple-600 hover:bg-purple-500 text-white rounded-r-md px-2"
+                      {/* Löschbestätigungsdialog */}
+                      {showDeleteConfirm === video.id && (
+                        <div className="mt-2 p-2 bg-red-500/10 border border-red-500/30 rounded text-xs">
+                          <p>Are you sure you want to delete this video?</p>
+                          <div className="mt-2 flex justify-end space-x-2">
+                            <button 
+                              onClick={cancelDelete}
+                              className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600"
+                            >
+                              Cancel
+                            </button>
+                            <button 
+                              onClick={() => removeVideo(video.id)}
+                              className="px-2 py-1 bg-red-600 rounded hover:bg-red-500"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                      
+                      <p className="text-sm text-white/60 mt-1">
+                        {formatFileSize(video.size)}
+                      </p>
+                      
+                      {/* Tags */}
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {video.tags.map((tag, index) => (
+                          <div key={`${video.id}-${tag}-${index}`} className="flex items-center bg-gray-700/50 rounded-md px-2 py-1 text-xs">
+                            {tag}
+                            <button 
+                              onClick={() => removeTag(video.id, index)}
+                              className="ml-1 text-gray-400 hover:text-gray-200"
+                              aria-label="Remove tag"
+                            >
+                              <XMarkIcon className="h-3 w-3" />
+                            </button>
+                          </div>
+                        ))}
+                        
+                        {/* Add tag button */}
+                        <button 
+                          onClick={() => setSelectedVideoId(selectedVideoId === video.id ? null : video.id)}
+                          className="flex items-center bg-gray-700/30 hover:bg-gray-700/50 rounded-md px-2 py-1 text-xs"
                         >
-                          <CheckCircleIcon className="h-5 w-5" />
+                          <TagIcon className="h-3 w-3 mr-1" />
+                          Add Tag
                         </button>
                       </div>
-                    )}
+                      
+                      {/* Add tag input - shows when the video is selected */}
+                      {selectedVideoId === video.id && (
+                        <div className="mt-3 flex">
+                          <input
+                            type="text"
+                            value={currentTag}
+                            onChange={(e) => setCurrentTag(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && addTag(video.id)}
+                            placeholder="Enter a tag..."
+                            className="flex-1 bg-gray-700 border-gray-600 rounded-l-md py-1 px-2 text-sm focus:outline-none focus:border-gray-500"
+                          />
+                          <button
+                            onClick={() => addTag(video.id)}
+                            className="bg-purple-600 hover:bg-purple-500 text-white rounded-r-md px-2"
+                          >
+                            <CheckCircleIcon className="h-5 w-5" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </div>
