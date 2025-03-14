@@ -61,55 +61,84 @@ export default function UploadPage() {
   
   // Funktion zum Abrufen einer signierten URL für die Videowiedergabe
   const getVideoPlaybackUrl = useCallback(async (video: UploadedVideo): Promise<string> => {
+    console.log(`Getting playback URL for video: ${video.name}, id: ${video.id}`);
+    
     // Wenn es bereits eine Playback-URL gibt, diese verwenden
     if (videoPlaybackUrls[video.id]) {
+      console.log(`Using cached URL for ${video.name}`);
       return videoPlaybackUrls[video.id];
     }
     
     // Für lokale Video-URLs (blob:) einfach die Original-URL verwenden
     if (video.url.startsWith('blob:')) {
+      console.log(`Using blob URL directly for ${video.name}`);
       return video.url;
     }
     
     // Für S3-URLs versuchen, eine signierte URL zu erhalten
     try {
       // Extrahiere den S3-Key aus der URL
-      // Typisches Format: https://bucket-name.s3.region.amazonaws.com/key/to/object.mp4
       let key = '';
       
+      // Versuch 1: Verwende den expliziten Key, falls vorhanden
       if (video.key) {
-        // Wenn der S3-Key direkt verfügbar ist
+        console.log(`Using explicit key for ${video.name}: ${video.key}`);
         key = video.key;
-      } else if (video.url.includes('amazonaws.com')) {
-        // Sonst aus der URL extrahieren
+      } 
+      // Versuch 2: Extrahiere aus dem Dateinamen, falls einfacher Name
+      else if (video.name && !video.name.includes('/') && !video.name.includes(':')) {
+        // Für einfache Dateinamen wie "1.mp4" verwenden wir "uploads/1.mp4"
+        console.log(`Using uploads/${video.name} as key for ${video.name}`);
+        key = `uploads/${video.name}`;
+      }
+      // Versuch 3: Extrahiere aus der URL
+      else if (video.url.includes('amazonaws.com')) {
         const urlParts = video.url.split('.amazonaws.com/');
         if (urlParts.length > 1) {
           key = urlParts[1];
+          console.log(`Extracted key from URL for ${video.name}: ${key}`);
         }
       }
       
-      if (key) {
-        // Signierte URL vom Server holen
-        const response = await fetch(`/api/get-signed-url?key=${encodeURIComponent(key)}`);
-        if (response.ok) {
-          const data = await response.json();
-          if (data.success && data.url) {
-            // URL im Cache speichern
-            setVideoPlaybackUrls(prev => ({
-              ...prev,
-              [video.id]: data.url
-            }));
-            return data.url;
-          }
-        }
+      if (!key) {
+        console.warn(`Could not determine S3 key for ${video.name}, using original URL`);
+        setVideoPlaybackUrls(prev => ({
+          ...prev,
+          [video.id]: video.url
+        }));
+        return video.url;
       }
       
-      // Fallback zur Original-URL
-      setVideoPlaybackUrls(prev => ({
-        ...prev,
-        [video.id]: video.url
-      }));
-      return video.url;
+      // Signierte URL vom Server holen
+      console.log(`Requesting signed URL for key: ${key}`);
+      const response = await fetch(`/api/get-signed-url?key=${encodeURIComponent(key)}`);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error ${response.status} when getting signed URL`);
+      }
+      
+      const data = await response.json();
+      console.log(`Got response for ${video.name}:`, data);
+      
+      if (data.success && data.url) {
+        // URL im Cache speichern
+        console.log(`Using signed URL for ${video.name}: ${data.url.substring(0, 100)}...`);
+        setVideoPlaybackUrls(prev => ({
+          ...prev,
+          [video.id]: data.url
+        }));
+        return data.url;
+      } else if (data.usedFallback && data.url) {
+        // Fallback-URL verwenden
+        console.log(`Using fallback URL for ${video.name}: ${data.url}`);
+        setVideoPlaybackUrls(prev => ({
+          ...prev,
+          [video.id]: data.url
+        }));
+        return data.url;
+      } else {
+        throw new Error('No URL in response');
+      }
     } catch (e) {
       console.warn(`Failed to get signed URL for video ${video.name}:`, e);
       
@@ -719,6 +748,7 @@ export default function UploadPage() {
                   className={`relative group rounded-lg overflow-hidden ${getVideoFormat(video) || ''}`}
                 >
                   <video 
+                    key={`video-${video.id}-${videoPlaybackUrls[video.id] ? 'signed' : 'original'}`}
                     src={videoPlaybackUrls[video.id] || video.url}
                     className="w-full h-full object-contain"
                     controls
@@ -728,14 +758,34 @@ export default function UploadPage() {
                     muted
                     crossOrigin="anonymous" 
                     poster="/images/video-placeholder.svg"
-                    onLoadStart={() => console.log(`Starting to load video: ${video.name}`)}
+                    onLoadStart={(e) => {
+                      console.log(`Starting to load video: ${video.name}`);
+                      // Füge eine Fallback-Quelle hinzu, falls die erste fehlschlägt
+                      const vidElement = e.target as HTMLVideoElement;
+                      if (!vidElement.querySelector('source')) {
+                        const source = document.createElement('source');
+                        source.src = videoPlaybackUrls[video.id] || video.url;
+                        source.type = 'video/mp4';
+                        vidElement.appendChild(source);
+                      }
+                    }}
                     onLoadedMetadata={() => console.log(`Metadata loaded for video: ${video.name}`)}
                     onError={(e) => {
                       console.error(`Video playback error for ${video.name}:`, e);
+                      // Versuche es erneut mit Original-URL, falls eine signierte URL fehlschlägt
+                      const vidElement = e.target as HTMLVideoElement;
+                      
+                      // Prüfe, ob wir eine signierte URL verwenden und sie fehlschlägt
+                      if (videoPlaybackUrls[video.id] && videoPlaybackUrls[video.id] !== video.url) {
+                        console.log(`Trying fallback to original URL for ${video.name}`);
+                        vidElement.src = video.url;
+                        vidElement.load();
+                        return; // Versuche es noch einmal, bevor wir den Fallback anzeigen
+                      }
+                      
                       // Zeige ein Fallback-Element bei Fehler
-                      const target = e.target as HTMLVideoElement;
-                      target.style.display = 'none';
-                      const parent = target.parentElement;
+                      vidElement.style.display = 'none';
+                      const parent = vidElement.parentElement;
                       if (parent) {
                         // Erstelle ein Fallback-Bild, wenn das Video nicht geladen werden kann
                         const fallback = document.createElement('div');
@@ -747,6 +797,7 @@ export default function UploadPage() {
                             </svg>
                             <span class="text-sm text-gray-400">Video kann nicht abgespielt werden</span>
                             <span class="text-xs text-gray-500 mt-1">${video.name}</span>
+                            <span class="text-xs text-red-500 mt-1">Fehler: ${vidElement.error?.message || 'Unbekannter Fehler'}</span>
                           </div>
                         `;
                         parent.appendChild(fallback);
