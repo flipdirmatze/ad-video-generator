@@ -53,6 +53,8 @@ export default function UploadPage() {
   
   // Ref zum Speichern von bereits verarbeiteten Video-IDs
   const processedVideoIds = useRef<Set<string>>(new Set());
+  // Ein Ref für Event-Handler, um zu vermeiden, dass sie bei jedem Render neu erstellt werden
+  const videoHandlers = useRef<{[key: string]: boolean}>({});
 
   // HOOK 1: Authentifizierungs-Check und Redirect
   useEffect(() => {
@@ -508,37 +510,51 @@ export default function UploadPage() {
 
   // Neuer Hook: Bestimme die Seitenverhältnisse der Videos
   useEffect(() => {
-    // Funktion, um das Seitenverhältnis eines Videos zu bestimmen
-    const loadVideoMetadata = (video: UploadedVideo) => {
-      // Prüfen, ob das Video bereits verarbeitet wurde
-      if (processedVideoIds.current.has(video.id)) {
+    // Hilfsfunktion zur Erzeugung eines Event-Handlers für ein Video
+    const createMetadataHandler = (video: UploadedVideo) => {
+      // Wenn dieser Handler bereits erzeugt wurde, nicht erneut erstellen
+      if (videoHandlers.current[video.id]) {
         return;
       }
       
       // Video als verarbeitet markieren
-      processedVideoIds.current.add(video.id);
+      videoHandlers.current[video.id] = true;
       
-      const videoEl = document.createElement('video')
-      videoEl.src = video.url
+      // Video-Element erzeugen
+      const videoEl = document.createElement('video');
+      
+      // Event-Handler für Metadaten-Ladung definieren
       videoEl.onloadedmetadata = () => {
-        const aspectRatio = videoEl.videoWidth / videoEl.videoHeight
+        const aspectRatio = videoEl.videoWidth / videoEl.videoHeight;
+        setVideoAspectRatios(prev => ({
+          ...prev,
+          [video.id]: aspectRatio < 0.8 ? 'vertical' : aspectRatio > 1.3 ? 'horizontal' : 'square'
+        }));
+      };
+      
+      // Fehler-Handler definieren
+      videoEl.onerror = () => {
+        console.error(`Error loading video metadata for ${video.name}`);
         setVideoAspectRatios(prev => ({ 
           ...prev, 
-          [video.id]: aspectRatio < 0.8 ? 'vertical' : aspectRatio > 1.3 ? 'horizontal' : 'square'
-        }))
-      }
-      videoEl.onerror = () => {
-        console.error(`Error loading video metadata for ${video.name}`)
-        // Standardmäßig horizontales Format annehmen
-        setVideoAspectRatios(prev => ({ ...prev, [video.id]: 'horizontal' }))
-      }
-    }
-
-    // Für alle Videos das Seitenverhältnis bestimmen
+          [video.id]: 'horizontal' // Standardwert verwenden
+        }));
+      };
+      
+      // Quelle setzen und Laden starten
+      videoEl.src = video.url;
+    };
+    
+    // Für jedes Video den Metadaten-Handler erzeugen
     allVideos.forEach(video => {
-      loadVideoMetadata(video)
-    })
-  }, [allVideos]) // Nur allVideos als Abhängigkeit
+      createMetadataHandler(video);
+    });
+    
+    // Cleanup-Funktion
+    return () => {
+      // Bei Bedarf können wir hier Ressourcen freigeben
+    };
+  }, [allVideos]); // Nur von allVideos abhängig
 
   return (
     <main className="container py-12 md:py-20">
