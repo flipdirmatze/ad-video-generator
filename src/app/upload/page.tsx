@@ -42,6 +42,8 @@ export default function UploadPage() {
   const MAX_FILE_SIZE = 500 * 1024 * 1024
   const [isUploading, setIsUploading] = useState<{[key: string]: boolean}>({})
   const [uploadProgress, setUploadProgress] = useState<{[key: string]: number}>({})
+  // State für temporäre Videos, die noch hochgeladen werden (optimistisches UI)
+  const [pendingUploads, setPendingUploads] = useState<UploadedVideo[]>([])
 
   // HOOK 1: Authentifizierungs-Check und Redirect
   useEffect(() => {
@@ -53,24 +55,47 @@ export default function UploadPage() {
     setIsLoading(false)
   }, [status, isLoading, router])
 
-  // HOOK 2: Videos aus localStorage laden
+  // HOOK 2: Videos aus der Datenbank laden
   useEffect(() => {
-    const savedVideos = localStorage.getItem('uploadedVideos')
-    if (savedVideos) {
+    const fetchVideosFromDatabase = async () => {
       try {
-        setUploadedVideos(JSON.parse(savedVideos))
-      } catch (e) {
-        console.error('Error parsing saved videos:', e)
+        const response = await fetch('/api/media')
+        if (response.ok) {
+          const data = await response.json()
+          
+          if (data.files && data.files.length > 0) {
+            console.log('Loaded videos from database:', data.files.length)
+            
+            // Videodaten aus der Datenbank in unser Format umwandeln
+            const dbVideos = data.files.map((video: any) => ({
+              id: video.id,
+              name: video.name,
+              size: video.size,
+              type: video.type,
+              url: video.url,
+              tags: video.tags || [],
+              filepath: video.path,
+              key: video.key
+            }))
+            
+            setUploadedVideos(dbVideos)
+          } else {
+            // Wenn keine Videos vorhanden sind, leeres Array setzen
+            setUploadedVideos([])
+          }
+        } else {
+          console.error('Failed to fetch videos from database')
+        }
+      } catch (error) {
+        console.error('Error fetching videos:', error)
       }
     }
-  }, [])
-
-  // HOOK 3: Videos in localStorage speichern
-  useEffect(() => {
-    if (uploadedVideos.length > 0) {
-      localStorage.setItem('uploadedVideos', JSON.stringify(uploadedVideos))
+    
+    // Nur Videos laden, wenn der Nutzer angemeldet ist
+    if (session?.user?.id) {
+      fetchVideosFromDatabase()
     }
-  }, [uploadedVideos])
+  }, [session])
 
   // Zeige Ladeindikator während der Authentifizierung
   if (isLoading || status === 'loading') {
@@ -112,6 +137,34 @@ export default function UploadPage() {
     
     if (e.target.files && e.target.files.length > 0) {
       handleFiles(e.target.files)
+    }
+  }
+
+  // Aktualisiere die Videos-Liste nach erfolgreichem Upload
+  const refreshVideos = async () => {
+    try {
+      const response = await fetch('/api/media')
+      if (response.ok) {
+        const data = await response.json()
+        
+        if (data.files && data.files.length > 0) {
+          const dbVideos = data.files.map((video: any) => ({
+            id: video.id,
+            name: video.name,
+            size: video.size,
+            type: video.type,
+            url: video.url,
+            tags: video.tags || [],
+            filepath: video.path,
+            key: video.key
+          }))
+          
+          setUploadedVideos(dbVideos)
+          setPendingUploads([]) // Leere die pendingUploads-Liste nach erfolgreichem Refresh
+        }
+      }
+    } catch (error) {
+      console.error('Error refreshing videos:', error)
     }
   }
 
@@ -222,7 +275,7 @@ export default function UploadPage() {
       // Generate a unique ID for the video
       const videoId = crypto.randomUUID()
       
-      // Add to uploaded videos with temporary blob URL
+      // Erstelle ein temporäres Video-Objekt für optimistisches UI
       const newVideo: UploadedVideo = {
         id: videoId,
         name: file.name,
@@ -232,7 +285,8 @@ export default function UploadPage() {
         tags: []
       }
       
-      setUploadedVideos(prev => [...prev, newVideo])
+      // Füge das Video zu pendingUploads hinzu (optimistisches UI)
+      setPendingUploads(prev => [...prev, newVideo])
       
       // Set this video as uploading
       setIsUploading(prev => ({ ...prev, [videoId]: true }))
@@ -245,23 +299,17 @@ export default function UploadPage() {
       try {
         const { key, fileUrl } = await uploadToS3(file, videoId);
         
-        // Update the video with the S3 information
-        setUploadedVideos(prev => 
-          prev.map(video => 
-            video.id === videoId
-              ? { ...video, filepath: fileUrl, key }
-              : video
-          )
-        );
-        
-        // Upload erfolgreich abgeschlossen - setze Fortschritt auf 100%
+        // Aktualisiere die Fortschrittsanzeige auf 100%
         setUploadProgress(prev => ({ ...prev, [videoId]: 100 }));
+        
+        // Aktualisiere die Video-Liste vom Server
+        await refreshVideos();
       } catch (error) {
         console.error('Error uploading file:', error)
         setError(`Failed to upload ${file.name}. ${error instanceof Error ? error.message : ''}`)
         
-        // Entferne das Video aus der Liste bei Fehler
-        setUploadedVideos(prev => prev.filter(video => video.id !== videoId));
+        // Entferne das Video aus pendingUploads bei Fehler
+        setPendingUploads(prev => prev.filter(video => video.id !== videoId));
       } finally {
         // Stop progress simulation
         stopSimulation();
@@ -272,20 +320,35 @@ export default function UploadPage() {
     }
   }
 
-  const removeVideo = (id: string) => {
-    setUploadedVideos(prev => {
-      const updatedVideos = prev.filter(video => video.id !== id)
+  const removeVideo = async (id: string) => {
+    try {
+      // Prüfe, ob es sich um ein temporäres Video handelt
+      const isPending = pendingUploads.some(video => video.id === id);
       
-      // If no videos left, remove from localStorage
-      if (updatedVideos.length === 0) {
-        localStorage.removeItem('uploadedVideos')
+      if (isPending) {
+        // Entferne nur aus der lokalen pendingUploads-Liste
+        setPendingUploads(prev => prev.filter(video => video.id !== id));
+      } else {
+        // Lösche Video über API auf dem Server
+        const response = await fetch(`/api/media/${id}`, {
+          method: 'DELETE',
+        });
+        
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.message || 'Fehler beim Löschen des Videos');
+        }
+        
+        // Aktualisiere die Videoliste
+        setUploadedVideos(prev => prev.filter(video => video.id !== id));
       }
       
-      return updatedVideos
-    })
-    
-    if (selectedVideoId === id) {
-      setSelectedVideoId(null)
+      if (selectedVideoId === id) {
+        setSelectedVideoId(null);
+      }
+    } catch (error) {
+      console.error('Error removing video:', error);
+      setError(`Failed to remove video. ${error instanceof Error ? error.message : ''}`);
     }
   }
 
@@ -297,65 +360,130 @@ export default function UploadPage() {
   }
 
   // Add tag to a video
-  const addTag = (videoId: string) => {
-    if (!currentTag.trim()) return;
+  const addTag = async (videoId: string) => {
+    if (!currentTag || currentTag.trim() === '') return
     
-    setUploadedVideos(prev => 
-      prev.map(video => {
-        if (video.id === videoId) {
-          const updatedTags = [...video.tags, currentTag.trim()];
-          
-          // Wenn das Video bereits auf S3 ist, aktualisiere die Tags auch in der Datenbank
-          if (video.key) {
-            fetch('/api/update-video-tags', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                videoId,
-                tags: updatedTags
-              }),
-            }).catch(err => console.error('Error updating tags:', err));
+    // Prüfe, ob es sich um ein temporäres Video handelt
+    const isPending = pendingUploads.some(video => video.id === videoId);
+    
+    if (isPending) {
+      // Für temporäre Videos, speichere Tags nur lokal
+      setPendingUploads(prev => {
+        return prev.map(video => {
+          if (video.id === videoId && !video.tags.includes(currentTag)) {
+            return { ...video, tags: [...video.tags, currentTag] };
           }
-          
-          return { ...video, tags: updatedTags };
+          return video;
+        });
+      });
+    } else {
+      // Für Datenbank-Videos, speichere Tags auf dem Server
+      try {
+        const videoToUpdate = uploadedVideos.find(v => v.id === videoId);
+        
+        if (!videoToUpdate) return;
+        
+        // Prüfen, ob das Tag bereits existiert
+        if (videoToUpdate.tags.includes(currentTag)) return;
+        
+        const newTags = [...videoToUpdate.tags, currentTag];
+        
+        // Tags in der Datenbank aktualisieren
+        const response = await fetch('/api/update-video-tags', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            videoId,
+            tags: newTags,
+          }),
+        });
+        
+        if (!response.ok) {
+          throw new Error('Failed to update tags in database');
         }
-        return video;
-      })
-    );
+        
+        // Lokale Video-Liste aktualisieren
+        setUploadedVideos(prev => {
+          return prev.map(video => {
+            if (video.id === videoId) {
+              return { ...video, tags: newTags };
+            }
+            return video;
+          });
+        });
+      } catch (error) {
+        console.error('Error updating tags:', error);
+        setError(`Failed to update tags. ${error instanceof Error ? error.message : ''}`);
+      }
+    }
     
     setCurrentTag('');
-  };
+    setSelectedVideoId(null);
+  }
 
   // Remove tag from a video
-  const removeTag = (videoId: string, tagIndex: number) => {
-    setUploadedVideos(prev => 
-      prev.map(video => {
-        if (video.id === videoId) {
-          const updatedTags = [...video.tags];
-          updatedTags.splice(tagIndex, 1);
-          
-          // Wenn das Video bereits auf S3 ist, aktualisiere die Tags auch in der Datenbank
-          if (video.key) {
-            fetch('/api/update-video-tags', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                videoId,
-                tags: updatedTags
-              }),
-            }).catch(err => console.error('Error updating tags:', err));
+  const removeTag = async (videoId: string, tagIndex: number) => {
+    // Prüfe, ob es sich um ein temporäres Video handelt
+    const isPending = pendingUploads.some(video => video.id === videoId);
+    
+    if (isPending) {
+      // Für temporäre Videos, entferne Tags nur lokal
+      setPendingUploads(prev => {
+        return prev.map(video => {
+          if (video.id === videoId) {
+            const newTags = [...video.tags];
+            newTags.splice(tagIndex, 1);
+            return { ...video, tags: newTags };
           }
-          
-          return { ...video, tags: updatedTags };
+          return video;
+        });
+      });
+    } else {
+      // Für Datenbank-Videos, aktualisiere Tags auf dem Server
+      try {
+        const videoToUpdate = uploadedVideos.find(v => v.id === videoId);
+        
+        if (!videoToUpdate) return;
+        
+        const newTags = [...videoToUpdate.tags];
+        newTags.splice(tagIndex, 1);
+        
+        // Tags in der Datenbank aktualisieren
+        const response = await fetch('/api/update-video-tags', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            videoId,
+            tags: newTags,
+          }),
+        });
+        
+        if (!response.ok) {
+          throw new Error('Failed to update tags in database');
         }
-        return video;
-      })
-    );
-  };
+        
+        // Lokale Video-Liste aktualisieren
+        setUploadedVideos(prev => {
+          return prev.map(video => {
+            if (video.id === videoId) {
+              return { ...video, tags: newTags };
+            }
+            return video;
+          });
+        });
+      } catch (error) {
+        console.error('Error removing tag:', error);
+        setError(`Failed to remove tag. ${error instanceof Error ? error.message : ''}`);
+      }
+    }
+  }
+
+  // Kombiniere permanente und temporäre Videos für die Anzeige
+  const allVideos = [...uploadedVideos, ...pendingUploads];
 
   return (
     <main className="container py-12 md:py-20">
@@ -415,165 +543,140 @@ export default function UploadPage() {
 
         {/* Uploaded videos section */}
         <div className="mt-8">
-          <h2 className="text-xl font-semibold mb-4">Uploaded Videos{uploadedVideos.length > 0 && ` (${uploadedVideos.length})`}</h2>
+          <h2 className="text-xl font-semibold mb-4">Uploaded Videos{allVideos.length > 0 && ` (${allVideos.length})`}</h2>
           
-          {uploadedVideos.length === 0 ? (
+          {allVideos.length === 0 ? (
             <div className="text-gray-400 text-center py-8">
               <FilmIcon className="h-12 w-12 mx-auto mb-2" />
               <p>No videos have been uploaded yet</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {uploadedVideos.map(video => (
-                <div key={video.id} className="card bg-base-200 shadow-xl overflow-hidden">
-                  <div className="relative">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {allVideos.map(video => (
+                <div 
+                  key={video.id} 
+                  className={`relative border rounded-lg overflow-hidden bg-gray-800 border-gray-700 hover:border-gray-500 transition-colors ${
+                    uploadProgress[video.id] && uploadProgress[video.id] < 100 ? 'opacity-70' : ''
+                  }`}
+                >
+                  {/* Video preview */}
+                  <div className="aspect-video bg-black relative">
                     <video 
-                      src={video.url} 
-                      className="w-full h-48 object-cover"
+                      src={video.url}
+                      className="w-full h-full object-contain"
+                      controls
                     />
-                    <span className="absolute bottom-2 right-2 bg-black/70 text-xs text-white px-2 py-1 rounded">
-                      {formatFileSize(video.size)}
-                    </span>
+                    
+                    {/* Upload progress indicator */}
+                    {uploadProgress[video.id] !== undefined && uploadProgress[video.id] < 100 && (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/70">
+                        <div className="w-2/3 h-2 bg-gray-700 rounded-full overflow-hidden">
+                          <div 
+                            className="h-full bg-purple-500 rounded-full"
+                            style={{ width: `${uploadProgress[video.id]}%` }}
+                          />
+                        </div>
+                        <p className="mt-2 text-white text-sm">
+                          Uploading... {uploadProgress[video.id]}%
+                        </p>
+                      </div>
+                    )}
+                    
+                    {/* Upload complete indicator */}
+                    {uploadProgress[video.id] === 100 && (
+                      <div className="absolute top-2 right-2 bg-green-500/20 text-green-400 py-1 px-2 rounded-md flex items-center text-xs">
+                        <CheckCircleIcon className="h-4 w-4 mr-1" />
+                        Upload complete
+                      </div>
+                    )}
                   </div>
                   
-                  <div className="card-body p-4">
-                    <div className="flex justify-between items-start">
-                      <h3 className="card-title text-sm truncate mr-2">{video.name}</h3>
-                      <button 
-                        onClick={() => removeVideo(video.id)}
-                        className="btn btn-sm btn-circle btn-ghost"
-                      >
-                        <XMarkIcon className="h-4 w-4" />
-                      </button>
-                    </div>
-                    
-                    {/* Upload Progress */}
-                    {isUploading[video.id] && (
-                      <div className="mt-2">
-                        <div className="flex justify-between text-xs mb-1">
-                          <span>Uploading...</span>
-                          <span>{uploadProgress[video.id] || 0}%</span>
-                        </div>
-                        <div className="w-full bg-gray-700 rounded-full h-2">
-                          <div 
-                            className="bg-primary h-2 rounded-full" 
-                            style={{ width: `${uploadProgress[video.id] || 0}%` }}
-                          ></div>
-                        </div>
-                      </div>
-                    )}
-                    
-                    {/* S3 Status */}
-                    {video.filepath && !isUploading[video.id] && (
-                      <div className="mt-2 flex items-center text-xs text-green-400">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" viewBox="0 0 20 20" fill="currentColor">
-                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                        </svg>
-                        Uploaded to S3
-                      </div>
-                    )}
-                    
-                    {/* Tags Section */}
-                    <div className="mt-3">
-                      <div className="flex items-center">
-                        <TagIcon className="h-4 w-4 mr-1 text-gray-400" />
-                        <span className="text-xs text-gray-400">Tags:</span>
-                      </div>
+                  {/* Video details */}
+                  <div className="p-4">
+                    <div className="flex justify-between">
+                      <h3 className="font-medium truncate" title={video.name}>
+                        {video.name}
+                      </h3>
                       
-                      <div className="flex flex-wrap gap-1 mt-1">
-                        {video.tags.map((tag, index) => (
-                          <div key={index} className="badge badge-sm badge-secondary flex items-center gap-1">
-                            <span>{tag}</span>
-                            <button onClick={() => removeTag(video.id, index)} className="h-3 w-3 flex items-center justify-center">
-                              <XMarkIcon className="h-2 w-2" />
-                            </button>
-                          </div>
-                        ))}
-                        
-                        {video.tags.length === 0 && (
-                          <span className="text-xs text-gray-500">No tags yet</span>
-                        )}
-                      </div>
-                      
-                      {/* Add Tag Input */}
-                      {selectedVideoId === video.id && (
-                        <div className="mt-2 flex items-center gap-1">
-                          <input
-                            type="text"
-                            value={currentTag}
-                            onChange={(e) => setCurrentTag(e.target.value)}
-                            onKeyDown={(e) => e.key === 'Enter' && addTag(video.id)}
-                            placeholder="Add tag..."
-                            className="input input-xs input-bordered flex-1"
-                          />
-                          <button
-                            onClick={() => addTag(video.id)}
-                            className="btn btn-xs btn-primary"
-                            disabled={!currentTag.trim()}
-                          >
-                            Add
-                          </button>
-                        </div>
-                      )}
-                      
-                      {selectedVideoId !== video.id && (
-                        <button
-                          onClick={() => setSelectedVideoId(video.id)}
-                          className="btn btn-xs btn-ghost mt-1"
+                      {/* Remove button */}
+                      {uploadProgress[video.id] !== 100 && (
+                        <button 
+                          onClick={() => removeVideo(video.id)}
+                          className="text-red-400 hover:text-red-300"
+                          aria-label="Remove video"
                         >
-                          + Add Tag
+                          <XMarkIcon className="h-5 w-5" />
                         </button>
                       )}
                     </div>
+                    
+                    <p className="text-sm text-white/60 mt-1">
+                      {formatFileSize(video.size)}
+                    </p>
+                    
+                    {/* Tags */}
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {video.tags.map((tag, index) => (
+                        <div key={`${video.id}-${tag}-${index}`} className="flex items-center bg-gray-700/50 rounded-md px-2 py-1 text-xs">
+                          {tag}
+                          <button 
+                            onClick={() => removeTag(video.id, index)}
+                            className="ml-1 text-gray-400 hover:text-gray-200"
+                            aria-label="Remove tag"
+                          >
+                            <XMarkIcon className="h-3 w-3" />
+                          </button>
+                        </div>
+                      ))}
+                      
+                      {/* Add tag button */}
+                      <button 
+                        onClick={() => setSelectedVideoId(selectedVideoId === video.id ? null : video.id)}
+                        className="flex items-center bg-gray-700/30 hover:bg-gray-700/50 rounded-md px-2 py-1 text-xs"
+                      >
+                        <TagIcon className="h-3 w-3 mr-1" />
+                        Add Tag
+                      </button>
+                    </div>
+                    
+                    {/* Add tag input - shows when the video is selected */}
+                    {selectedVideoId === video.id && (
+                      <div className="mt-3 flex">
+                        <input
+                          type="text"
+                          value={currentTag}
+                          onChange={(e) => setCurrentTag(e.target.value)}
+                          onKeyDown={(e) => e.key === 'Enter' && addTag(video.id)}
+                          placeholder="Enter a tag..."
+                          className="flex-1 bg-gray-700 border-gray-600 rounded-l-md py-1 px-2 text-sm focus:outline-none focus:border-gray-500"
+                        />
+                        <button
+                          onClick={() => addTag(video.id)}
+                          className="bg-purple-600 hover:bg-purple-500 text-white rounded-r-md px-2"
+                        >
+                          <CheckCircleIcon className="h-5 w-5" />
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
             </div>
           )}
         </div>
-
-        {/* Guidelines */}
-        <div className="mt-12 p-6 rounded-lg border border-white/10 bg-white/5">
-          <h2 className="text-xl font-semibold mb-4">Tips for Better Results</h2>
-          <ul className="space-y-2 text-white/70">
-            <li className="flex items-start">
-              <CheckCircleIcon className="h-5 w-5 mr-2 text-primary-light flex-shrink-0 mt-0.5" />
-              <span>Upload high-quality video clips that match your voiceover content</span>
-            </li>
-            <li className="flex items-start">
-              <CheckCircleIcon className="h-5 w-5 mr-2 text-primary-light flex-shrink-0 mt-0.5" />
-              <span>Add descriptive tags to help organize your videos</span>
-            </li>
-            <li className="flex items-start">
-              <CheckCircleIcon className="h-5 w-5 mr-2 text-primary-light flex-shrink-0 mt-0.5" />
-              <span>Include a variety of shots and angles for more dynamic ads</span>
-            </li>
-            <li className="flex items-start">
-              <CheckCircleIcon className="h-5 w-5 mr-2 text-primary-light flex-shrink-0 mt-0.5" />
-              <span>Shorter clips (5-15 seconds) work best for most ad formats</span>
-            </li>
-          </ul>
-        </div>
-
-        {/* Navigation Buttons */}
-        <div className="mt-12 flex justify-between">
-          <Link
-            href="/voiceover"
-            className="inline-flex items-center px-4 py-2 text-white/70 hover:text-white"
-          >
-            ← Back to Voiceover
-          </Link>
-          
-          {uploadedVideos.length > 0 && (
+        
+        {/* Continue to Editor Button */}
+        {allVideos.length > 0 && (
+          <div className="mt-8 flex justify-end">
             <Link
               href="/editor"
-              className="inline-flex items-center px-6 py-3 text-white bg-gradient-to-r from-primary to-primary-light rounded-lg hover:opacity-90 transition-opacity"
+              className="flex items-center bg-purple-600 hover:bg-purple-500 text-white py-2 px-4 rounded-lg"
             >
               Continue to Editor
-              <ArrowRightIcon className="ml-2 h-5 w-5" />
+              <ArrowRightIcon className="h-5 w-5 ml-2" />
             </Link>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </main>
   )

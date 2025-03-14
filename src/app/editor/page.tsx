@@ -90,7 +90,7 @@ export default function EditorPage() {
     setIsLoading(false)
   }, [status, isLoading, router])
 
-  // HOOK 2: Load data from localStorage
+  // HOOK 2: Load data from localStorage and server
   useEffect(() => {
     // Only run in the browser, not during SSR
     if (typeof window !== 'undefined' && !isMounted.current) {
@@ -116,30 +116,11 @@ export default function EditorPage() {
         }
       }
       
-      const savedVideos = localStorage.getItem('uploadedVideos')
       const savedFinalVideo = localStorage.getItem('finalVideoUrl')
       const savedSegments = localStorage.getItem('videoSegments')
       
-      if (savedVideos) {
-        try {
-          const videos = JSON.parse(savedVideos)
-          // Add filepath property for uploaded videos if not present
-          const updatedVideos = videos.map((video: UploadedVideo) => {
-            if (!video.filepath && video.url.startsWith('blob:')) {
-              // For videos with blob URLs, we need to check if they're also uploaded to the server
-              const possibleFilepath = `/uploads/${video.id}.mp4`;
-              return {
-                ...video,
-                filepath: possibleFilepath
-              };
-            }
-            return video;
-          });
-          setUploadedVideos(updatedVideos)
-        } catch (e) {
-          console.error('Error parsing saved videos:', e)
-        }
-      }
+      // Lade direkt Videos vom Server anstatt von localStorage
+      fetchServerVideos();
       
       if (savedFinalVideo) {
         setFinalVideoUrl(savedFinalVideo)
@@ -153,7 +134,7 @@ export default function EditorPage() {
         }
       }
       
-      // Fetch available uploads from the server
+      // Fetch available uploads from the server (for processing queue)
       fetchAvailableUploads();
     }
   }, [])
@@ -226,7 +207,7 @@ export default function EditorPage() {
 
   // ------------------- FUNCTIONS -------------------
   
-  // Function to fetch available uploads from the server
+  // Function to fetch available uploads from the server (for processing queue)
   const fetchAvailableUploads = async () => {
     try {
       const response = await fetch('/api/list-uploads');
@@ -237,42 +218,6 @@ export default function EditorPage() {
         // Update the state with file objects instead of just filenames
         if (data.files && data.files.length > 0) {
           setAvailableUploads(data.files);
-          
-          // Update video filepaths with actual server files if they exist
-          setUploadedVideos(prev => {
-            return prev.map(video => {
-              // Verbesserte Logik zum Finden passender Dateien
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              const matchingFile = data.files.find((file: any) => {
-                // Versuche verschiedene Arten des Abgleichs
-                return (
-                  // Direkter ID-Abgleich
-                  file.id === video.id ||
-                  // Dateiname enthält die ID
-                  file.name.includes(video.id) ||
-                  // Pfad-basierter Abgleich
-                  (video.filepath && (
-                    file.path === video.filepath ||
-                    video.filepath.includes(file.name) ||
-                    file.path.includes(video.id)
-                  )) ||
-                  // Namensabgleich (wenn Namen übereinstimmen)
-                  file.name === video.name
-                );
-              });
-              
-              if (matchingFile) {
-                console.log(`Found matching file for video ${video.id}:`, matchingFile);
-                return {
-                  ...video,
-                  filepath: matchingFile.path,
-                  // Wenn die ID in der Datenbank existiert, aber nicht im Video-Objekt, aktualisiere sie
-                  id: video.id || matchingFile.id
-                };
-              }
-              return video;
-            });
-          });
         }
       } else {
         console.error('Failed to fetch available uploads');
@@ -508,6 +453,38 @@ export default function EditorPage() {
     }
   }, []);
 
+  // Neue Funktion zum Laden von Videos direkt vom Server
+  const fetchServerVideos = async () => {
+    try {
+      const response = await fetch('/api/media');
+      if (response.ok) {
+        const data = await response.json();
+        
+        if (data.files && data.files.length > 0) {
+          console.log('Loaded videos from server:', data.files.length);
+          
+          // Konvertiere das Server-Format in unser App-Format
+          const serverVideos = data.files.map((video: any) => ({
+            id: video.id,
+            name: video.name,
+            size: video.size || 0,
+            type: video.type || 'video/mp4',
+            url: video.url,
+            tags: video.tags || [],
+            filepath: video.path,
+            key: video.key
+          }));
+          
+          setUploadedVideos(serverVideos);
+        }
+      } else {
+        console.error('Failed to fetch videos from server');
+      }
+    } catch (error) {
+      console.error('Error fetching videos from server:', error);
+    }
+  };
+
   // ------------------- CONDITIONAL RENDERING -------------------
   
   if (isLoading || status === 'loading') {
@@ -570,12 +547,12 @@ export default function EditorPage() {
           return selectedVideos.includes(video.id) && 
                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
                  !availableUploads.some((file: any) => 
-                   file.id === video.id || // Check by ID
-                   file.name.includes(video.id) || // Check by ID-contained (geändert von startsWith)
-                   (video.filepath && (
+                   (file.id && video.id && file.id === video.id) || // Check by ID with null check
+                   (file.name && video.id && file.name.includes(video.id)) || // Check by ID-contained with null check
+                   (video.filepath && file.path && (
                      file.path === video.filepath ||
                      file.path.includes(video.id)
-                   )) // Check by path
+                   )) // Check by path with null check
                  );
         }) && (
           <div className="mb-6">
@@ -592,11 +569,11 @@ export default function EditorPage() {
                           return selectedVideos.includes(video.id) && 
                                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
                                  !availableUploads.some((file: any) => 
-                                   file.id === video.id || 
-                                   file.name.includes(video.id) || 
-                                   (video.filepath && (
+                                   (file.id && video.id && file.id === video.id) || 
+                                   (file.name && video.id && file.name.includes(video.id)) || 
+                                   (video.filepath && file.path && (
                                      file.path === video.filepath ||
-                                     file.path.includes(video.id)
+                                     (file.path && video.id && file.path.includes(video.id))
                                    ))
                                  );
                         })
