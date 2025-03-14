@@ -1,8 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import dbConnect from '@/lib/mongoose'
-import Video from '@/models/Video'
+import Video, { IVideo } from '@/models/Video'
 import { authOptions } from '@/lib/auth'
+
+// Erweiterte Interface für Videos mit Status- und Fortschritts-Feldern
+interface IVideoWithStatus extends IVideo {
+  status?: string;
+  progress?: number;
+  _id?: any;
+}
 
 /**
  * GET /api/media/status
@@ -28,7 +35,7 @@ export async function GET(request: NextRequest) {
     await dbConnect()
     
     // Abfrageparameter vorbereiten
-    const query: any = { userId: session.user.id }
+    const query: Record<string, string | { $in: string[] }> = { userId: session.user.id }
     
     // Status-Filter hinzufügen, wenn angegeben
     if (status) {
@@ -39,7 +46,7 @@ export async function GET(request: NextRequest) {
     const videos = await Video.find(query).sort({ createdAt: -1 })
     
     // Rückmeldung formatieren
-    const formattedVideos = videos.map((video: any) => ({
+    const formattedVideos = videos.map((video: IVideoWithStatus) => ({
       id: video.id,
       _id: video._id ? video._id.toString() : undefined,
       name: video.name,
@@ -113,7 +120,7 @@ export async function PATCH(request: NextRequest) {
     }
     
     // Update-Daten vorbereiten
-    const updateData: any = {}
+    const updateData: Record<string, string | number> = {}
     
     if (status) {
       updateData.status = status

@@ -97,7 +97,6 @@ export async function POST(request: NextRequest) {
     // Nur erlaubte Felder aktualisieren
     Object.keys(updateData).forEach(key => {
       if (allowedFields.includes(key)) {
-        // @ts-ignore - Dynamisches Setzen von Eigenschaften
         video[key] = updateData[key];
       }
     });

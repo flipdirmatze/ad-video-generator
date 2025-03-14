@@ -106,7 +106,7 @@ export async function POST(request: NextRequest) {
       // Prüfe auf bekannte AWS Fehlermuster
       let errorMessage = 'Failed to generate S3 upload URL';
       let details = s3Error instanceof Error ? s3Error.message : String(s3Error);
-      let statusCode = 500;
+      const statusCode = 500;
 
       // Überprüfe auf häufige Fehler
       if (details.includes('credentials')) {
