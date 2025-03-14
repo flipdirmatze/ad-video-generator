@@ -47,14 +47,58 @@ export default function UploadPage() {
   const [videoAspectRatios, setVideoAspectRatios] = useState<{[key: string]: string}>({})
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null)
 
-  // Vor dem useEffect für Aspektverhältnisse:
   // Kombiniere permanente und temporäre Videos für die Anzeige
   const allVideos = [...uploadedVideos, ...pendingUploads];
   
-  // Ref zum Speichern von bereits verarbeiteten Video-IDs
-  const processedVideoIds = useRef<Set<string>>(new Set());
-  // Ein Ref für Event-Handler, um zu vermeiden, dass sie bei jedem Render neu erstellt werden
-  const videoHandlers = useRef<{[key: string]: boolean}>({});
+  // Entfernen des gesamten loadVideoMetadata useCallback und useEffect-Hooks
+  // Füge einen Callback für das Laden von Video-Metadaten hinzu - außerhalb von useEffect
+  // const loadVideoMetadata = useCallback((video: UploadedVideo) => {
+  // ...
+  // }, [videoAspectRatios]);
+  
+  // HOOK 3: Aspektverhältnisse verwalten
+  // useEffect(() => {
+  // ...
+  // }, [allVideos, videoAspectRatios, loadVideoMetadata]);
+  
+  // Stattdessen: Einfacher Ansatz für Video-Vorschau mit festem Format
+  const getVideoFormat = (video: UploadedVideo) => {
+    // Wenn wir bereits ein Aspektverhältnis für dieses Video haben, verwenden wir es
+    if (videoAspectRatios[video.id]) {
+      return videoAspectRatios[video.id];
+    }
+    
+    // Ansonsten: Standard-Format (horizontal/landscape) zurückgeben
+    // und asynchron das Format bestimmen (außerhalb des Rendering-Zyklus)
+    setTimeout(() => {
+      // Nur ausführen, wenn das Video noch nicht verarbeitet wurde
+      if (!videoAspectRatios[video.id]) {
+        const videoEl = document.createElement('video');
+        videoEl.onloadedmetadata = () => {
+          const aspectRatio = videoEl.videoWidth / videoEl.videoHeight;
+          const format = aspectRatio < 0.8 ? 'vertical' : aspectRatio > 1.3 ? 'horizontal' : 'square';
+          
+          // Werte nur aktualisieren, wenn sie sich ändern würden
+          setVideoAspectRatios(prev => {
+            if (prev[video.id] === format) return prev;
+            return { ...prev, [video.id]: format };
+          });
+        };
+        
+        videoEl.onerror = () => {
+          // Bei Fehler: Standard-Format verwenden
+          setVideoAspectRatios(prev => {
+            if (prev[video.id]) return prev;
+            return { ...prev, [video.id]: 'horizontal' };
+          });
+        };
+        
+        videoEl.src = video.url;
+      }
+    }, 0);
+    
+    return 'horizontal'; // Standard-Format als Fallback
+  };
 
   // HOOK 1: Authentifizierungs-Check und Redirect
   useEffect(() => {
@@ -508,54 +552,6 @@ export default function UploadPage() {
     }
   }
 
-  // Neuer Hook: Bestimme die Seitenverhältnisse der Videos
-  useEffect(() => {
-    // Hilfsfunktion zur Erzeugung eines Event-Handlers für ein Video
-    const createMetadataHandler = (video: UploadedVideo) => {
-      // Wenn dieser Handler bereits erzeugt wurde, nicht erneut erstellen
-      if (videoHandlers.current[video.id]) {
-        return;
-      }
-      
-      // Video als verarbeitet markieren
-      videoHandlers.current[video.id] = true;
-      
-      // Video-Element erzeugen
-      const videoEl = document.createElement('video');
-      
-      // Event-Handler für Metadaten-Ladung definieren
-      videoEl.onloadedmetadata = () => {
-        const aspectRatio = videoEl.videoWidth / videoEl.videoHeight;
-        setVideoAspectRatios(prev => ({
-          ...prev,
-          [video.id]: aspectRatio < 0.8 ? 'vertical' : aspectRatio > 1.3 ? 'horizontal' : 'square'
-        }));
-      };
-      
-      // Fehler-Handler definieren
-      videoEl.onerror = () => {
-        console.error(`Error loading video metadata for ${video.name}`);
-        setVideoAspectRatios(prev => ({ 
-          ...prev, 
-          [video.id]: 'horizontal' // Standardwert verwenden
-        }));
-      };
-      
-      // Quelle setzen und Laden starten
-      videoEl.src = video.url;
-    };
-    
-    // Für jedes Video den Metadaten-Handler erzeugen
-    allVideos.forEach(video => {
-      createMetadataHandler(video);
-    });
-    
-    // Cleanup-Funktion
-    return () => {
-      // Bei Bedarf können wir hier Ressourcen freigeben
-    };
-  }, [allVideos]); // Nur von allVideos abhängig
-
   return (
     <main className="container py-12 md:py-20">
       <div className="max-w-6xl mx-auto">
@@ -625,9 +621,9 @@ export default function UploadPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
               {allVideos.map(video => {
                 // Bestimme den CSS-Klassen-String basierend auf dem Seitenverhältnis
-                const aspectRatioClass = videoAspectRatios[video.id] === 'vertical' 
+                const aspectRatioClass = getVideoFormat(video) === 'vertical' 
                   ? 'aspect-[9/16]' 
-                  : videoAspectRatios[video.id] === 'square' 
+                  : getVideoFormat(video) === 'square' 
                     ? 'aspect-square' 
                     : 'aspect-video';
                 
