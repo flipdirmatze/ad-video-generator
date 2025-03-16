@@ -310,19 +310,19 @@ export async function POST(request: NextRequest) {
       const inputVideoUrl = getS3Url(segments[0].videoKey);
       console.log(`Converting S3 key to full URL: ${segments[0].videoKey} -> ${inputVideoUrl}`);
       
-      // Bereite die Template-Daten vor
+      // Bereite die Template-Daten vor - vereinfachte Version
       const templateData: {
         segments: { url: string; startTime: number; duration: number; position: number; }[];
-        options: typeof data.options;
+        options: Record<string, unknown>;
         voiceoverId?: string;
       } = {
         segments: segments.map(segment => ({
           url: getS3Url(segment.videoKey),
-          startTime: segment.startTime,
-          duration: segment.duration,
-          position: segment.position
+          startTime: segment.startTime || 0,
+          duration: segment.duration || 10,
+          position: segment.position || 0
         })),
-        options: data.options || {}
+        options: {}
       };
       
       // Füge Voiceover-ID hinzu, wenn vorhanden und gültig
@@ -337,16 +337,18 @@ export async function POST(request: NextRequest) {
         }
       }
       
-      // Bereite die zusätzlichen Parameter vor
+      // Bereite die zusätzlichen Parameter vor - ohne TEMPLATE_DATA als JSON-String
       const additionalParams = {
         USER_ID: userId,
         PROJECT_ID: project._id.toString(),
-        TEMPLATE_DATA: JSON.stringify(templateData),
-        // Füge Debug-Flag hinzu, um mehr Logging im Container zu aktivieren
+        TEMPLATE_DATA: templateData, // Direkt als Objekt übergeben, nicht als JSON-String
         DEBUG: 'true'
       };
       
-      console.log('Submitting job with template data:', JSON.stringify(templateData, null, 2));
+      console.log('Submitting job with template data structure:', {
+        segmentsCount: templateData.segments.length,
+        hasVoiceover: !!templateData.voiceoverId
+      });
       
       // Sende den Job an AWS Batch
       const jobResult = await submitAwsBatchJob(
