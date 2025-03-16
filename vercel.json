@@ -12,16 +12,16 @@
    }
  ],
  "functions": {
-   "api/auth/**": {
+   "src/app/api/auth/**": {
      "maxDuration": 10
    },
-   "api/media/**": {
+   "src/app/api/media/**": {
      "maxDuration": 10
    },
-   "api/get-signed-url": {
+   "src/app/api/get-signed-url/route.ts": {
      "maxDuration": 10
    },
-   "api/get-upload-url": {
+   "src/app/api/get-upload-url/route.ts": {
      "maxDuration": 10
    }
  }
