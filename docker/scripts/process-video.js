@@ -21,7 +21,7 @@ const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
-const { S3Client, GetObjectCommand, PutObjectCommand } = require('@aws-sdk/client-s3');
+const { S3Client, GetObjectCommand, PutObjectCommand, HeadObjectCommand } = require('@aws-sdk/client-s3');
 
 // Temporäre Verzeichnisse für Dateien
 const TEMP_DIR = '/tmp/video-processing';
@@ -32,32 +32,31 @@ const OUTPUT_DIR = `${TEMP_DIR}/output`;
 const DEBUG = process.env.DEBUG === 'true';
 
 // Logge alle Umgebungsvariablen für Debugging (ohne sensible Daten)
-if (DEBUG) {
-  console.log('Environment variables:');
-  Object.keys(process.env).forEach(key => {
-    if (!['AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY', 'BATCH_CALLBACK_SECRET'].includes(key)) {
-      if (key === 'TEMPLATE_DATA' && process.env[key]) {
-        console.log(`${key}: (length: ${process.env[key].length})`);
-        try {
-          const templateData = JSON.parse(process.env[key]);
-          console.log('TEMPLATE_DATA parsed successfully:');
-          console.log('- segments:', templateData.segments ? templateData.segments.length : 0);
-          console.log('- voiceoverId:', templateData.voiceoverId || 'None');
-          console.log('- options:', JSON.stringify(templateData.options || {}));
-        } catch (e) {
-          console.error('Failed to parse TEMPLATE_DATA:', e.message);
-          console.log('TEMPLATE_DATA (first 200 chars):', process.env[key].substring(0, 200));
-        }
-      } else if (process.env[key] && process.env[key].length > 100) {
-        console.log(`${key}: ${process.env[key].substring(0, 100)}... (truncated, length: ${process.env[key].length})`);
-      } else {
-        console.log(`${key}: ${process.env[key]}`);
+console.log('Environment variables:');
+Object.keys(process.env).forEach(key => {
+  if (!['AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY', 'BATCH_CALLBACK_SECRET'].includes(key)) {
+    if (key === 'TEMPLATE_DATA' && process.env[key]) {
+      console.log(`${key}: (length: ${process.env[key].length})`);
+      try {
+        const templateData = JSON.parse(process.env[key]);
+        console.log('TEMPLATE_DATA parsed successfully:');
+        console.log('- segments:', templateData.segments ? templateData.segments.length : 0);
+        console.log('- voiceoverId:', templateData.voiceoverId || 'None');
+        console.log('- options:', JSON.stringify(templateData.options || {}));
+      } catch (e) {
+        console.error('Failed to parse TEMPLATE_DATA:', e.message);
+        console.log('TEMPLATE_DATA (first 200 chars):', process.env[key].substring(0, 200));
+        console.log('TEMPLATE_DATA (last 200 chars):', process.env[key].substring(process.env[key].length - 200));
       }
+    } else if (process.env[key] && process.env[key].length > 100) {
+      console.log(`${key}: ${process.env[key].substring(0, 100)}... (truncated, length: ${process.env[key].length})`);
     } else {
-      console.log(`${key}: ***REDACTED***`);
+      console.log(`${key}: ${process.env[key]}`);
     }
-  });
-}
+  } else {
+    console.log(`${key}: ***REDACTED***`);
+  }
+});
 
 // Umgebungsvariablen aus AWS Batch
 const JOB_TYPE = process.env.JOB_TYPE || 'generate-final';
@@ -69,13 +68,35 @@ const AWS_REGION = process.env.AWS_REGION || 'eu-central-1';
 const BATCH_CALLBACK_SECRET = process.env.BATCH_CALLBACK_SECRET || '';
 const BATCH_CALLBACK_URL = process.env.BATCH_CALLBACK_URL || 'https://ad-video-generator.vercel.app/api/batch-callback';
 const AWS_BATCH_JOB_ID = process.env.AWS_BATCH_JOB_ID || '';
+const PROJECT_ID = process.env.PROJECT_ID || '';
 
-// Parse TEMPLATE_DATA
+// Parse TEMPLATE_DATA with improved error handling
 let TEMPLATE_DATA = null;
 try {
   if (process.env.TEMPLATE_DATA) {
-    TEMPLATE_DATA = JSON.parse(process.env.TEMPLATE_DATA);
-    console.log('Successfully parsed TEMPLATE_DATA');
+    // Trim any whitespace that might cause JSON parsing issues
+    const templateDataStr = process.env.TEMPLATE_DATA.trim();
+    console.log(`TEMPLATE_DATA length: ${templateDataStr.length}`);
+    
+    // Check for valid JSON structure
+    if (templateDataStr.startsWith('{') && templateDataStr.endsWith('}')) {
+      TEMPLATE_DATA = JSON.parse(templateDataStr);
+      console.log('Successfully parsed TEMPLATE_DATA');
+      
+      // Validate required fields
+      if (!TEMPLATE_DATA.segments || !Array.isArray(TEMPLATE_DATA.segments)) {
+        console.warn('TEMPLATE_DATA is missing segments array or it is not an array');
+        TEMPLATE_DATA.segments = TEMPLATE_DATA.segments || [];
+      }
+      
+      if (TEMPLATE_DATA.voiceoverId) {
+        console.log(`Voiceover ID found: ${TEMPLATE_DATA.voiceoverId}`);
+      }
+    } else {
+      console.error('TEMPLATE_DATA does not appear to be a valid JSON object');
+      console.log('TEMPLATE_DATA first char:', templateDataStr.charAt(0));
+      console.log('TEMPLATE_DATA last char:', templateDataStr.charAt(templateDataStr.length - 1));
+    }
   } else {
     console.warn('TEMPLATE_DATA environment variable is not set');
   }
@@ -83,6 +104,8 @@ try {
   console.error('Error parsing TEMPLATE_DATA:', error.message);
   console.log('TEMPLATE_DATA raw value (first 200 chars):', 
     process.env.TEMPLATE_DATA ? process.env.TEMPLATE_DATA.substring(0, 200) : 'undefined');
+  console.log('TEMPLATE_DATA raw value (last 200 chars):', 
+    process.env.TEMPLATE_DATA ? process.env.TEMPLATE_DATA.substring(process.env.TEMPLATE_DATA.length - 200) : 'undefined');
 }
 
 // S3-Client
@@ -97,6 +120,7 @@ async function main() {
   try {
     console.log(`Starting video processing job '${JOB_TYPE}' for user ${USER_ID}`);
     console.log(`Job ID: ${AWS_BATCH_JOB_ID}`);
+    console.log(`Project ID: ${PROJECT_ID}`);
     console.log(`Input video URL: ${INPUT_VIDEO_URL}`);
     console.log(`Output key: ${OUTPUT_KEY}`);
     console.log(`S3 bucket: ${S3_BUCKET}`);
@@ -110,8 +134,15 @@ async function main() {
       throw new Error('OUTPUT_KEY environment variable is required');
     }
     
-    if (JOB_TYPE === 'generate-final' && !TEMPLATE_DATA) {
-      throw new Error('TEMPLATE_DATA environment variable is required for generate-final job type');
+    // For generate-final, we need TEMPLATE_DATA but we'll try to proceed even if it's not perfect
+    if (JOB_TYPE === 'generate-final') {
+      if (!TEMPLATE_DATA) {
+        throw new Error('TEMPLATE_DATA environment variable is required for generate-final job type');
+      }
+      
+      if (!TEMPLATE_DATA.segments || !Array.isArray(TEMPLATE_DATA.segments) || TEMPLATE_DATA.segments.length === 0) {
+        throw new Error('No video segments provided in TEMPLATE_DATA');
+      }
     }
     
     // Erstelle temporäre Verzeichnisse
@@ -133,7 +164,8 @@ async function main() {
     // Sende Callback für erfolgreichen Job
     await sendCallback({
       status: 'success',
-      outputKey: OUTPUT_KEY
+      outputKey: OUTPUT_KEY,
+      projectId: PROJECT_ID
     });
     
     console.log('Video processing completed successfully');
@@ -146,7 +178,8 @@ async function main() {
     try {
       await sendCallback({
         status: 'failed',
-        error: error.message
+        error: error.message,
+        projectId: PROJECT_ID
       });
     } catch (callbackError) {
       console.error('Failed to send error callback:', callbackError);
@@ -211,15 +244,25 @@ async function generateFinalVideo() {
     
     // Lade die Datei herunter
     console.log(`Downloading segment from ${segment.url} to ${localPath}`);
-    await downloadFromUrl(segment.url, localPath);
-    console.log(`Successfully downloaded segment ${i+1}`);
-    
-    segmentFiles.push({
-      file: localPath,
-      startTime: segment.startTime || 0,
-      duration: segment.duration || 10,
-      position: segment.position || i
-    });
+    try {
+      await downloadFromUrl(segment.url, localPath);
+      console.log(`Successfully downloaded segment ${i+1}`);
+      
+      // Verify the file exists and has content
+      if (!fs.existsSync(localPath) || fs.statSync(localPath).size === 0) {
+        throw new Error(`Downloaded segment file is empty or does not exist: ${localPath}`);
+      }
+      
+      segmentFiles.push({
+        file: localPath,
+        startTime: segment.startTime || 0,
+        duration: segment.duration || 10,
+        position: segment.position || i
+      });
+    } catch (error) {
+      console.error(`Error downloading segment ${i+1}:`, error.message);
+      throw new Error(`Failed to download segment ${i+1}: ${error.message}`);
+    }
   }
   
   // 2. Trimme jedes Segment
@@ -241,13 +284,23 @@ async function generateFinalVideo() {
       outputFile
     ];
     
-    await runFFmpeg(args);
-    console.log(`Successfully trimmed segment ${i+1}`);
-    
-    trimmedFiles.push({
-      file: outputFile,
-      position: segment.position
-    });
+    try {
+      await runFFmpeg(args);
+      console.log(`Successfully trimmed segment ${i+1}`);
+      
+      // Verify the trimmed file exists and has content
+      if (!fs.existsSync(outputFile) || fs.statSync(outputFile).size === 0) {
+        throw new Error(`Trimmed file is empty or does not exist: ${outputFile}`);
+      }
+      
+      trimmedFiles.push({
+        file: outputFile,
+        position: segment.position
+      });
+    } catch (error) {
+      console.error(`Error trimming segment ${i+1}:`, error.message);
+      throw new Error(`Failed to trim segment ${i+1}: ${error.message}`);
+    }
   }
   
   // 3. Sortiere Segmente nach Position
@@ -262,20 +315,31 @@ async function generateFinalVideo() {
   
   fs.writeFileSync(concatFile, fileContents);
   console.log(`Created concat file with ${trimmedFiles.length} segments`);
+  console.log(`Concat file contents:\n${fileContents}`);
   
   const concatenatedFile = path.join(OUTPUT_DIR, 'concatenated.mp4');
   
   // 5. Verkette die Segmente
   console.log('Concatenating trimmed segments...');
-  await runFFmpeg([
-    '-f', 'concat',
-    '-safe', '0',
-    '-i', concatFile,
-    '-c', 'copy',
-    '-y',
-    concatenatedFile
-  ]);
-  console.log('Successfully concatenated segments');
+  try {
+    await runFFmpeg([
+      '-f', 'concat',
+      '-safe', '0',
+      '-i', concatFile,
+      '-c', 'copy',
+      '-y',
+      concatenatedFile
+    ]);
+    console.log('Successfully concatenated segments');
+    
+    // Verify the concatenated file exists and has content
+    if (!fs.existsSync(concatenatedFile) || fs.statSync(concatenatedFile).size === 0) {
+      throw new Error(`Concatenated file is empty or does not exist: ${concatenatedFile}`);
+    }
+  } catch (error) {
+    console.error('Error concatenating segments:', error.message);
+    throw new Error(`Failed to concatenate segments: ${error.message}`);
+  }
   
   // 6. Wenn ein Voiceover vorhanden ist, füge es hinzu
   if (TEMPLATE_DATA.voiceoverId) {
@@ -294,42 +358,77 @@ async function generateFinalVideo() {
         `voiceovers/voiceover_${TEMPLATE_DATA.voiceoverId}.mp3`
       ];
       
-      let voiceoverDownloaded = false;
+      // Check if voiceover file exists in S3 before attempting to download
+      let voiceoverExists = false;
+      let existingVoiceoverKey = '';
       
-      // Versuche jeden möglichen Pfad
       for (const voiceoverKey of possiblePaths) {
         try {
-          console.log(`Attempting to download voiceover from S3 with key: ${voiceoverKey}`);
-          await downloadFromS3(voiceoverKey, voiceoverPath);
-          voiceoverDownloaded = true;
-          console.log(`Successfully downloaded voiceover from ${voiceoverKey}`);
+          console.log(`Checking if voiceover exists in S3: ${S3_BUCKET}/${voiceoverKey}`);
+          await s3Client.send(new HeadObjectCommand({
+            Bucket: S3_BUCKET,
+            Key: voiceoverKey
+          }));
+          voiceoverExists = true;
+          existingVoiceoverKey = voiceoverKey;
+          console.log(`Voiceover file found in S3: ${voiceoverKey}`);
           break;
         } catch (error) {
-          console.log(`Failed to download voiceover from ${voiceoverKey}: ${error.message}`);
+          console.log(`Voiceover not found at ${voiceoverKey}`);
         }
       }
       
-      if (!voiceoverDownloaded) {
-        throw new Error(`Could not find voiceover file for ID: ${TEMPLATE_DATA.voiceoverId}`);
+      if (!voiceoverExists) {
+        console.warn(`Voiceover file not found in S3 for ID: ${TEMPLATE_DATA.voiceoverId}`);
+        console.log('Continuing without voiceover');
+        return concatenatedFile;
+      }
+      
+      // Download the voiceover file
+      try {
+        console.log(`Downloading voiceover from S3: ${existingVoiceoverKey}`);
+        await downloadFromS3(existingVoiceoverKey, voiceoverPath);
+        console.log(`Successfully downloaded voiceover to ${voiceoverPath}`);
+        
+        // Verify the voiceover file exists and has content
+        if (!fs.existsSync(voiceoverPath) || fs.statSync(voiceoverPath).size === 0) {
+          throw new Error(`Downloaded voiceover file is empty or does not exist: ${voiceoverPath}`);
+        }
+      } catch (error) {
+        console.error(`Error downloading voiceover: ${error.message}`);
+        console.log('Continuing without voiceover due to download error');
+        return concatenatedFile;
       }
       
       const finalFile = path.join(OUTPUT_DIR, 'final.mp4');
       
       // FFmpeg-Befehl zum Hinzufügen des Voiceovers
       console.log('Adding voiceover to video...');
-      await runFFmpeg([
-        '-i', concatenatedFile,
-        '-i', voiceoverPath,
-        '-map', '0:v', // Video vom ersten Input
-        '-map', '1:a', // Audio vom zweiten Input
-        '-c:v', 'copy',
-        '-shortest',
-        '-y',
-        finalFile
-      ]);
-      
-      console.log('Successfully added voiceover to video');
-      return finalFile;
+      try {
+        await runFFmpeg([
+          '-i', concatenatedFile,
+          '-i', voiceoverPath,
+          '-map', '0:v', // Video vom ersten Input
+          '-map', '1:a', // Audio vom zweiten Input
+          '-c:v', 'copy',
+          '-shortest',
+          '-y',
+          finalFile
+        ]);
+        
+        console.log('Successfully added voiceover to video');
+        
+        // Verify the final file exists and has content
+        if (!fs.existsSync(finalFile) || fs.statSync(finalFile).size === 0) {
+          throw new Error(`Final file with voiceover is empty or does not exist: ${finalFile}`);
+        }
+        
+        return finalFile;
+      } catch (error) {
+        console.error(`Error adding voiceover to video: ${error.message}`);
+        console.log('Continuing with concatenated video without voiceover');
+        return concatenatedFile;
+      }
     } catch (voiceoverError) {
       console.error(`Error processing voiceover: ${voiceoverError.message}`);
       console.log('Continuing without voiceover due to error');
@@ -386,16 +485,28 @@ async function runFFmpeg(args) {
 async function uploadOutputFile(filePath) {
   console.log(`Uploading output file ${filePath} to S3 bucket ${S3_BUCKET} with key ${OUTPUT_KEY}`);
   
-  const fileContent = fs.readFileSync(filePath);
-  
-  const command = new PutObjectCommand({
-    Bucket: S3_BUCKET,
-    Key: OUTPUT_KEY,
-    Body: fileContent,
-    ContentType: 'video/mp4'
-  });
-  
   try {
+    // Verify the file exists and has content
+    if (!fs.existsSync(filePath)) {
+      throw new Error(`Output file does not exist: ${filePath}`);
+    }
+    
+    const fileStats = fs.statSync(filePath);
+    if (fileStats.size === 0) {
+      throw new Error(`Output file is empty: ${filePath}`);
+    }
+    
+    console.log(`Output file size: ${fileStats.size} bytes`);
+    
+    const fileContent = fs.readFileSync(filePath);
+    
+    const command = new PutObjectCommand({
+      Bucket: S3_BUCKET,
+      Key: OUTPUT_KEY,
+      Body: fileContent,
+      ContentType: 'video/mp4'
+    });
+    
     await s3Client.send(command);
     console.log(`Successfully uploaded output file to S3: s3://${S3_BUCKET}/${OUTPUT_KEY}`);
   } catch (error) {
