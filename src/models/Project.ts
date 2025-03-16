@@ -2,7 +2,7 @@ import mongoose, { Schema } from 'mongoose';
 import { IUser } from './User';
 
 export interface IProject {
-  userId: mongoose.Types.ObjectId | IUser;
+  userId: mongoose.Types.ObjectId | IUser | string;
   title: string;
   status: 'pending' | 'processing' | 'completed' | 'failed';
   segments: Array<{
@@ -24,8 +24,7 @@ export interface IProject {
 
 const ProjectSchema = new Schema<IProject>({
   userId: { 
-    type: Schema.Types.ObjectId, 
-    ref: 'User', 
+    type: Schema.Types.Mixed,
     required: true 
   },
   title: { 

@@ -140,8 +140,13 @@ export async function POST(request: Request) {
     // Erstelle ein neues Projekt
     let project;
     try {
+      console.log('Creating project with user ID:', {
+        type: typeof session.user.id,
+        value: session.user.id
+      });
+      
       project = await ProjectModel.create({
-        userId: session.user.id,
+        userId: String(session.user.id),
         title,
         status: 'pending',
         segments: segments.map(segment => ({
@@ -187,6 +192,10 @@ export async function POST(request: Request) {
       };
       
       console.log('Preparing workflow data:', JSON.stringify(workflowData, null, 2));
+      console.log('User ID type and value:', {
+        type: typeof session.user.id,
+        value: session.user.id
+      });
       
       // Verwende die direkte Methode, um den Workflow zu starten
       const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || 'https://ad-video-generator.vercel.app').replace(/\/+$/, '');

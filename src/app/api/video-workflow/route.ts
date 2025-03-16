@@ -184,10 +184,25 @@ export async function POST(request: NextRequest) {
         
         if (project.userId !== userId) {
           console.error(`Project belongs to user ${project.userId}, but request is from user ${userId}`);
-          return NextResponse.json(
-            { error: 'No permission to access this project', projectId: data.projectId },
-            { status: 403 }
-          );
+          console.log('User ID types:', {
+            projectUserIdType: typeof project.userId,
+            projectUserId: project.userId,
+            authUserIdType: typeof userId,
+            authUserId: userId
+          });
+          
+          // Versuche, die IDs als Strings zu vergleichen
+          const projectUserIdStr = String(project.userId);
+          const authUserIdStr = String(userId);
+          
+          if (projectUserIdStr === authUserIdStr) {
+            console.log('User IDs match when compared as strings');
+          } else {
+            return NextResponse.json(
+              { error: 'No permission to access this project', projectId: data.projectId },
+              { status: 403 }
+            );
+          }
         }
         
         console.log(`Found project: ${project._id}, title: ${project.title}`);
@@ -222,8 +237,13 @@ export async function POST(request: NextRequest) {
     try {
       if (!project) {
         // Erstelle ein neues Projekt
+        console.log('Creating new project with user ID:', {
+          type: typeof userId,
+          value: userId
+        });
+        
         project = new ProjectModel({
-          userId,
+          userId: String(userId), // Stelle sicher, dass die userId als String gespeichert wird
           title: data.title,
           description: data.description || '',
           status: 'pending',
