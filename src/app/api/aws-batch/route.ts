@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { BatchClient, SubmitJobCommand, DescribeJobsCommand } from '@aws-sdk/client-batch';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
+import { BatchJobTypes } from '@/utils/aws-batch-utils';
 
 // Konfiguriere AWS Batch-Client
 const batchClient = new BatchClient({
@@ -12,40 +13,89 @@ const batchClient = new BatchClient({
   }
 });
 
-// Gültige Job-Typen
-const validJobTypes = ['trim', 'concat', 'voiceover', 'generate-final'];
+// Validiere die erforderlichen Umgebungsvariablen
+function validateEnvironment() {
+  const requiredEnvVars = [
+    'AWS_REGION',
+    'AWS_ACCESS_KEY_ID',
+    'AWS_SECRET_ACCESS_KEY',
+    'AWS_BATCH_JOB_QUEUE',
+    'AWS_BATCH_JOB_DEFINITION',
+    'S3_BUCKET_NAME'
+  ];
+
+  const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
+  if (missingVars.length > 0) {
+    throw new Error(`Missing required environment variables: ${missingVars.join(', ')}`);
+  }
+}
 
 /**
  * Verarbeitet POST-Anfragen zum Starten von AWS Batch-Jobs für Videobearbeitung
  */
 export async function POST(request: NextRequest) {
   try {
+    // Validiere Umgebungsvariablen
+    validateEnvironment();
+
     // Authentifizierung prüfen
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
+      console.error('Unauthorized: No session or user ID');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     // Extrahiere JSON-Daten aus der Anfrage
-    const data = await request.json();
+    let data;
+    try {
+      data = await request.json();
+      console.log('Received job request:', JSON.stringify(data, null, 2));
+    } catch (error) {
+      console.error('Failed to parse request data:', error);
+      return NextResponse.json({
+        error: 'Invalid request data',
+        details: error instanceof Error ? error.message : 'Failed to parse JSON'
+      }, { status: 400 });
+    }
+
     const { jobType, inputVideoUrl, outputKey, additionalParams } = data;
 
+    // Validiere erforderliche Parameter
     if (!jobType || !inputVideoUrl) {
+      console.error('Missing required parameters:', { jobType, inputVideoUrl });
       return NextResponse.json(
-        { error: 'Missing parameters: jobType and inputVideoUrl are required' },
+        { 
+          error: 'Missing parameters: jobType and inputVideoUrl are required',
+          details: {
+            missingParams: {
+              jobType: !jobType,
+              inputVideoUrl: !inputVideoUrl
+            }
+          }
+        },
         { status: 400 }
       );
     }
 
+    // Validiere Job-Typ
+    const validJobTypes = Object.values(BatchJobTypes);
     if (!validJobTypes.includes(jobType)) {
+      console.error('Invalid job type:', jobType);
       return NextResponse.json(
-        { error: `Invalid jobType. Allowed types: ${validJobTypes.join(', ')}` },
+        { 
+          error: 'Invalid job type',
+          details: {
+            provided: jobType,
+            allowed: validJobTypes
+          }
+        },
         { status: 400 }
       );
     }
 
     // Generiere einen eindeutigen Job-Namen
     const jobName = `video-${jobType}-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    console.log('Generated job name:', jobName);
 
     // Bereite die Umgebungsvariablen für den Container vor
     const environment = [
@@ -71,6 +121,8 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    console.log('Prepared environment variables:', environment);
+
     // Erstelle den AWS Batch Job Command
     const command = new SubmitJobCommand({
       jobName,
@@ -84,20 +136,33 @@ export async function POST(request: NextRequest) {
     });
 
     // Sende den Job an AWS Batch
-    const response = await batchClient.send(command);
-    console.log('AWS Batch job submitted:', { jobId: response.jobId, jobName });
+    let jobResponse;
+    try {
+      jobResponse = await batchClient.send(command);
+      console.log('AWS Batch job submitted:', { jobId: jobResponse.jobId, jobName });
+    } catch (error) {
+      console.error('AWS Batch API error:', error);
+      return NextResponse.json({
+        error: 'Failed to submit job to AWS Batch',
+        details: error instanceof Error ? error.message : 'Unknown AWS Batch error'
+      }, { status: 500 });
+    }
 
     // Gebe die Antwort mit der Job-ID zurück
     return NextResponse.json({
-      jobId: response.jobId,
+      jobId: jobResponse.jobId,
       jobName,
       status: 'submitted',
       message: 'Video processing job submitted to AWS Batch'
     });
   } catch (error) {
-    console.error('Error starting AWS Batch job:', error);
+    console.error('Unhandled error in AWS Batch job submission:', error);
     return NextResponse.json(
-      { error: 'Failed to start video processing job', details: error instanceof Error ? error.message : String(error) },
+      { 
+        error: 'Failed to start video processing job',
+        details: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined
+      },
       { status: 500 }
     );
   }
@@ -108,9 +173,13 @@ export async function POST(request: NextRequest) {
  */
 export async function GET(request: NextRequest) {
   try {
+    // Validiere Umgebungsvariablen
+    validateEnvironment();
+
     // Authentifizierung prüfen
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
+      console.error('Unauthorized: No session or user ID');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -118,21 +187,35 @@ export async function GET(request: NextRequest) {
     const jobId = searchParams.get('jobId');
 
     if (!jobId) {
+      console.error('Missing jobId parameter');
       return NextResponse.json(
         { error: 'Missing parameter: jobId is required' },
         { status: 400 }
       );
     }
 
-    // Beschreibe den Job
-    const command = new DescribeJobsCommand({
-      jobs: [jobId]
-    });
+    console.log('Fetching status for job:', jobId);
 
-    const response = await batchClient.send(command);
-    const job = response.jobs?.[0];
+    // Beschreibe den Job
+    let jobStatusResponse;
+    try {
+      const command = new DescribeJobsCommand({
+        jobs: [jobId]
+      });
+
+      jobStatusResponse = await batchClient.send(command);
+    } catch (error) {
+      console.error('AWS Batch API error:', error);
+      return NextResponse.json({
+        error: 'Failed to fetch job status from AWS Batch',
+        details: error instanceof Error ? error.message : 'Unknown AWS Batch error'
+      }, { status: 500 });
+    }
+
+    const job = jobStatusResponse.jobs?.[0];
 
     if (!job) {
+      console.error('Job not found:', jobId);
       return NextResponse.json(
         { error: 'Job not found' },
         { status: 404 }
@@ -174,7 +257,7 @@ export async function GET(request: NextRequest) {
         break;
     }
 
-    return NextResponse.json({
+    const jobStatus = {
       jobId: job.jobId,
       jobName: job.jobName,
       status: job.status?.toLowerCase(),
@@ -184,11 +267,19 @@ export async function GET(request: NextRequest) {
       exitCode: job.container?.exitCode,
       reason: job.container?.reason,
       error: job.statusReason
-    });
+    };
+
+    console.log('Job status:', jobStatus);
+
+    return NextResponse.json(jobStatus);
   } catch (error) {
-    console.error('Error fetching AWS Batch job status:', error);
+    console.error('Unhandled error in job status fetch:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch job status', details: error instanceof Error ? error.message : String(error) },
+      { 
+        error: 'Failed to fetch job status',
+        details: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined
+      },
       { status: 500 }
     );
   }
