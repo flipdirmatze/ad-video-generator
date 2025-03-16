@@ -5,6 +5,7 @@ import { ArrowUpTrayIcon, XMarkIcon, TagIcon, ArrowRightIcon, CheckCircleIcon, F
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
+import { v4 as uuidv4 } from 'uuid'
 
 // Definiere den Typ für hochgeladene Videos
 type UploadedVideo = {
@@ -61,17 +62,13 @@ export default function UploadPage() {
   
   // Funktion zum Abrufen einer signierten URL für die Videowiedergabe
   const getVideoPlaybackUrl = useCallback(async (video: UploadedVideo): Promise<string> => {
-    console.log(`Getting playback URL for video: ${video.name}, id: ${video.id}`);
-    
     // Wenn es bereits eine Playback-URL gibt, diese verwenden
     if (videoPlaybackUrls[video.id]) {
-      console.log(`Using cached URL for ${video.name}`);
       return videoPlaybackUrls[video.id];
     }
     
     // Für lokale Video-URLs (blob:) einfach die Original-URL verwenden
     if (video.url.startsWith('blob:')) {
-      console.log(`Using blob URL directly for ${video.name}`);
       return video.url;
     }
     
@@ -82,94 +79,119 @@ export default function UploadPage() {
       // Versuch 1: Verwende den expliziten Key, falls vorhanden
       if (video.key) {
         key = video.key;
-        console.log(`Using explicit key for ${video.name}: ${key}`);
       } 
       // Versuch 2: Falls video.name "1.mp4" oder "2.mp4" Format hat, präfixe mit "uploads/"
       else if (video.name && /^\d+\.mp4$/.test(video.name)) {
         key = `uploads/${video.name}`;
-        console.log(`Using uploads/${video.name} as key for ${video.name}`);
       }
       // Versuch 3: Extrahiere aus dem Dateinamen, falls einfacher Name
       else if (video.name && !video.name.includes('/') && !video.name.includes(':')) {
         // Stelle sicher, dass der Schlüssel mit 'uploads/' beginnt
         key = video.name.startsWith('uploads/') ? video.name : `uploads/${video.name}`;
-        console.log(`Using filename as key for ${video.name}: ${key}`);
       }
       // Versuch 4: Extrahiere aus der URL
       else if (video.url.includes('amazonaws.com')) {
         const urlParts = video.url.split('.amazonaws.com/');
         if (urlParts.length > 1) {
           key = urlParts[1];
-          console.log(`Extracted key from URL for ${video.name}: ${key}`);
         }
       }
       
       if (!key) {
-        console.warn(`Could not determine key for ${video.name}, using video-proxy with filename`);
         // Fallback: Verwende den Dateinamen als Key
         key = `uploads/${video.name}`;
       }
       
-      // IMMER den Video-Proxy verwenden, auch wenn wir keinen Key haben
-      // Encode den Key für die URL
-      const encodedKey = encodeURIComponent(key);
+      // Verwende die direkte S3-URL als Fallback, falls die signierte URL fehlschlägt
+      const region = process.env.NEXT_PUBLIC_AWS_REGION || 'eu-central-1';
+      const bucket = process.env.NEXT_PUBLIC_S3_BUCKET_NAME || 'ad-video-generator-bucket';
+      const fallbackUrl = `https://${bucket}.s3.${region}.amazonaws.com/${key}`;
       
-      // Erstelle die Proxy-URL
-      const proxyUrl = `/api/video-proxy/${encodedKey}`;
-      console.log(`Using video proxy for ${video.name}: ${proxyUrl}`);
-      
-      // Speichere die URL im Cache
-      setVideoPlaybackUrls(prev => ({
-        ...prev,
-        [video.id]: proxyUrl
-      }));
-      
-      return proxyUrl;
+      // Verwende die API für signierte URLs
+      try {
+        const response = await fetch(`/api/get-signed-url?key=${encodeURIComponent(key)}`);
+        
+        if (!response.ok) {
+          throw new Error(`Failed to get signed URL: ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        
+        if (!data.success || !data.url) {
+          throw new Error('Invalid response from signed URL endpoint');
+        }
+        
+        // Speichere die URL im Cache
+        setVideoPlaybackUrls(prev => ({
+          ...prev,
+          [video.id]: data.url
+        }));
+        
+        return data.url;
+      } catch (e) {
+        // Bei Fehler: Fallback-URL verwenden und im Cache speichern
+        setVideoPlaybackUrls(prev => ({
+          ...prev,
+          [video.id]: fallbackUrl
+        }));
+        
+        return fallbackUrl;
+      }
     } catch (e) {
-      console.warn(`Failed to get playback URL for video ${video.name}:`, e);
-      
-      // Auch im Fehlerfall den Video-Proxy verwenden
-      const fallbackKey = `uploads/${video.name}`;
-      const encodedKey = encodeURIComponent(fallbackKey);
-      const proxyUrl = `/api/video-proxy/${encodedKey}`;
-      
-      console.log(`Using fallback video proxy for ${video.name}: ${proxyUrl}`);
-      
-      setVideoPlaybackUrls(prev => ({
-        ...prev,
-        [video.id]: proxyUrl
-      }));
-      
-      return proxyUrl;
+      // Bei allgemeinem Fehler: Original-URL verwenden
+      return video.url;
     }
   }, [videoPlaybackUrls]);
   
-  // Vorbereiten der Videowiedergabe beim Laden der Seite
+  // Vorbereiten der Videowiedergabe beim Laden der Seite - mit Optimierungen
   useEffect(() => {
+    // Begrenze die Anzahl der gleichzeitigen Anfragen
+    const MAX_CONCURRENT_REQUESTS = 2;
+    let isMounted = true;
+    
     const prepareVideoPlayback = async () => {
-      const newUrls: {[key: string]: string} = {};
-      for (const video of allVideos) {
-        if (!videoPlaybackUrls[video.id]) {
+      const videosWithoutUrls = allVideos.filter(video => !videoPlaybackUrls[video.id]);
+      
+      // Verarbeite Videos in Batches, um die Anzahl der gleichzeitigen Anfragen zu begrenzen
+      for (let i = 0; i < videosWithoutUrls.length; i += MAX_CONCURRENT_REQUESTS) {
+        if (!isMounted) return;
+        
+        const batch = videosWithoutUrls.slice(i, i + MAX_CONCURRENT_REQUESTS);
+        const newUrls: {[key: string]: string} = {};
+        
+        await Promise.all(batch.map(async (video) => {
           try {
             const url = await getVideoPlaybackUrl(video);
-            newUrls[video.id] = url;
+            if (isMounted) {
+              newUrls[video.id] = url;
+            }
           } catch (e) {
-            console.error(`Error preparing video playback for ${video.name}:`, e);
+            console.error(`Error preparing video playback for ${video.name}`);
           }
-        }
-      }
-      
-      if (Object.keys(newUrls).length > 0) {
-        setVideoPlaybackUrls(prev => ({
-          ...prev,
-          ...newUrls
         }));
+        
+        if (isMounted && Object.keys(newUrls).length > 0) {
+          setVideoPlaybackUrls(prev => ({
+            ...prev,
+            ...newUrls
+          }));
+        }
+        
+        // Kurze Pause zwischen den Batches, um den Browser nicht zu überlasten
+        if (i + MAX_CONCURRENT_REQUESTS < videosWithoutUrls.length) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
       }
     };
     
     if (allVideos.length > 0) {
       prepareVideoPlayback();
     }
+    
+    // Cleanup-Funktion
+    return () => {
+      isMounted = false;
+    };
   }, [allVideos, videoPlaybackUrls, getVideoPlaybackUrl]);
   
   // HOOK 3: Aspektverhältnisse verwalten
@@ -190,7 +212,26 @@ export default function UploadPage() {
       // Nur ausführen, wenn das Video noch nicht verarbeitet wurde
       if (!videoAspectRatios[video.id]) {
         const videoEl = document.createElement('video');
+        
+        // Wichtig: Cleanup-Funktion hinzufügen
+        const cleanup = () => {
+          videoEl.src = '';
+          videoEl.load();
+          videoEl.remove(); // Entferne das Element vollständig
+        };
+        
+        // Timeout für den Fall, dass das Video nicht geladen werden kann
+        const timeoutId = setTimeout(() => {
+          cleanup();
+          // Standard-Format verwenden
+          setVideoAspectRatios(prev => {
+            if (prev[video.id]) return prev;
+            return { ...prev, [video.id]: 'horizontal' };
+          });
+        }, 5000); // 5 Sekunden Timeout
+        
         videoEl.onloadedmetadata = () => {
+          clearTimeout(timeoutId);
           const aspectRatio = videoEl.videoWidth / videoEl.videoHeight;
           const format = aspectRatio < 0.8 ? 'vertical' : aspectRatio > 1.3 ? 'horizontal' : 'square';
           
@@ -199,14 +240,21 @@ export default function UploadPage() {
             if (prev[video.id] === format) return prev;
             return { ...prev, [video.id]: format };
           });
+          
+          // Cleanup nach Verarbeitung
+          cleanup();
         };
         
         videoEl.onerror = () => {
+          clearTimeout(timeoutId);
           // Bei Fehler: Standard-Format verwenden
           setVideoAspectRatios(prev => {
             if (prev[video.id]) return prev;
             return { ...prev, [video.id]: 'horizontal' };
           });
+          
+          // Cleanup nach Fehler
+          cleanup();
         };
         
         videoEl.src = video.url;
@@ -434,20 +482,25 @@ export default function UploadPage() {
     interval = setInterval(() => {
       // Exponentielles Fortschrittsmodell - schnell am Anfang, langsamer am Ende
       if (progress < 30) {
-        progress += Math.random() * 10; // Schneller am Anfang
+        progress += Math.random() * 5; // Langsamer als vorher
       } else if (progress < 70) {
-        progress += Math.random() * 5; // Mittlere Geschwindigkeit
-      } else if (progress < 95) {
-        progress += Math.random() * 2; // Langsamer gegen Ende
+        progress += Math.random() * 3; // Langsamer als vorher
+      } else if (progress < 90) {
+        progress += Math.random() * 1; // Langsamer als vorher
       } else {
-        // Ab 95% stoppt der simulierte Fortschritt und wartet auf die tatsächliche Fertigstellung
-        clearInterval(interval!);
-        interval = null;
-        return;
+        // Ab 90% stoppt der simulierte Fortschritt und wartet auf die tatsächliche Fertigstellung
+        progress += Math.random() * 0.5; // Sehr langsam bis 100%
       }
       
-      setUploadProgress(prev => ({ ...prev, [videoId]: Math.min(Math.floor(progress), 95) }));
-    }, 300);
+      // Begrenze den Fortschritt auf 99%, die letzten 1% werden nach erfolgreichem Upload gesetzt
+      setUploadProgress(prev => ({ ...prev, [videoId]: Math.min(Math.floor(progress), 99) }));
+      
+      // Wenn wir 99% erreicht haben, Interval stoppen
+      if (progress >= 99) {
+        clearInterval(interval!);
+        interval = null;
+      }
+    }, 500); // Längeres Interval für weniger CPU-Last
 
     return stopSimulation;
   };
@@ -455,84 +508,102 @@ export default function UploadPage() {
   const handleFiles = async (files: FileList) => {
     setError(null)
     
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
+    // Begrenze die Anzahl der gleichzeitigen Uploads
+    const MAX_CONCURRENT_UPLOADS = 2;
+    const filesToUpload = Array.from(files);
+    
+    // Verarbeite Dateien in Batches, um die Anzahl der gleichzeitigen Uploads zu begrenzen
+    for (let i = 0; i < filesToUpload.length; i += MAX_CONCURRENT_UPLOADS) {
+      const batch = filesToUpload.slice(i, i + MAX_CONCURRENT_UPLOADS);
       
-      // Check if file is a video
-      if (!file.type.startsWith('video/')) {
-        setError('Only video files are allowed.')
-        continue
-      }
-      
-      // Check file size
-      if (file.size > MAX_FILE_SIZE) {
-        setError(`File ${file.name} is too large. Maximum size is 500MB.`)
-        continue
-      }
-      
-      // Create object URL for the file (für lokale Vorschau)
-      const url = URL.createObjectURL(file)
-      
-      // Generate a unique ID for the video
-      const videoId = crypto.randomUUID()
-      
-      // Erstelle ein temporäres Video-Objekt für optimistisches UI
-      const newVideo: UploadedVideo = {
-        id: videoId,
-        name: file.name,
-        size: file.size,
-        type: file.type,
-        url: url,
-        tags: []
-      }
-      
-      // Füge das Video zu pendingUploads hinzu (optimistisches UI)
-      setPendingUploads(prev => [...prev, newVideo])
-      
-      // Set this video as uploading
-      setIsUploading(prev => ({ ...prev, [videoId]: true }))
-      setUploadProgress(prev => ({ ...prev, [videoId]: 0 }))
-      
-      // Starte die Fortschrittsanzeigen-Simulation
-      const stopSimulation = simulateProgress(videoId);
-      
-      // Direkt zu S3 hochladen
-      try {
-        // Lege eine Timeout-Funktion an, die den Upload nach einer bestimmten Zeit (z.B. 60 Sekunden) als fehlgeschlagen markiert
-        const uploadTimeoutId = setTimeout(() => {
-          console.error(`Upload timeout for ${file.name}`);
-          setError(`Upload timeout for ${file.name}. Please try again or use a smaller file.`);
+      // Warte, bis alle Uploads in diesem Batch abgeschlossen sind
+      await Promise.all(batch.map(async (file) => {
+        // Check if file is a video
+        if (!file.type.startsWith('video/')) {
+          setError('Only video files are allowed.')
+          return;
+        }
+        
+        // Check file size
+        if (file.size > MAX_FILE_SIZE) {
+          setError(`File ${file.name} is too large. Maximum size is 500MB.`)
+          return;
+        }
+        
+        // Create object URL for the file (für lokale Vorschau)
+        const url = URL.createObjectURL(file)
+        
+        // Generate a unique ID for the video
+        const videoId = crypto.randomUUID()
+        
+        // Erstelle ein temporäres Video-Objekt für optimistisches UI
+        const newVideo: UploadedVideo = {
+          id: videoId,
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          url: url,
+          tags: []
+        }
+        
+        // Füge das Video zu pendingUploads hinzu (optimistisches UI)
+        setPendingUploads(prev => [...prev, newVideo])
+        
+        // Set this video as uploading
+        setIsUploading(prev => ({ ...prev, [videoId]: true }))
+        setUploadProgress(prev => ({ ...prev, [videoId]: 0 }))
+        
+        // Starte die Fortschrittsanzeigen-Simulation
+        const stopSimulation = simulateProgress(videoId);
+        
+        // Direkt zu S3 hochladen
+        try {
+          // Lege eine Timeout-Funktion an, die den Upload nach einer bestimmten Zeit als fehlgeschlagen markiert
+          const uploadTimeoutId = setTimeout(() => {
+            console.error(`Upload timeout for ${file.name}`);
+            setError(`Upload timeout for ${file.name}. Please try again or use a smaller file.`);
+            stopSimulation();
+            setIsUploading(prev => ({ ...prev, [videoId]: false }));
+            setPendingUploads(prev => prev.filter(video => video.id !== videoId));
+            
+            // Bereinige den Object URL
+            URL.revokeObjectURL(url);
+          }, 120000); // 2 Minuten Timeout (erhöht von 60 Sekunden)
+          
+          // Verwende die uploadToS3-Funktion und entferne die doppelte Implementierung
+          const { key, fileUrl } = await uploadToS3(file, videoId);
+          
+          // Lösche den Timeout, da der Upload erfolgreich war
+          clearTimeout(uploadTimeoutId);
+          
+          // Stoppe die Simulation und setze den Fortschritt auf 100%
           stopSimulation();
-          setIsUploading(prev => ({ ...prev, [videoId]: false }));
+          
+          // Aktualisiere die Video-Liste vom Server nach einer kurzen Verzögerung
+          setTimeout(async () => {
+            await refreshVideos();
+            setIsUploading(prev => ({ ...prev, [videoId]: false }));
+            
+            // Bereinige den Object URL nach erfolgreichem Upload
+            URL.revokeObjectURL(url);
+          }, 500);
+        } catch (error) {
+          console.error('Error uploading file:', error)
+          setError(`Failed to upload ${file.name}. ${error instanceof Error ? error.message : ''}`)
+          
+          // Entferne das Video aus pendingUploads bei Fehler
           setPendingUploads(prev => prev.filter(video => video.id !== videoId));
-        }, 60000); // 60 Sekunden Timeout
-        
-        const { key, fileUrl } = await uploadToS3(file, videoId);
-        
-        // Lösche den Timeout, da der Upload erfolgreich war
-        clearTimeout(uploadTimeoutId);
-        
-        // Stoppe die Simulation und setze den Fortschritt auf 100%
-        stopSimulation();
-        
-        // Aktualisiere die Video-Liste vom Server nach einer kurzen Verzögerung
-        setTimeout(async () => {
-          await refreshVideos();
-          setIsUploading(prev => ({ ...prev, [videoId]: false }));
-        }, 500);
-      } catch (error) {
-        console.error('Error uploading file:', error)
-        setError(`Failed to upload ${file.name}. ${error instanceof Error ? error.message : ''}`)
-        
-        // Entferne das Video aus pendingUploads bei Fehler
-        setPendingUploads(prev => prev.filter(video => video.id !== videoId));
-        
-        // Stoppe die Simulation
-        stopSimulation();
-        
-        // Mark as no longer uploading
-        setIsUploading(prev => ({ ...prev, [videoId]: false }))
-      }
+          
+          // Stoppe die Simulation
+          stopSimulation();
+          
+          // Mark as no longer uploading
+          setIsUploading(prev => ({ ...prev, [videoId]: false }))
+          
+          // Bereinige den Object URL bei Fehler
+          URL.revokeObjectURL(url);
+        }
+      }));
     }
   }
 
@@ -713,6 +784,23 @@ export default function UploadPage() {
     }
   }
 
+  // Funktion zum Behandeln von Upload-Fehlern
+  const handleUploadError = useCallback((videoId: string, errorMessage: string) => {
+    // Fehler setzen
+    setError(`Upload-Fehler: ${errorMessage}`);
+    
+    // Upload-Status zurücksetzen
+    setIsUploading(prev => ({ ...prev, [videoId]: false }));
+    
+    // Video aus den temporären Uploads entfernen
+    setPendingUploads(prev => prev.filter(v => v.id !== videoId));
+    
+    // Nach 5 Sekunden den Fehler zurücksetzen
+    setTimeout(() => {
+      setError(null);
+    }, 5000);
+  }, []);
+
   return (
     <main className="container py-12 md:py-20">
       <div className="max-w-6xl mx-auto">
@@ -787,7 +875,6 @@ export default function UploadPage() {
                 >
                   <video 
                     key={`video-${video.id}-${videoPlaybackUrls[video.id] ? 'signed' : 'original'}`}
-                    src={videoPlaybackUrls[video.id] || video.url}
                     className="w-full h-full object-contain"
                     controls
                     controlsList="nodownload"
@@ -797,65 +884,79 @@ export default function UploadPage() {
                     crossOrigin="anonymous" 
                     poster="/images/video-placeholder.svg"
                     onLoadStart={(e) => {
-                      console.log(`Starting to load video: ${video.name}`);
                       // Verbessere die Fallback-Strategie
                       const vidElement = e.target as HTMLVideoElement;
                       
-                      // Entferne alte Quellen, falls vorhanden
-                      while (vidElement.firstChild) {
-                        vidElement.removeChild(vidElement.firstChild);
+                      try {
+                        // Entferne alte Quellen, falls vorhanden
+                        while (vidElement.firstChild) {
+                          vidElement.removeChild(vidElement.firstChild);
+                        }
+                        
+                        // Verwende die signierte URL aus dem Cache
+                        const playbackUrl = videoPlaybackUrls[video.id] || video.url;
+                        
+                        // Erstelle die primäre Quelle
+                        const primarySource = document.createElement('source');
+                        primarySource.src = playbackUrl;
+                        primarySource.type = 'video/mp4';
+                        vidElement.appendChild(primarySource);
+                        
+                        // Setze auch die direkte src als Backup
+                        vidElement.src = playbackUrl;
+                      } catch (error) {
+                        console.error(`Error setting up video source for ${video.name}:`, error);
                       }
-                      
-                      // Primäre Quelle: Verwende den Video-Proxy
-                      let key = '';
-                      
-                      // Versuche, den Schlüssel zu bestimmen
-                      if (video.key) {
-                        key = video.key;
-                      } else if (/^\d+\.mp4$/.test(video.name)) {
-                        // Spezialfall für "1.mp4", "2.mp4" etc.
-                        key = `uploads/${video.name}`;
-                      } else {
-                        // Allgemeiner Fall
-                        key = video.name.startsWith('uploads/') ? video.name : `uploads/${video.name}`;
-                      }
-                      
-                      const encodedKey = encodeURIComponent(key);
-                      const proxyUrl = `/api/video-proxy/${encodedKey}`;
-                      
-                      // Erstelle die primäre Quelle
-                      const primarySource = document.createElement('source');
-                      primarySource.src = proxyUrl;
-                      primarySource.type = 'video/mp4';
-                      vidElement.appendChild(primarySource);
-                      
-                      // Setze auch die direkte src als Backup
-                      vidElement.src = proxyUrl;
                     }}
-                    onLoadedMetadata={() => console.log(`Metadata loaded for video: ${video.name}`)}
+                    onLoadedMetadata={() => {
+                      // Reduziere Konsolenausgaben
+                      // console.log(`Metadata loaded for video: ${video.name}`);
+                    }}
                     onError={(e) => {
-                      console.error(`Video playback error for ${video.name}:`, e);
-                      // KEIN Fallback auf Original-URL, da diese direkt zu S3 geht und 403 auslöst
                       const vidElement = e.target as HTMLVideoElement;
+                      console.error(`Error loading video: ${video.name}`);
                       
-                      // Zeige ein Fallback-Element bei Fehler
-                      vidElement.style.display = 'none';
-                      const parent = vidElement.parentElement;
-                      if (parent) {
-                        // Erstelle ein Fallback-Bild, wenn das Video nicht geladen werden kann
-                        const fallback = document.createElement('div');
-                        fallback.className = 'flex items-center justify-center w-full h-full bg-gray-900';
-                        fallback.innerHTML = `
-                          <div class="flex flex-col items-center text-center p-4">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 text-gray-500 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                            </svg>
-                            <span class="text-sm text-gray-400">Video kann nicht abgespielt werden</span>
-                            <span class="text-xs text-gray-500 mt-1">${video.name}</span>
-                            <span class="text-xs text-red-500 mt-1">Fehler: ${vidElement.error?.message || 'Unbekannter Fehler'}</span>
-                          </div>
-                        `;
-                        parent.appendChild(fallback);
+                      // Versuche es mit der direkten URL als Fallback
+                      if (video.url && !video.url.startsWith('blob:')) {
+                        try {
+                          // Entferne alte Quellen
+                          while (vidElement.firstChild) {
+                            vidElement.removeChild(vidElement.firstChild);
+                          }
+                          
+                          // Erstelle eine neue Quelle mit der direkten URL
+                          const directSource = document.createElement('source');
+                          directSource.src = video.url;
+                          directSource.type = 'video/mp4';
+                          vidElement.appendChild(directSource);
+                          
+                          // Setze auch die direkte src
+                          vidElement.src = video.url;
+                          
+                          // Wichtig: Video neu laden
+                          vidElement.load();
+                        } catch (error) {
+                          console.error(`Error setting up fallback source for ${video.name}:`, error);
+                          
+                          // Zeige ein Fallback-Element bei Fehler
+                          vidElement.style.display = 'none';
+                          const parent = vidElement.parentElement;
+                          if (parent) {
+                            // Erstelle ein Fallback-Bild, wenn das Video nicht geladen werden kann
+                            const fallback = document.createElement('div');
+                            fallback.className = 'flex items-center justify-center w-full h-full bg-gray-900';
+                            fallback.innerHTML = `
+                              <div class="flex flex-col items-center text-center p-4">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 text-gray-500 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                </svg>
+                                <span class="text-sm text-gray-400">Video kann nicht abgespielt werden</span>
+                                <span class="text-xs text-gray-500 mt-1">${video.name}</span>
+                              </div>
+                            `;
+                            parent.appendChild(fallback);
+                          }
+                        }
                       }
                     }}
                   />
@@ -870,7 +971,7 @@ export default function UploadPage() {
                         />
                       </div>
                       <p className="mt-2 text-white text-sm">
-                        Uploading... {uploadProgress[video.id]}%
+                        Uploading... {Math.floor(uploadProgress[video.id])}%
                       </p>
                     </div>
                   )}
