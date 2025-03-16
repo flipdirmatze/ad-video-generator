@@ -35,8 +35,8 @@
      "maxDuration": 10
    },
    "src/app/api/upload-video/route.ts": {
-     "maxDuration": 60,
-     "memory": 3008
+     "maxDuration": 10,
+     "memory": 1024
    }
  },
  "regions": ["fra1"]
