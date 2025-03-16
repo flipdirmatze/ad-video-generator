@@ -283,7 +283,11 @@ async function generateFinalVideo() {
       '-i', segment.file,
       '-ss', segment.startTime.toString(),
       '-t', segment.duration.toString(),
-      '-c', 'copy',
+      '-c:v', 'libx264', // Erzwinge Neucodierung mit H.264
+      '-preset', 'medium', // Guter Kompromiss zwischen Qualität und Geschwindigkeit
+      '-crf', '23', // Qualitätseinstellung
+      '-pix_fmt', 'yuv420p', // Standard-Pixelformat
+      '-movflags', '+faststart', // Optimiere für Web-Streaming
       '-y',
       outputFile
     ];
@@ -330,7 +334,11 @@ async function generateFinalVideo() {
       '-f', 'concat',
       '-safe', '0',
       '-i', concatFile,
-      '-c', 'copy',
+      '-c:v', 'libx264', // Erzwinge Neucodierung mit H.264
+      '-preset', 'medium', // Guter Kompromiss zwischen Qualität und Geschwindigkeit
+      '-crf', '23', // Qualitätseinstellung (niedrigere Werte = höhere Qualität)
+      '-pix_fmt', 'yuv420p', // Standard-Pixelformat für bessere Kompatibilität
+      '-movflags', '+faststart', // Optimiere für Web-Streaming
       '-y',
       concatenatedFile
     ]);
@@ -414,7 +422,11 @@ async function generateFinalVideo() {
           '-i', voiceoverPath,
           '-map', '0:v', // Video vom ersten Input
           '-map', '1:a', // Audio vom zweiten Input
-          '-c:v', 'copy',
+          '-c:v', 'libx264', // Erzwinge Neucodierung mit H.264
+          '-preset', 'medium', // Guter Kompromiss zwischen Qualität und Geschwindigkeit
+          '-crf', '23', // Qualitätseinstellung
+          '-pix_fmt', 'yuv420p', // Standard-Pixelformat
+          '-movflags', '+faststart', // Optimiere für Web-Streaming
           '-shortest',
           '-y',
           finalFile
