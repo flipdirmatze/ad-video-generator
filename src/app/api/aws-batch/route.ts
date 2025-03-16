@@ -227,13 +227,44 @@ export async function POST(request: NextRequest) {
         }
       });
       
+      // Log environment variables for debugging (excluding sensitive data)
+      const safeEnvironment = environment.map(env => {
+        // Don't log sensitive values
+        if (['AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY', 'BATCH_CALLBACK_SECRET'].includes(env.name)) {
+          return { name: env.name, value: '***REDACTED***' };
+        }
+        // Truncate long values
+        if (env.value && env.value.length > 100) {
+          return { name: env.name, value: `${env.value.substring(0, 100)}... (truncated, total length: ${env.value.length})` };
+        }
+        return env;
+      });
+      
+      console.log('Environment variables for job:', safeEnvironment);
+      
       jobResponse = await batchClient.send(command);
       console.log('AWS Batch job submitted successfully:', { jobId: jobResponse.jobId, jobName });
+      
+      // Add additional information to the response
+      const response = {
+        jobId: jobResponse.jobId,
+        jobName,
+        status: 'submitted',
+        message: 'Video processing job submitted to AWS Batch',
+        submittedAt: new Date().toISOString(),
+        // Include information about how to check job status
+        statusUrl: `/api/aws-batch?jobId=${jobResponse.jobId}`,
+        logsUrl: `/api/aws-batch-logs/${jobResponse.jobId}`
+      };
+      
+      return NextResponse.json(response);
     } catch (error) {
       console.error('AWS Batch API error:', error);
       
       // Detaillierte Fehlerinformationen
       let errorDetails = 'Unknown AWS Batch error';
+      let statusCode = 500;
+      
       if (error instanceof Error) {
         errorDetails = error.message;
         
@@ -244,24 +275,33 @@ export async function POST(request: NextRequest) {
           // Typensichere Behandlung des Metadata-Objekts
           const metadata = error as { $metadata?: { httpStatusCode?: number } };
           if (metadata.$metadata?.httpStatusCode) {
+            statusCode = metadata.$metadata.httpStatusCode;
             errorDetails += ` (Status: ${metadata.$metadata.httpStatusCode})`;
           }
+        }
+        
+        // Check for common AWS Batch errors
+        if (error.message.includes('The specified job definition does not exist')) {
+          errorDetails = `Job definition not found: ${process.env.AWS_BATCH_JOB_DEFINITION}`;
+          console.error('Job definition error:', {
+            definitionName: process.env.AWS_BATCH_JOB_DEFINITION,
+            region: process.env.AWS_REGION
+          });
+        } else if (error.message.includes('The specified job queue does not exist')) {
+          errorDetails = `Job queue not found: ${process.env.AWS_BATCH_JOB_QUEUE}`;
+          console.error('Job queue error:', {
+            queueName: process.env.AWS_BATCH_JOB_QUEUE,
+            region: process.env.AWS_REGION
+          });
         }
       }
       
       return NextResponse.json({
         error: 'Failed to submit job to AWS Batch',
-        details: errorDetails
-      }, { status: 500 });
+        details: errorDetails,
+        statusCode
+      }, { status: statusCode });
     }
-
-    // Gebe die Antwort mit der Job-ID zurück
-    return NextResponse.json({
-      jobId: jobResponse.jobId,
-      jobName,
-      status: 'submitted',
-      message: 'Video processing job submitted to AWS Batch'
-    });
   } catch (error) {
     console.error('Unhandled error in AWS Batch job submission:', error);
     return NextResponse.json(
