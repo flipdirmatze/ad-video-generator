@@ -1,137 +1,103 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { BatchClient, SubmitJobCommand } from '@aws-sdk/client-batch';
-
-// Validiere die erforderlichen Umgebungsvariablen
-const requiredEnvVars = [
-  'AWS_REGION',
-  'AWS_ACCESS_KEY_ID',
-  'AWS_SECRET_ACCESS_KEY',
-  'AWS_BATCH_JOB_DEFINITION',
-  'AWS_BATCH_JOB_QUEUE',
-  'S3_BUCKET_NAME'
-];
-
-const missingEnvVars = requiredEnvVars.filter(varName => !process.env[varName]);
-
-if (missingEnvVars.length > 0) {
-  console.error(`Fehlende Umgebungsvariablen: ${missingEnvVars.join(', ')}`);
-  throw new Error(`Fehlende Umgebungsvariablen: ${missingEnvVars.join(', ')}`);
-}
+import { BatchClient, SubmitJobCommand, DescribeJobsCommand } from '@aws-sdk/client-batch';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
 
 // Konfiguriere AWS Batch-Client
 const batchClient = new BatchClient({
-  region: process.env.AWS_REGION,
+  region: process.env.AWS_REGION || 'eu-central-1',
   credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || ''
   }
 });
+
+// Gültige Job-Typen
+const validJobTypes = ['trim', 'concat', 'voiceover', 'generate-final'];
 
 /**
  * Verarbeitet POST-Anfragen zum Starten von AWS Batch-Jobs für Videobearbeitung
  */
 export async function POST(request: NextRequest) {
   try {
+    // Authentifizierung prüfen
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     // Extrahiere JSON-Daten aus der Anfrage
     const data = await request.json();
     const { jobType, inputVideoUrl, outputKey, additionalParams } = data;
 
-    console.log('Starte AWS Batch Job mit Parametern:', {
-      jobType,
-      inputVideoUrl,
-      outputKey,
-      additionalParamsKeys: additionalParams ? Object.keys(additionalParams) : []
-    });
-
     if (!jobType || !inputVideoUrl) {
       return NextResponse.json(
-        { error: 'Fehlende Parameter: jobType und inputVideoUrl sind erforderlich' },
+        { error: 'Missing parameters: jobType and inputVideoUrl are required' },
         { status: 400 }
       );
     }
 
-    // Validiere die Job-Typen
-    const validJobTypes = ['concat', 'trim', 'add-voiceover', 'generate-final'];
     if (!validJobTypes.includes(jobType)) {
       return NextResponse.json(
-        { error: `Ungültiger jobType. Erlaubte Typen: ${validJobTypes.join(', ')}` },
+        { error: `Invalid jobType. Allowed types: ${validJobTypes.join(', ')}` },
         { status: 400 }
       );
     }
 
-    // Erstelle ein gemeinsames Umgebungsobjekt für den Job
-    const environmentVariables = [
+    // Generiere einen eindeutigen Job-Namen
+    const jobName = `video-${jobType}-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+
+    // Bereite die Umgebungsvariablen für den Container vor
+    const environment = [
       { name: 'JOB_TYPE', value: jobType },
       { name: 'INPUT_VIDEO_URL', value: inputVideoUrl },
-      { name: 'OUTPUT_BUCKET', value: process.env.S3_BUCKET_NAME },
-      { name: 'OUTPUT_KEY', value: outputKey || `processed/${Date.now()}-${jobType}.mp4` },
-      { name: 'AWS_REGION', value: process.env.AWS_REGION },
-      { name: 'BATCH_CALLBACK_URL', value: process.env.BATCH_CALLBACK_URL || '' },
-      { name: 'BATCH_CALLBACK_SECRET', value: process.env.BATCH_CALLBACK_SECRET || '' }
+      { name: 'USER_ID', value: session.user.id },
+      { name: 'S3_BUCKET', value: process.env.S3_BUCKET_NAME || '' },
+      { name: 'AWS_REGION', value: process.env.AWS_REGION || 'eu-central-1' }
     ];
 
-    // Füge alle zusätzlichen Parameter als Umgebungsvariablen hinzu
+    // Füge Output-Key hinzu, wenn vorhanden
+    if (outputKey) {
+      environment.push({ name: 'OUTPUT_KEY', value: outputKey });
+    }
+
+    // Füge zusätzliche Parameter hinzu
     if (additionalParams) {
       Object.entries(additionalParams).forEach(([key, value]) => {
-        environmentVariables.push({
-          name: key.toUpperCase(),
+        environment.push({
+          name: key,
           value: typeof value === 'string' ? value : JSON.stringify(value)
         });
       });
     }
 
-    // Verwende die Standard-Jobdefinition
-    const jobDefinition = process.env.AWS_BATCH_JOB_DEFINITION!;
-    const jobQueue = process.env.AWS_BATCH_JOB_QUEUE!;
-
-    // Erstelle einen eindeutigen Job-Namen
-    const jobName = `${jobType}-${Date.now()}`;
-
-    console.log('Sende AWS Batch Job mit Konfiguration:', {
-      jobName,
-      jobQueue,
-      jobDefinition,
-      environmentVariablesCount: environmentVariables.length
-    });
-
-    // Erstelle den Submit-Job-Befehl
+    // Erstelle den AWS Batch Job Command
     const command = new SubmitJobCommand({
       jobName,
-      jobQueue,
-      jobDefinition,
+      jobQueue: process.env.AWS_BATCH_JOB_QUEUE || '',
+      jobDefinition: process.env.AWS_BATCH_JOB_DEFINITION || '',
       containerOverrides: {
-        environment: environmentVariables
+        environment,
+        memory: 2048, // 2GB RAM
+        vcpus: 2     // 2 vCPUs
       }
     });
 
     // Sende den Job an AWS Batch
     const response = await batchClient.send(command);
-
-    console.log('AWS Batch Job erfolgreich gesendet:', {
-      jobId: response.jobId,
-      jobName
-    });
+    console.log('AWS Batch job submitted:', { jobId: response.jobId, jobName });
 
     // Gebe die Antwort mit der Job-ID zurück
     return NextResponse.json({
       jobId: response.jobId,
       jobName,
       status: 'submitted',
-      message: 'Video-Verarbeitungsjob wurde an AWS Batch gesendet'
+      message: 'Video processing job submitted to AWS Batch'
     });
   } catch (error) {
-    console.error('Fehler beim Starten des AWS Batch-Jobs:', error);
-    
-    // Detaillierte Fehlerinformationen
-    const errorMessage = error instanceof Error ? error.message : 'Unbekannter Fehler';
-    const errorStack = error instanceof Error ? error.stack : undefined;
-    
+    console.error('Error starting AWS Batch job:', error);
     return NextResponse.json(
-      { 
-        error: 'Fehler beim Starten des Video-Verarbeitungsjobs',
-        message: errorMessage,
-        stack: process.env.NODE_ENV === 'development' ? errorStack : undefined
-      },
+      { error: 'Failed to start video processing job', details: error instanceof Error ? error.message : String(error) },
       { status: 500 }
     );
   }
@@ -142,25 +108,83 @@ export async function POST(request: NextRequest) {
  */
 export async function GET(request: NextRequest) {
   try {
+    // Authentifizierung prüfen
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const jobId = searchParams.get('jobId');
 
     if (!jobId) {
       return NextResponse.json(
-        { error: 'Fehlender Parameter: jobId ist erforderlich' },
+        { error: 'Missing parameter: jobId is required' },
         { status: 400 }
       );
     }
 
-    // Hier würden wir den Status des Jobs von AWS Batch abrufen
+    // Beschreibe den Job
+    const command = new DescribeJobsCommand({
+      jobs: [jobId]
+    });
+
+    const response = await batchClient.send(command);
+    const job = response.jobs?.[0];
+
+    if (!job) {
+      return NextResponse.json(
+        { error: 'Job not found' },
+        { status: 404 }
+      );
+    }
+
+    // Berechne den Fortschritt basierend auf dem Status
+    let progress = 0;
+    switch (job.status) {
+      case 'SUBMITTED':
+        progress = 0;
+        break;
+      case 'PENDING':
+        progress = 5;
+        break;
+      case 'RUNNABLE':
+        progress = 10;
+        break;
+      case 'STARTING':
+        progress = 15;
+        break;
+      case 'RUNNING':
+        // Schätze den Fortschritt basierend auf der verstrichenen Zeit
+        const startedAt = job.startedAt ? new Date(job.startedAt).getTime() : Date.now();
+        const now = Date.now();
+        const elapsed = now - startedAt;
+        // Nehme an, dass ein Job etwa 5 Minuten dauert
+        progress = Math.min(90, Math.floor((elapsed / (5 * 60 * 1000)) * 100));
+        break;
+      case 'SUCCEEDED':
+        progress = 100;
+        break;
+      case 'FAILED':
+        progress = 0;
+        break;
+    }
+
     return NextResponse.json({
-      message: 'Diese Funktion ist noch nicht implementiert. Sie würde den Status des Jobs abrufen.',
-      jobId
+      jobId: job.jobId,
+      jobName: job.jobName,
+      status: job.status?.toLowerCase(),
+      progress,
+      startedAt: job.startedAt,
+      stoppedAt: job.stoppedAt,
+      exitCode: job.container?.exitCode,
+      reason: job.container?.reason,
+      error: job.statusReason
     });
   } catch (error) {
-    console.error('Fehler beim Abrufen des AWS Batch-Job-Status:', error);
+    console.error('Error fetching AWS Batch job status:', error);
     return NextResponse.json(
-      { error: 'Fehler beim Abrufen des Job-Status', details: (error as Error).message },
+      { error: 'Failed to fetch job status', details: error instanceof Error ? error.message : String(error) },
       { status: 500 }
     );
   }

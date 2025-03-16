@@ -1,163 +1,192 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
+import { v4 as uuidv4 } from 'uuid';
 import dbConnect from '@/lib/mongoose';
-import VideoModel from '@/models/Video';
-import JobModel from '@/models/Job';
 import ProjectModel from '@/models/Project';
+import VideoModel from '@/models/Video';
+import { getS3Url, generateUniqueFileName } from '@/lib/storage';
 import { submitAwsBatchJob } from '@/utils/aws-batch-utils';
-import { getSignedVideoUrl } from '@/lib/storage';
 
-// Typen für die Anfrage
-export type VideoSegment = {
+type VideoSegment = {
   videoId: string;
-  url: string;
   startTime: number;
   duration: number;
   position: number;
 };
 
-export type WorkflowRequest = {
-  segments: VideoSegment[];
-  voiceoverUrl?: string;
-  outputFileName: string;
+type WorkflowRequest = {
+  projectId?: string;
+  workflowType: string;
+  userId: string;
+  title: string;
+  description?: string;
+  voiceoverId?: string;
+  videos: {
+    id: string;
+    key: string;
+    segments: VideoSegment[];
+  }[];
+  options?: {
+    resolution?: string;
+    aspectRatio?: string;
+    addSubtitles?: boolean;
+    addWatermark?: boolean;
+    watermarkText?: string;
+    outputFormat?: string;
+  };
 };
 
 /**
- * Verarbeitet POST-Anfragen zum Starten eines Video-Workflows
+ * POST /api/video-workflow
+ * Startet einen neuen Workflow zur Erstellung eines Werbevideos
  */
 export async function POST(request: NextRequest) {
+  console.log('Starting new video workflow');
+  
   try {
-    // Überprüfe die Authentifizierung
+    // Authentifizierung prüfen
     const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: 'Nicht authentifiziert' }, { status: 401 });
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Extrahiere die Anfragedaten
+    const userId = session.user.id;
     const data: WorkflowRequest = await request.json();
-    const { segments, voiceoverUrl, outputFileName } = data;
-
-    console.log('Starte Video-Workflow mit:', {
-      segmentsCount: segments.length,
-      hasVoiceover: !!voiceoverUrl,
-      outputFileName
-    });
-
-    // Validiere die Anfrage
-    if (!segments || segments.length === 0) {
+    
+    // Grundlegende Validierung
+    if (!data.title || !data.videos || data.videos.length === 0) {
       return NextResponse.json(
-        { error: 'Keine Videosegmente angegeben' },
+        { error: 'Titel und mindestens ein Video sind erforderlich' },
         { status: 400 }
       );
     }
-
-    if (!outputFileName) {
-      return NextResponse.json(
-        { error: 'Kein Ausgabedateiname angegeben' },
-        { status: 400 }
-      );
-    }
-
-    // Verbinde zur Datenbank
+    
+    // Mit Datenbank verbinden
     await dbConnect();
-
-    // Überprüfe, ob alle Videos existieren
-    const videoIds = segments.map(segment => segment.videoId);
-    const videos = await VideoModel.find({
+    
+    // Prüfen, ob die angegebenen Videos existieren und dem Benutzer gehören
+    const videoIds = data.videos.map(v => v.id);
+    const videos = await VideoModel.find({ 
       _id: { $in: videoIds },
-      userId: session.user.id
-    }).lean();
-
-    if (videos.length !== segments.length) {
+      userId
+    });
+    
+    if (videos.length !== videoIds.length) {
+      const foundIds = videos.map(v => v._id.toString());
+      const missingIds = videoIds.filter(id => !foundIds.includes(id));
+      
       return NextResponse.json(
-        { error: 'Einige Videos wurden nicht gefunden' },
+        { error: 'Einige Videos wurden nicht gefunden oder gehören nicht dir', missingIds },
         { status: 404 }
       );
     }
-
-    // Generiere signierte URLs für alle Videos
-    const segmentsWithSignedUrls = await Promise.all(
-      segments.map(async segment => {
-        try {
-          const signedUrl = await getSignedVideoUrl(segment.videoId);
-          return {
-            ...segment,
-            url: signedUrl
-          };
-        } catch (error) {
-          console.error(`Fehler beim Generieren der signierten URL für Video ${segment.videoId}:`, error);
-          throw new Error(`Fehler beim Generieren der signierten URL für Video ${segment.videoId}`);
-        }
-      })
-    );
-
-    // Bereite die Segmente für die Verarbeitung vor
-    const processedSegments = segmentsWithSignedUrls.map(segment => ({
-      ...segment,
-      startTime: Number(segment.startTime) || 0,
-      duration: Number(segment.duration) || 0,
-      position: Number(segment.position) || 0
-    }));
-
-    // Sortiere die Segmente nach Position
-    processedSegments.sort((a, b) => a.position - b.position);
-
-    console.log('Verarbeite Segmente:', {
-      count: processedSegments.length,
-      firstSegment: processedSegments[0]?.videoId,
-      lastSegment: processedSegments[processedSegments.length - 1]?.videoId
-    });
-
-    // Starte den AWS Batch Job
-    const jobResult = await submitAwsBatchJob(
-      'generate-final',
-      processedSegments[0].url,
-      outputFileName,
-      {
-        VIDEO_SEGMENTS: JSON.stringify(processedSegments),
-        VOICEOVER_URL: voiceoverUrl || '',
-        USER_ID: session.user.id
+    
+    // Wenn eine projectId übergeben wurde, aktualisiere das bestehende Projekt
+    let project;
+    if (data.projectId) {
+      project = await ProjectModel.findById(data.projectId);
+      if (!project || project.userId !== userId) {
+        return NextResponse.json(
+          { error: 'Projekt nicht gefunden oder keine Berechtigung' },
+          { status: 404 }
+        );
       }
+    }
+    
+    // Ausgabedateinamen generieren
+    const outputFileName = generateUniqueFileName(`${data.title.toLowerCase().replace(/\s+/g, '-')}.mp4`);
+    const outputKey = `final/${userId}/${outputFileName}`;
+    
+    // Segmente aus den Videos extrahieren
+    const segments = data.videos.flatMap(video => 
+      video.segments.map(segment => ({
+        videoId: video.id,
+        videoKey: video.key,
+        startTime: segment.startTime,
+        duration: segment.duration,
+        position: segment.position
+      }))
     );
-
-    console.log('AWS Batch Job gestartet:', jobResult);
-
-    // Speichere den Job in der Datenbank
-    const job = new JobModel({
-      jobId: jobResult.jobId,
-      jobName: jobResult.jobName,
-      userId: session.user.id,
-      status: 'submitted',
-      segments: processedSegments,
-      voiceoverUrl,
-      outputFileName,
-      createdAt: new Date(),
-      updatedAt: new Date()
-    });
-
-    await job.save();
-
-    // Sende die Antwort
+    
+    // Sortiere die Segmente nach Position
+    segments.sort((a, b) => a.position - b.position);
+    
+    if (!project) {
+      // Erstelle ein neues Projekt
+      project = new ProjectModel({
+        userId,
+        title: data.title,
+        description: data.description || '',
+        status: 'pending',
+        segments,
+        voiceoverId: data.voiceoverId,
+        outputKey,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      });
+    } else {
+      // Aktualisiere das bestehende Projekt
+      project.segments = segments;
+      project.status = 'pending';
+      project.outputKey = outputKey;
+      project.updatedAt = new Date();
+      if (data.voiceoverId) project.voiceoverId = data.voiceoverId;
+    }
+    
+    await project.save();
+    
+    // Bereite die Job-Parameter vor
+    const jobParams: Record<string, string | number | boolean> = {
+      PROJECT_ID: project._id.toString(),
+      USER_ID: userId,
+      SEGMENTS: JSON.stringify(segments),
+      OUTPUT_KEY: outputKey
+    };
+    
+    // Füge optionale Parameter hinzu
+    if (data.voiceoverId) {
+      jobParams.VOICEOVER_ID = data.voiceoverId;
+    }
+    
+    if (data.options) {
+      if (data.options.resolution) jobParams.RESOLUTION = data.options.resolution;
+      if (data.options.aspectRatio) jobParams.ASPECT_RATIO = data.options.aspectRatio;
+      if (data.options.addSubtitles) jobParams.ADD_SUBTITLES = 'true';
+      if (data.options.addWatermark) {
+        jobParams.ADD_WATERMARK = 'true';
+        if (data.options.watermarkText) jobParams.WATERMARK_TEXT = data.options.watermarkText;
+      }
+      if (data.options.outputFormat) jobParams.OUTPUT_FORMAT = data.options.outputFormat;
+    }
+    
+    // Starte den Batch-Job
+    const { jobId, jobName } = await submitAwsBatchJob(
+      'generate-final',
+      segments[0].videoKey, // Erstes Video als Input
+      outputKey,
+      jobParams
+    );
+    
+    // Aktualisiere das Projekt mit den Job-Informationen
+    project.batchJobId = jobId;
+    project.batchJobName = jobName;
+    project.status = 'processing';
+    await project.save();
+    
     return NextResponse.json({
-      jobId: jobResult.jobId,
-      jobName: jobResult.jobName,
-      message: 'Video-Workflow wurde gestartet'
+      success: true,
+      message: 'Video generation started',
+      projectId: project._id.toString(),
+      jobId,
+      jobName,
+      status: 'processing',
+      estimatedTime: 'Your video will be ready in a few minutes'
     });
-
   } catch (error) {
-    console.error('Fehler im Video-Workflow:', error);
-    
-    // Detaillierte Fehlerinformationen
-    const errorMessage = error instanceof Error ? error.message : 'Unbekannter Fehler';
-    const errorStack = error instanceof Error ? error.stack : undefined;
-    
+    console.error('Error starting video workflow:', error);
     return NextResponse.json(
-      {
-        error: 'Fehler beim Starten des Video-Workflows',
-        message: errorMessage,
-        stack: process.env.NODE_ENV === 'development' ? errorStack : undefined
-      },
+      { error: 'Failed to start video workflow', details: error instanceof Error ? error.message : String(error) },
       { status: 500 }
     );
   }
@@ -204,37 +233,10 @@ export async function GET(request: NextRequest) {
     const project = await ProjectModel.findOne({ _id: projectId, userId });
     
     if (!project) {
-      return NextResponse.json({ error: 'Projekt nicht gefunden' }, { status: 404 });
-    }
-    
-    // Status des Batch-Jobs prüfen, falls im Verarbeitungsstatus
-    let progress = 0;
-    
-    if (project.status === 'processing' && project.batchJobId) {
-      try {
-        const statusResponse = await fetch(`/api/project-status/${project._id}`, {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        });
-        
-        if (statusResponse.ok) {
-          const statusData = await statusResponse.json();
-          if (statusData.progress) {
-            progress = statusData.progress;
-          }
-          
-          // Aktualisiere den Projektstatus, falls er sich geändert hat
-          if (statusData.status !== project.status) {
-            project.status = statusData.status;
-            await project.save();
-          }
-        }
-      } catch (error) {
-        console.error('Error fetching project status:', error);
-        // Ignoriere Fehler beim Abrufen des Status, behalte den aktuellen Status bei
-      }
+      return NextResponse.json(
+        { error: 'Project not found' },
+        { status: 404 }
+      );
     }
     
     return NextResponse.json({
@@ -242,12 +244,9 @@ export async function GET(request: NextRequest) {
       project: {
         id: project._id,
         title: project.title,
-        description: project.description,
         status: project.status,
-        progress, // 0-100
+        progress: project.progress || 0,
         outputUrl: project.outputUrl,
-        batchJobId: project.batchJobId,
-        batchJobName: project.batchJobName,
         error: project.error,
         createdAt: project.createdAt,
         updatedAt: project.updatedAt
@@ -256,7 +255,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('Error fetching workflow status:', error);
     return NextResponse.json(
-      { error: 'Fehler beim Abrufen des Workflow-Status', details: error instanceof Error ? error.message : String(error) },
+      { error: 'Failed to fetch workflow status', details: error instanceof Error ? error.message : String(error) },
       { status: 500 }
     );
   }

@@ -9,16 +9,6 @@
        "Access-Control-Allow-Headers": "Origin, X-Requested-With, Content-Type, Accept, Authorization",
        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, PATCH, OPTIONS"
      }
-   },
-   {
-     "src": "/api/upload-video",
-     "dest": "/api/upload-video",
-     "methods": ["POST"],
-     "headers": {
-       "Access-Control-Allow-Origin": "*",
-       "Access-Control-Allow-Headers": "Origin, X-Requested-With, Content-Type, Accept, Authorization",
-       "Access-Control-Allow-Methods": "POST"
-     }
    }
  ],
  "functions": {
@@ -33,11 +23,6 @@
    },
    "src/app/api/get-upload-url/route.ts": {
      "maxDuration": 10
-   },
-   "src/app/api/upload-video/route.ts": {
-     "maxDuration": 10,
-     "memory": 1024
    }
- },
- "regions": ["fra1"]
+ }
 }
