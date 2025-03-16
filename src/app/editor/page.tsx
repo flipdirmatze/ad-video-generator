@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect, useRef, useCallback } from 'react'
-import { ArrowLeftIcon, ArrowRightIcon, CheckCircleIcon, PlayIcon, PauseIcon, ArrowPathIcon, FilmIcon, SpeakerWaveIcon, ExclamationTriangleIcon, XMarkIcon, SparklesIcon, ClockIcon } from '@heroicons/react/24/outline'
+import { ArrowLeftIcon, ArrowRightIcon, CheckCircleIcon, PlayIcon, PauseIcon, ArrowPathIcon, FilmIcon, SpeakerWaveIcon, ExclamationTriangleIcon, XMarkIcon, SparklesIcon, ClockIcon, ArrowDownTrayIcon } from '@heroicons/react/24/outline'
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
@@ -46,6 +46,8 @@ export default function EditorPage() {
   const [isGenerating, setIsGenerating] = useState(false)
   const [isPlaying, setIsPlaying] = useState(false)
   const [generationProgress, setGenerationProgress] = useState(0)
+  const [videoDuration, setVideoDuration] = useState(0)
+  const [currentTime, setCurrentTime] = useState(0)
   
   // Content states
   const [voiceoverUrl, setVoiceoverUrl] = useState<string | null>(null)
@@ -184,9 +186,91 @@ export default function EditorPage() {
     if (typeof window === 'undefined') return;
     
     if (finalVideoUrl && finalVideoUrl !== 'generated') {
-      handleVideoEvents()
+      const setupVideoEvents = () => {
+        const videoElement = document.getElementById('finalVideo') as HTMLVideoElement;
+        if (!videoElement) return;
+        
+        videoElement.onloadedmetadata = () => {
+          setVideoDuration(videoElement.duration);
+        };
+        
+        videoElement.ontimeupdate = () => {
+          setCurrentTime(videoElement.currentTime);
+        };
+        
+        videoElement.onended = () => {
+          setIsPlaying(false);
+        };
+      };
+      
+      setupVideoEvents();
     }
   }, [finalVideoUrl])
+
+  // HOOK 5: Check project status and load video when ready
+  useEffect(() => {
+    if (!projectId || !jobId || !isGenerating) return;
+    
+    // Funktion zum Abrufen des Projekt-Status
+    const checkProjectStatus = async () => {
+      try {
+        const response = await fetch(`/api/project-status/${projectId}`);
+        if (!response.ok) {
+          console.error('Failed to fetch project status');
+          return;
+        }
+        
+        const data = await response.json();
+        console.log('Project status:', data);
+        
+        // Aktualisiere den Fortschritt
+        if (data.project && typeof data.project.progress === 'number') {
+          setGenerationProgress(data.project.progress);
+        }
+        
+        // Wenn das Projekt abgeschlossen ist, lade das Video
+        if (data.project && data.project.status === 'completed' && data.project.outputUrl) {
+          setFinalVideoUrl(data.project.outputUrl);
+          setIsGenerating(false);
+          
+          // Speichere die URL im localStorage
+          localStorage.setItem('finalVideoUrl', data.project.outputUrl);
+          
+          // Stoppe die Statusabfrage
+          return true;
+        }
+        
+        // Wenn das Projekt fehlgeschlagen ist, zeige einen Fehler an
+        if (data.project && data.project.status === 'failed') {
+          setError(`Fehler bei der Videogenerierung: ${data.project.error || 'Unbekannter Fehler'}`);
+          setIsGenerating(false);
+          return true;
+        }
+        
+        // Wenn das Projekt noch in Bearbeitung ist, fahre mit der Statusabfrage fort
+        return false;
+      } catch (error) {
+        console.error('Error checking project status:', error);
+        return false;
+      }
+    };
+    
+    // Initialer Check
+    checkProjectStatus();
+    
+    // Regelmäßiger Check alle 5 Sekunden
+    const intervalId = setInterval(async () => {
+      const isDone = await checkProjectStatus();
+      if (isDone) {
+        clearInterval(intervalId);
+      }
+    }, 5000);
+    
+    // Cleanup
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [projectId, jobId, isGenerating]);
 
   // ------------------- FUNCTIONS -------------------
   
@@ -414,12 +498,11 @@ export default function EditorPage() {
       setProjectId(responseData.projectId);
       setJobId(responseData.jobId);
       
-      // Die alten States aktualisieren, um Abwärtskompatibilität zu gewährleisten
-      setGenerationProgress(100);
-      setFinalVideoUrl('generated');
+      // Setze den Fortschritt auf 20%, da der Job jetzt gestartet wurde
+      setGenerationProgress(20);
       
-      // Erfolgsmeldung anzeigen
-      setError(null);
+      // Wir setzen isGenerating nicht zurück, da der Hook 5 den Status überwacht
+      // und automatisch isGenerating zurücksetzt, wenn das Video fertig ist
     } catch (error) {
       setError(`Fehler: ${error instanceof Error ? error.message : 'Unbekannter Fehler'}`);
       setIsGenerating(false);
@@ -706,12 +789,12 @@ export default function EditorPage() {
               {/* Final Video Preview */}
               {finalVideoUrl && (
                 <div className="bg-black/50 rounded-lg overflow-hidden border border-white/10">
-                  <div className="aspect-video relative">
+                  <div className="aspect-video relative flex items-center justify-center bg-black">
                     {finalVideoUrl === 'generated' ? (
                       <>
                         <canvas 
                           ref={canvasRef} 
-                          className="w-full h-full"
+                          className="max-w-full max-h-full object-contain"
                           onClick={togglePlay}
                         />
                         <div 
@@ -727,13 +810,34 @@ export default function EditorPage() {
                       </>
                     ) : (
                       <video 
+                        id="finalVideo"
                         ref={videoRef}
                         src={finalVideoUrl} 
                         controls
-                        className="w-full h-full" 
+                        className="w-full h-full object-contain" 
+                        playsInline
                       />
                     )}
                   </div>
+                  
+                  {/* Video Controls and Download Button */}
+                  {finalVideoUrl && finalVideoUrl !== 'generated' && (
+                    <div className="p-3 bg-black/30 flex justify-between items-center">
+                      <div className="text-sm text-white/70">
+                        {videoDuration > 0 ? `Dauer: ${Math.floor(videoDuration / 60)}:${String(Math.floor(videoDuration % 60)).padStart(2, '0')}` : 'Video bereit'}
+                      </div>
+                      <a 
+                        href={finalVideoUrl} 
+                        download="generated-ad.mp4"
+                        className="btn btn-sm btn-primary"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <ArrowDownTrayIcon className="h-4 w-4 mr-1" />
+                        Download Video
+                      </a>
+                    </div>
+                  )}
                 </div>
               )}
               
@@ -749,6 +853,11 @@ export default function EditorPage() {
                       <ArrowPathIcon className="h-5 w-5 mr-2 animate-spin" />
                       <span>Generating Video ({generationProgress}%)</span>
                     </div>
+                  ) : finalVideoUrl ? (
+                    <div className="flex items-center">
+                      <CheckCircleIcon className="h-5 w-5 mr-2 text-green-400" />
+                      <span>Video Ready</span>
+                    </div>
                   ) : (
                     <div className="flex items-center">
                       <SparklesIcon className="h-5 w-5 mr-2" />
@@ -757,10 +866,34 @@ export default function EditorPage() {
                   )}
                 </button>
                 
-                {projectId && (
+                {/* Progress Bar */}
+                {isGenerating && (
+                  <div className="mt-3">
+                    <div className="w-full bg-white/10 rounded-full h-2.5">
+                      <div 
+                        className="bg-primary h-2.5 rounded-full transition-all duration-300" 
+                        style={{ width: `${generationProgress}%` }}
+                      ></div>
+                    </div>
+                    <div className="mt-1 text-xs text-white/50 text-center">
+                      {generationProgress < 100 ? 'Generating your video...' : 'Finalizing...'}
+                    </div>
+                  </div>
+                )}
+                
+                {projectId && !isGenerating && (
                   <div className="mt-2 flex justify-center text-white/40 text-sm">
-                    <ClockIcon className="h-4 w-4 mr-1" />
-                    <span>Project ID: {projectId.substring(0, 8)}</span>
+                    {finalVideoUrl ? (
+                      <div className="flex items-center">
+                        <CheckCircleIcon className="h-4 w-4 mr-1 text-green-400" />
+                        <span>Video successfully generated</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center">
+                        <ClockIcon className="h-4 w-4 mr-1" />
+                        <span>Project ID: {projectId.substring(0, 8)}</span>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -793,7 +926,7 @@ export default function EditorPage() {
                 <h2 className="text-xl font-semibold">Final Video</h2>
               </div>
               
-              {isGenerating && (
+              {isGenerating && !finalVideoUrl && (
                 <div className="p-8 text-center">
                   <div className="inline-block rounded-full bg-primary/20 p-6 mb-4">
                     <ArrowPathIcon className="h-8 w-8 text-primary animate-spin" />
@@ -806,6 +939,16 @@ export default function EditorPage() {
                       style={{ width: `${generationProgress}%` }}
                     />
                   </div>
+                </div>
+              )}
+              
+              {finalVideoUrl && (
+                <div className="p-8 text-center">
+                  <div className="inline-block rounded-full bg-green-500/20 p-6 mb-4">
+                    <CheckCircleIcon className="h-8 w-8 text-green-500" />
+                  </div>
+                  <p className="text-lg font-medium">Your ad video is ready!</p>
+                  <p className="text-white/60 mt-2">You can view and download it above</p>
                 </div>
               )}
               
