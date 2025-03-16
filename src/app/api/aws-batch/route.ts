@@ -221,11 +221,11 @@ export async function POST(request: NextRequest) {
         resourceRequirements: [
           {
             type: 'MEMORY',
-            value: '2048'
+            value: '4096'
           },
           {
             type: 'VCPU',
-            value: '1'
+            value: '2'
           }
         ]
       }
@@ -241,8 +241,8 @@ export async function POST(request: NextRequest) {
         containerOverrides: {
           environmentCount: environment.length,
           resourceRequirements: [
-            { type: 'MEMORY', value: '2048' },
-            { type: 'VCPU', value: '1' }
+            { type: 'MEMORY', value: '4096' },
+            { type: 'VCPU', value: '2' }
           ]
         }
       });

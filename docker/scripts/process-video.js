@@ -271,44 +271,62 @@ async function generateFinalVideo() {
   
   // 2. Trimme jedes Segment
   console.log('Trimming segments...');
+  const trimPromises = [];
   const trimmedFiles = [];
+  
   for (let i = 0; i < segmentFiles.length; i++) {
     const segment = segmentFiles[i];
     const outputFile = path.join(OUTPUT_DIR, `trimmed_${i}.mp4`);
     
-    console.log(`Trimming segment ${i+1}/${segmentFiles.length}: startTime=${segment.startTime}, duration=${segment.duration}`);
+    console.log(`Preparing to trim segment ${i+1}/${segmentFiles.length}: startTime=${segment.startTime}, duration=${segment.duration}`);
     
     // FFmpeg-Befehl zum Trimmen eines Segments
     const args = [
+      '-ss', segment.startTime.toString(), // Seek vor dem Input für schnelleres Trimmen
       '-i', segment.file,
-      '-ss', segment.startTime.toString(),
       '-t', segment.duration.toString(),
-      '-c:v', 'libx264', // Erzwinge Neucodierung mit H.264
-      '-preset', 'medium', // Guter Kompromiss zwischen Qualität und Geschwindigkeit
-      '-crf', '23', // Qualitätseinstellung
-      '-pix_fmt', 'yuv420p', // Standard-Pixelformat
-      '-movflags', '+faststart', // Optimiere für Web-Streaming
+      '-c:v', 'libx264', 
+      '-preset', 'veryfast',
+      '-crf', '26',
+      '-pix_fmt', 'yuv420p',
+      '-movflags', '+faststart',
       '-y',
       outputFile
     ];
     
-    try {
-      await runFFmpeg(args);
-      console.log(`Successfully trimmed segment ${i+1}`);
-      
-      // Verify the trimmed file exists and has content
-      if (!fs.existsSync(outputFile) || fs.statSync(outputFile).size === 0) {
-        throw new Error(`Trimmed file is empty or does not exist: ${outputFile}`);
+    // Erstelle ein Promise für jede Trimming-Operation
+    const trimPromise = (async () => {
+      try {
+        await runFFmpeg(args);
+        console.log(`Successfully trimmed segment ${i+1}`);
+        
+        // Verify the trimmed file exists and has content
+        if (!fs.existsSync(outputFile) || fs.statSync(outputFile).size === 0) {
+          throw new Error(`Trimmed file is empty or does not exist: ${outputFile}`);
+        }
+        
+        return {
+          file: outputFile,
+          position: segment.position
+        };
+      } catch (error) {
+        console.error(`Error trimming segment ${i+1}:`, error.message);
+        throw new Error(`Failed to trim segment ${i+1}: ${error.message}`);
       }
-      
-      trimmedFiles.push({
-        file: outputFile,
-        position: segment.position
-      });
-    } catch (error) {
-      console.error(`Error trimming segment ${i+1}:`, error.message);
-      throw new Error(`Failed to trim segment ${i+1}: ${error.message}`);
-    }
+    })();
+    
+    trimPromises.push(trimPromise);
+  }
+  
+  // Warte auf alle Trimming-Operationen
+  try {
+    console.log(`Waiting for ${trimPromises.length} trim operations to complete...`);
+    const results = await Promise.all(trimPromises);
+    trimmedFiles.push(...results);
+    console.log(`All ${trimmedFiles.length} segments trimmed successfully`);
+  } catch (error) {
+    console.error('Error during parallel trimming:', error.message);
+    throw error;
   }
   
   // 3. Sortiere Segmente nach Position
@@ -334,11 +352,11 @@ async function generateFinalVideo() {
       '-f', 'concat',
       '-safe', '0',
       '-i', concatFile,
-      '-c:v', 'libx264', // Erzwinge Neucodierung mit H.264
-      '-preset', 'medium', // Guter Kompromiss zwischen Qualität und Geschwindigkeit
-      '-crf', '23', // Qualitätseinstellung (niedrigere Werte = höhere Qualität)
-      '-pix_fmt', 'yuv420p', // Standard-Pixelformat für bessere Kompatibilität
-      '-movflags', '+faststart', // Optimiere für Web-Streaming
+      '-c:v', 'libx264',
+      '-preset', 'veryfast', // Schnellerer Preset (statt 'medium')
+      '-crf', '26', // Etwas niedrigere Qualität für schnellere Verarbeitung
+      '-pix_fmt', 'yuv420p',
+      '-movflags', '+faststart',
       '-y',
       concatenatedFile
     ]);
@@ -422,11 +440,11 @@ async function generateFinalVideo() {
           '-i', voiceoverPath,
           '-map', '0:v', // Video vom ersten Input
           '-map', '1:a', // Audio vom zweiten Input
-          '-c:v', 'libx264', // Erzwinge Neucodierung mit H.264
-          '-preset', 'medium', // Guter Kompromiss zwischen Qualität und Geschwindigkeit
-          '-crf', '23', // Qualitätseinstellung
-          '-pix_fmt', 'yuv420p', // Standard-Pixelformat
-          '-movflags', '+faststart', // Optimiere für Web-Streaming
+          '-c:v', 'libx264',
+          '-preset', 'veryfast', // Schnellerer Preset (statt 'medium')
+          '-crf', '26', // Etwas niedrigere Qualität für schnellere Verarbeitung
+          '-pix_fmt', 'yuv420p',
+          '-movflags', '+faststart',
           '-shortest',
           '-y',
           finalFile
