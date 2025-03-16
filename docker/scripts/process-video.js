@@ -70,6 +70,12 @@ const BATCH_CALLBACK_URL = process.env.BATCH_CALLBACK_URL || 'https://ad-video-g
 const AWS_BATCH_JOB_ID = process.env.AWS_BATCH_JOB_ID || '';
 const PROJECT_ID = process.env.PROJECT_ID || '';
 
+// Initialisiere den S3-Client
+const s3Client = new S3Client({
+  region: AWS_REGION
+});
+console.log(`Initialized S3 client with region: ${AWS_REGION}`);
+
 // Log the actual callback URL we're using
 console.log(`Using callback URL: ${BATCH_CALLBACK_URL}`);
 
@@ -110,11 +116,6 @@ try {
   console.log('TEMPLATE_DATA raw value (last 200 chars):', 
     process.env.TEMPLATE_DATA ? process.env.TEMPLATE_DATA.substring(process.env.TEMPLATE_DATA.length - 200) : 'undefined');
 }
-
-// S3-Client
-const s3Client = new S3Client({
-  region: AWS_REGION
-});
 
 /**
  * Hauptfunktion für die Videoverarbeitung
@@ -617,32 +618,45 @@ async function cleanupTempFiles() {
 async function downloadFromUrl(url, outputPath) {
   console.log(`Downloading from URL: ${url} to ${outputPath}`);
   
-  return new Promise((resolve, reject) => {
-    https.get(url, (response) => {
-      if (response.statusCode !== 200) {
-        reject(new Error(`Failed to download file: ${response.statusCode} ${response.statusMessage}`));
-        return;
-      }
-      
-      const fileStream = fs.createWriteStream(outputPath);
-      response.pipe(fileStream);
-      
-      fileStream.on('finish', () => {
-        fileStream.close();
-        console.log(`Successfully downloaded file to ${outputPath}`);
-        resolve(outputPath);
-      });
-      
-      fileStream.on('error', (err) => {
-        fs.unlink(outputPath, () => {}); // Lösche die unvollständige Datei
-        console.error(`Error writing to file: ${err.message}`);
+  // Prüfe, ob es sich um eine S3-URL handelt
+  const s3UrlPattern = /https?:\/\/([^.]+)\.s3\.([^.]+)\.amazonaws\.com\/(.+)/;
+  const s3Match = url.match(s3UrlPattern);
+  
+  if (s3Match) {
+    // Es ist eine S3-URL, verwende die AWS SDK
+    const bucket = s3Match[1];
+    const key = s3Match[3];
+    console.log(`Detected S3 URL. Bucket: ${bucket}, Key: ${key}`);
+    return downloadFromS3(key, outputPath);
+  } else {
+    // Es ist eine normale HTTP/HTTPS-URL
+    return new Promise((resolve, reject) => {
+      https.get(url, (response) => {
+        if (response.statusCode !== 200) {
+          reject(new Error(`Failed to download file: ${response.statusCode} ${response.statusMessage}`));
+          return;
+        }
+        
+        const fileStream = fs.createWriteStream(outputPath);
+        response.pipe(fileStream);
+        
+        fileStream.on('finish', () => {
+          fileStream.close();
+          console.log(`Successfully downloaded file to ${outputPath}`);
+          resolve(outputPath);
+        });
+        
+        fileStream.on('error', (err) => {
+          fs.unlink(outputPath, () => {}); // Lösche die unvollständige Datei
+          console.error(`Error writing to file: ${err.message}`);
+          reject(err);
+        });
+      }).on('error', (err) => {
+        console.error(`Error downloading file: ${err.message}`);
         reject(err);
       });
-    }).on('error', (err) => {
-      console.error(`Error downloading file: ${err.message}`);
-      reject(err);
     });
-  });
+  }
 }
 
 /**
@@ -650,6 +664,11 @@ async function downloadFromUrl(url, outputPath) {
  */
 async function downloadFromS3(key, outputPath) {
   console.log(`Downloading from S3: ${S3_BUCKET}/${key} to ${outputPath}`);
+  
+  // Wenn der Key mit dem Bucket-Namen beginnt, entferne ihn
+  if (key.startsWith(`${S3_BUCKET}/`)) {
+    key = key.substring(S3_BUCKET.length + 1);
+  }
   
   const command = new GetObjectCommand({
     Bucket: S3_BUCKET,
@@ -672,7 +691,6 @@ async function downloadFromS3(key, outputPath) {
         });
     });
     
-    console.log(`Successfully downloaded ${key}`);
     return outputPath;
   } catch (error) {
     console.error(`Error downloading from S3: ${error.message}`);
