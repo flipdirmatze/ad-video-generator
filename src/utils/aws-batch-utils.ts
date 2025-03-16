@@ -84,12 +84,16 @@ export const submitAwsBatchJob = async (
     console.log('Input video URL:', inputVideoUrl);
     console.log('Output key:', outputKey || 'Not provided');
     
+    // Hole die Benutzer-ID aus den additionalParams, falls vorhanden
+    const userId = additionalParams?.USER_ID || 'system';
+    
     // Erstelle die Anfrage an unsere API-Route
     const requestOptions = {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': process.env.API_SECRET_KEY || 'internal-api-call'
+        'x-api-key': process.env.API_SECRET_KEY || 'internal-api-call',
+        'Authorization': `Bearer ${userId}`
       },
       body: JSON.stringify({
         jobType,
@@ -104,7 +108,11 @@ export const submitAwsBatchJob = async (
     console.log('Sending request to AWS Batch API with options:', {
       url: `${baseUrl}/api/aws-batch`,
       method: requestOptions.method,
-      headers: requestOptions.headers,
+      headers: {
+        'Content-Type': requestOptions.headers['Content-Type'],
+        'x-api-key': requestOptions.headers['x-api-key'],
+        'Authorization': 'Bearer [userId]' // Maskiere die tatsächliche ID im Log
+      },
       bodyLength: requestOptions.body.length
     });
     
@@ -157,12 +165,15 @@ export const submitAwsBatchJob = async (
 /**
  * Ruft den Status eines AWS Batch Jobs ab
  */
-export const getJobStatus = async (jobId: string): Promise<string> => {
+export const getJobStatus = async (jobId: string, userId?: string): Promise<string> => {
   // Bestimme die Basis-URL für API-Aufrufe (nur Server-seitig)
   const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || 'https://ad-video-generator.vercel.app').replace(/\/+$/, '');
 
   try {
     console.log(`Fetching job status for job ${jobId} from ${baseUrl}/api/aws-batch`);
+    
+    // Verwende die übergebene Benutzer-ID oder 'system' als Fallback
+    const authUserId = userId || 'system';
     
     const response = await fetch(
       `${baseUrl}/api/aws-batch?jobId=${jobId}`,
@@ -170,7 +181,8 @@ export const getJobStatus = async (jobId: string): Promise<string> => {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
-          'x-api-key': process.env.API_SECRET_KEY || 'internal-api-call'
+          'x-api-key': process.env.API_SECRET_KEY || 'internal-api-call',
+          'Authorization': `Bearer ${authUserId}`
         },
         // Erhöhe das Timeout für die Anfrage
         signal: AbortSignal.timeout(30000) // 30 Sekunden Timeout
@@ -268,7 +280,8 @@ export const combineVideosWithVoiceover = async (
       let progress = 0;
       const interval = setInterval(async () => {
         try {
-          const status = await getJobStatus(jobResult.jobId);
+          // Verwende die Job-ID als Benutzer-ID für die Authentifizierung
+          const status = await getJobStatus(jobResult.jobId, jobResult.jobId);
           
           switch (status.toLowerCase()) {
             case 'running':

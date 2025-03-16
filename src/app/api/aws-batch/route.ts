@@ -238,10 +238,24 @@ export async function GET(request: NextRequest) {
     validateEnvironment();
 
     // Authentifizierung prüfen
+    let userId;
     const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      console.error('Unauthorized: No session or user ID');
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    
+    if (session?.user?.id) {
+      userId = session.user.id;
+      console.log('User authenticated via session:', userId);
+    } else {
+      // Prüfe auf interne API-Aufrufe
+      const authHeader = request.headers.get('Authorization');
+      const apiKey = request.headers.get('x-api-key');
+      
+      if (apiKey === (process.env.API_SECRET_KEY || 'internal-api-call') && authHeader?.startsWith('Bearer ')) {
+        userId = authHeader.substring(7); // Entferne 'Bearer ' vom Anfang
+        console.log('User authenticated via API key:', userId);
+      } else {
+        console.error('Unauthorized: No valid session or API key');
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      }
     }
 
     const { searchParams } = new URL(request.url);
