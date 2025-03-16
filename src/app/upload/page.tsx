@@ -351,6 +351,15 @@ export default function UploadPage() {
                     preload="metadata"
                     playsInline
                     muted
+                    crossOrigin="anonymous"
+                    onError={(e) => {
+                      console.error('Video loading error:', e);
+                      const target = e.target as HTMLVideoElement;
+                      if (target.error) {
+                        console.error('Error code:', target.error.code);
+                        console.error('Error message:', target.error.message);
+                      }
+                    }}
                   />
                   
                   {/* Upload Progress */}

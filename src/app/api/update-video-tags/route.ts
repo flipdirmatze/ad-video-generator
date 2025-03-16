@@ -29,7 +29,7 @@ export async function POST(request: Request) {
 
     // Finde das Video und stelle sicher, dass es dem aktuellen Benutzer gehört
     const video = await VideoModel.findOne({
-      _id: videoId,
+      id: videoId,
       userId: session.user.id
     });
 
