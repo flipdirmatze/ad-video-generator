@@ -176,15 +176,36 @@ export async function POST(request: NextRequest) {
       jobDefinition: process.env.AWS_BATCH_JOB_DEFINITION || '',
       containerOverrides: {
         environment,
-        memory: 2048, // 2GB RAM
-        vcpus: 2     // 2 vCPUs
+        // Für Fargate müssen wir resourceRequirements anstelle von memory und vcpus verwenden
+        resourceRequirements: [
+          {
+            type: 'MEMORY',
+            value: '2048'
+          },
+          {
+            type: 'VCPU',
+            value: '1'
+          }
+        ]
       }
     });
 
     // Sende den Job an AWS Batch
     let jobResponse;
     try {
-      console.log('Sending job to AWS Batch...');
+      console.log('Sending job to AWS Batch with command:', {
+        jobName,
+        jobQueue: process.env.AWS_BATCH_JOB_QUEUE,
+        jobDefinition: process.env.AWS_BATCH_JOB_DEFINITION,
+        containerOverrides: {
+          environmentCount: environment.length,
+          resourceRequirements: [
+            { type: 'MEMORY', value: '2048' },
+            { type: 'VCPU', value: '1' }
+          ]
+        }
+      });
+      
       jobResponse = await batchClient.send(command);
       console.log('AWS Batch job submitted successfully:', { jobId: jobResponse.jobId, jobName });
     } catch (error) {
@@ -194,6 +215,10 @@ export async function POST(request: NextRequest) {
       let errorDetails = 'Unknown AWS Batch error';
       if (error instanceof Error) {
         errorDetails = error.message;
+        
+        // Logge den vollständigen Fehler für Debugging-Zwecke
+        console.error('Full error object:', JSON.stringify(error, Object.getOwnPropertyNames(error)));
+        
         if ('$metadata' in error) {
           // Typensichere Behandlung des Metadata-Objekts
           const metadata = error as { $metadata?: { httpStatusCode?: number } };
