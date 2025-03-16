@@ -14,13 +14,16 @@ interface Params {
   id: string;
 }
 
+// Define the correct type for the route handler
+type RouteParams = { params: Params };
+
 /**
  * GET /api/media/[id]
  * Gibt ein einzelnes Video zurück
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: Params }
+  { params }: RouteParams
 ) {
   try {
     // Authentifizierung prüfen
@@ -30,8 +33,8 @@ export async function GET(
     }
 
     const userId = session.user.id;
-    // Da params ein Promise ist, müssen wir darauf warten
-    const { id: videoId } = await params;
+    // Params ist jetzt kein Promise mehr
+    const { id: videoId } = params;
     
     // Verbindung zur Datenbank herstellen
     await dbConnect();
@@ -83,7 +86,7 @@ export async function GET(
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: Params }
+  { params }: RouteParams
 ) {
   try {
     // Authentifizierung prüfen
@@ -93,8 +96,8 @@ export async function DELETE(
     }
 
     const userId = session.user.id;
-    // Da params ein Promise ist, müssen wir darauf warten
-    const { id: videoId } = await params;
+    // Params ist jetzt kein Promise mehr
+    const { id: videoId } = params;
     
     // Verbindung zur Datenbank herstellen
     await dbConnect();

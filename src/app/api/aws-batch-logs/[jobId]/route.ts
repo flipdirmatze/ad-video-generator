@@ -4,9 +4,12 @@ import { authOptions } from '@/lib/auth';
 import { CloudWatchLogsClient, GetLogEventsCommand, LogEvent } from '@aws-sdk/client-cloudwatch-logs';
 import { BatchClient, DescribeJobsCommand } from '@aws-sdk/client-batch';
 
+// Define the correct type for the route handler
+type RouteParams = { params: { jobId: string } };
+
 export async function GET(
   request: NextRequest,
-  { params }: { params: { jobId: string } }
+  { params }: RouteParams
 ) {
   try {
     // Sichere Authentifizierung
