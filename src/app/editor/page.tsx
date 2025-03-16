@@ -57,7 +57,8 @@ export default function EditorPage() {
   const [uploadedVideos, setUploadedVideos] = useState<UploadedVideo[]>([])
   const [selectedVideos, setSelectedVideos] = useState<string[]>([])
   const [availableUploads, setAvailableUploads] = useState<FileInfo[]>([])
-  const [finalVideoUrl, setFinalVideoUrl] = useState<string | null>(null)
+  const [finalVideoUrl, setFinalVideoUrl] = useState<string>('')
+  const [signedVideoUrl, setSignedVideoUrl] = useState<string>('')
   
   // Error handling
   const [error, setError] = useState<string | null>(null)
@@ -235,6 +236,10 @@ export default function EditorPage() {
         // Wenn das Projekt abgeschlossen ist, lade das Video
         if (data.status === 'completed' && data.outputUrl) {
           setFinalVideoUrl(data.outputUrl);
+          // Verwende die signierte URL, wenn verfügbar
+          if (data.signedUrl) {
+            setSignedVideoUrl(data.signedUrl);
+          }
           setIsGenerating(false);
           
           // Speichere die URL im localStorage
@@ -828,7 +833,7 @@ export default function EditorPage() {
                       <video 
                         id="finalVideo"
                         ref={videoRef}
-                        src={finalVideoUrl} 
+                        src={signedVideoUrl || finalVideoUrl} 
                         controls
                         className="w-full h-full object-contain" 
                         playsInline
@@ -843,7 +848,7 @@ export default function EditorPage() {
                         {videoDuration > 0 ? `Dauer: ${Math.floor(videoDuration / 60)}:${String(Math.floor(videoDuration % 60)).padStart(2, '0')}` : 'Video bereit'}
                       </div>
                       <a 
-                        href={finalVideoUrl} 
+                        href={signedVideoUrl || finalVideoUrl} 
                         download="generated-ad.mp4"
                         className="btn btn-sm btn-primary"
                         target="_blank"

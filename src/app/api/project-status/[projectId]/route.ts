@@ -4,6 +4,43 @@ import { authOptions } from '@/lib/auth';
 import dbConnect from '@/lib/mongoose';
 import ProjectModel from '@/models/Project';
 import { getJobStatus } from '@/utils/aws-batch-utils';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
+
+// S3 Client initialisieren
+const s3Client = new S3Client({
+  region: process.env.AWS_REGION || 'eu-central-1',
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || ''
+  }
+});
+
+// Bucket Name aus Umgebungsvariablen
+const bucketName = process.env.S3_BUCKET_NAME || 'ad-video-generator-bucket';
+
+// Funktion zum Generieren einer signierten URL für ein Video
+async function getSignedVideoUrlFromS3(outputUrl: string): Promise<string> {
+  try {
+    // Extrahiere den S3-Key aus der URL
+    const s3Key = outputUrl.replace(`https://${bucketName}.s3.${process.env.AWS_REGION || 'eu-central-1'}.amazonaws.com/`, '');
+    
+    console.log(`Generating signed URL for S3 key: ${s3Key}`);
+    
+    const command = new GetObjectCommand({
+      Bucket: bucketName,
+      Key: s3Key
+    });
+    
+    const signedUrl = await getSignedUrl(s3Client, command, { expiresIn: 3600 }); // 1 Stunde gültig
+    console.log(`Generated signed URL for video: ${s3Key}`);
+    return signedUrl;
+  } catch (error) {
+    console.error(`Error generating signed URL:`, error);
+    // Fallback zur Original-URL
+    return outputUrl;
+  }
+}
 
 export async function GET(
   request: NextRequest,
@@ -39,14 +76,28 @@ export async function GET(
       return NextResponse.json({ error: 'Not authorized to access this project' }, { status: 403 });
     }
 
-    // Wenn das Projekt bereits abgeschlossen oder fehlgeschlagen ist, gib den Status direkt zurück
-    if (project.status === 'completed' || project.status === 'failed') {
+    // Wenn das Projekt bereits abgeschlossen ist, generiere eine signierte URL für das Video
+    if (project.status === 'completed' && project.outputUrl) {
+      const signedUrl = await getSignedVideoUrlFromS3(project.outputUrl);
+      
+      return NextResponse.json({
+        projectId: project._id.toString(),
+        status: project.status,
+        outputUrl: project.outputUrl,
+        signedUrl: signedUrl, // Füge die signierte URL hinzu
+        error: project.error || null,
+        progress: 100
+      });
+    }
+    
+    // Wenn das Projekt fehlgeschlagen ist, gib den Status direkt zurück
+    if (project.status === 'failed') {
       return NextResponse.json({
         projectId: project._id.toString(),
         status: project.status,
         outputUrl: project.outputUrl || null,
         error: project.error || null,
-        progress: project.status === 'completed' ? 100 : 0
+        progress: 0
       });
     }
 
@@ -110,6 +161,21 @@ export async function GET(
           }
           
           await project.save();
+        }
+
+        // Wenn der Job erfolgreich abgeschlossen wurde und eine Output-URL vorhanden ist,
+        // generiere eine signierte URL
+        if (newStatus === 'completed' && project.outputUrl) {
+          const signedUrl = await getSignedVideoUrlFromS3(project.outputUrl);
+          
+          return NextResponse.json({
+            projectId: project._id.toString(),
+            status: newStatus,
+            outputUrl: project.outputUrl,
+            signedUrl: signedUrl, // Füge die signierte URL hinzu
+            error: error || null,
+            progress
+          });
         }
 
         return NextResponse.json({
