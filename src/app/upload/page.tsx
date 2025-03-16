@@ -141,7 +141,7 @@ export default function UploadPage() {
       // Bei allgemeinem Fehler: Original-URL verwenden
       return video.url;
     }
-  }, [videoPlaybackUrls]);
+  }, [videoPlaybackUrls, setVideoPlaybackUrls]);
   
   // Vorbereiten der Videowiedergabe beim Laden der Seite - mit Optimierungen
   useEffect(() => {
@@ -192,7 +192,7 @@ export default function UploadPage() {
     return () => {
       isMounted = false;
     };
-  }, [allVideos, videoPlaybackUrls, getVideoPlaybackUrl]);
+  }, [allVideos, videoPlaybackUrls, getVideoPlaybackUrl, setVideoPlaybackUrls]);
   
   // HOOK 3: Aspektverhältnisse verwalten
   // useEffect(() => {
@@ -200,7 +200,7 @@ export default function UploadPage() {
   // }, [allVideos, videoAspectRatios, loadVideoMetadata]);
   
   // Stattdessen: Einfacher Ansatz für Video-Vorschau mit festem Format
-  const getVideoFormat = (video: UploadedVideo) => {
+  const getVideoFormat = useCallback((video: UploadedVideo) => {
     // Wenn wir bereits ein Aspektverhältnis für dieses Video haben, verwenden wir es
     if (videoAspectRatios[video.id]) {
       return videoAspectRatios[video.id];
@@ -262,7 +262,7 @@ export default function UploadPage() {
     }, 0);
     
     return 'horizontal'; // Standard-Format als Fallback
-  };
+  }, [videoAspectRatios, setVideoAspectRatios]);
 
   // HOOK 1: Authentifizierungs-Check und Redirect
   useEffect(() => {
@@ -464,7 +464,7 @@ export default function UploadPage() {
   };
 
   // Upload progress simulator (der wirkliche S3-Upload hat keinen Fortschrittsindikator)
-  const simulateProgress = (videoId: string) => {
+  const simulateProgress = useCallback((videoId: string) => {
     let progress = 0;
     let interval: NodeJS.Timeout | null = null;
     
@@ -504,7 +504,7 @@ export default function UploadPage() {
     }, 500); // Längeres Interval für weniger CPU-Last
 
     return stopSimulation;
-  };
+  }, [setUploadProgress]);
 
   const handleFiles = async (files: FileList) => {
     setError(null)
@@ -800,7 +800,7 @@ export default function UploadPage() {
     setTimeout(() => {
       setError(null);
     }, 5000);
-  }, []);
+  }, [setError, setIsUploading, setPendingUploads]);
 
   return (
     <main className="container py-12 md:py-20">
