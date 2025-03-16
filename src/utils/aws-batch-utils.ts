@@ -197,6 +197,12 @@ export const getJobStatus = async (jobId: string, userId?: string): Promise<stri
     }
 
     const data = await response.json();
+    
+    // Wenn der Job fehlgeschlagen ist und einen Grund hat, füge ihn der Fehlermeldung hinzu
+    if (data.status === 'failed' && (data.reason || data.error)) {
+      return `failed: ${data.reason || data.error || 'Unknown error'}`;
+    }
+    
     return data.status;
   } catch (error) {
     console.error('Error getting job status:', error);

@@ -299,65 +299,70 @@ export async function POST(request: NextRequest) {
     
     console.log('Submitting AWS Batch job with params:', jobParams);
     
-    // Starte den Batch-Job
-    let jobResult;
+    // Starte den AWS Batch-Job
     try {
-      console.log('Submitting AWS Batch job with type:', BatchJobTypes.GENERATE_FINAL);
-      console.log('Using first segment key as input:', segments[0].videoKey);
+      console.log(`Submitting AWS Batch job for segment ${segments[0].videoKey}`);
       
-      // Versuche den Job zu starten
-      jobResult = await submitAwsBatchJob(
+      // Erstelle einen eindeutigen Ausgabeschlüssel
+      const outputKey = `final/${uuidv4()}.mp4`;
+      
+      // Sende den Job an AWS Batch
+      const jobResult = await submitAwsBatchJob(
         BatchJobTypes.GENERATE_FINAL,
         segments[0].videoKey,
         outputKey,
-        jobParams
+        {
+          USER_ID: userId,
+          PROJECT_ID: project._id.toString(),
+          TEMPLATE_DATA: JSON.stringify({
+            segments: segments.map(segment => ({
+              url: segment.videoKey,
+              startTime: segment.startTime,
+              duration: segment.duration,
+              position: segment.position
+            })),
+            voiceoverId: data.voiceoverId,
+            options: data.options || {}
+          })
+        }
       );
       
       if (!jobResult || !jobResult.jobId) {
-        throw new Error('AWS Batch job submission failed: No job ID returned');
+        throw new Error('Failed to submit AWS Batch job: No job ID returned');
       }
       
-      console.log('AWS Batch job submitted successfully:', jobResult);
-    } catch (error) {
-      console.error('Error submitting AWS Batch job:', error);
+      console.log(`AWS Batch job submitted successfully: ${jobResult.jobId}`);
       
-      // Update project status to failed
-      try {
-        await ProjectModel.findByIdAndUpdate(project._id, {
-          status: 'failed',
-          error: error instanceof Error ? error.message : 'Failed to submit AWS Batch job'
-        });
-        console.log('Project status updated to failed');
-      } catch (updateError) {
-        console.error('Failed to update project status:', updateError);
-      }
-      
-      return NextResponse.json({
-        error: 'Failed to submit AWS Batch job',
-        details: error instanceof Error ? error.message : 'Unknown AWS Batch error'
-      }, { status: 500 });
-    }
-    
-    // Aktualisiere das Projekt mit den Job-Informationen
-    try {
+      // Aktualisiere das Projekt mit der Job-ID
       project.batchJobId = jobResult.jobId;
       project.batchJobName = jobResult.jobName;
       project.status = 'processing';
       await project.save();
+      
+      return NextResponse.json({
+        success: true,
+        message: 'Video workflow started',
+        projectId: project._id.toString(),
+        jobId: jobResult.jobId,
+        jobName: jobResult.jobName
+      });
     } catch (error) {
-      console.error('Error updating project with job info:', error);
-      // Wir geben hier keinen Fehler zurück, da der Job bereits gestartet wurde
+      console.error('Error submitting AWS Batch job:', error);
+      
+      // Aktualisiere das Projekt mit dem Fehlerstatus
+      project.status = 'failed';
+      project.error = error instanceof Error ? error.message : 'Unknown error submitting AWS Batch job';
+      await project.save();
+      
+      return NextResponse.json(
+        { 
+          error: 'Failed to submit AWS Batch job',
+          details: error instanceof Error ? error.message : 'Unknown error',
+          projectId: project._id.toString()
+        },
+        { status: 500 }
+      );
     }
-    
-    return NextResponse.json({
-      success: true,
-      message: 'Video generation started',
-      projectId: project._id.toString(),
-      jobId: jobResult.jobId,
-      jobName: jobResult.jobName,
-      status: 'processing',
-      estimatedTime: 'Your video will be ready in a few minutes'
-    });
   } catch (error) {
     console.error('Unhandled error in video workflow:', error);
     return NextResponse.json(

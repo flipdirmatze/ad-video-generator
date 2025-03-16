@@ -49,7 +49,13 @@ function validateEnvironment() {
     throw new Error(`Missing required environment variables: ${missingVars.join(', ')}`);
   }
   
-  console.log('Environment validation successful');
+  // Logge die Werte der Umgebungsvariablen (ohne sensible Daten)
+  console.log('Environment validation successful with the following values:');
+  console.log('AWS_REGION:', process.env.AWS_REGION);
+  console.log('AWS_BATCH_JOB_QUEUE:', process.env.AWS_BATCH_JOB_QUEUE);
+  console.log('AWS_BATCH_JOB_DEFINITION:', process.env.AWS_BATCH_JOB_DEFINITION);
+  console.log('S3_BUCKET_NAME:', process.env.S3_BUCKET_NAME);
+  console.log('AWS_BATCH_CONTAINER_IMAGE:', process.env.AWS_BATCH_CONTAINER_IMAGE);
 }
 
 /**
@@ -131,6 +137,21 @@ export async function POST(request: NextRequest) {
           details: {
             provided: jobType,
             allowed: validJobTypes
+          }
+        },
+        { status: 400 }
+      );
+    }
+
+    // Validiere die Input-URL
+    if (!inputVideoUrl.startsWith('http')) {
+      console.error('Invalid input video URL:', inputVideoUrl);
+      return NextResponse.json(
+        { 
+          error: 'Invalid input video URL',
+          details: {
+            provided: inputVideoUrl,
+            expected: 'URL starting with http:// or https://'
           }
         },
         { status: 400 }

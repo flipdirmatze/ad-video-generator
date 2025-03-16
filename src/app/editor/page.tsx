@@ -20,10 +20,12 @@ type UploadedVideo = {
 // Define error response type to match the backend
 type ErrorResponse = {
   error: string;
-  code: string;
+  code?: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   details?: any;
   suggestions?: string[];
+  jobDetails?: any;
+  logs?: string;
 }
 
 // Define the type for file objects returned from the API
@@ -226,24 +228,33 @@ export default function EditorPage() {
         // Aktualisiere den Fortschritt
         if (data.project && typeof data.project.progress === 'number') {
           setGenerationProgress(data.project.progress);
+        } else if (typeof data.progress === 'number') {
+          setGenerationProgress(data.progress);
         }
         
         // Wenn das Projekt abgeschlossen ist, lade das Video
-        if (data.project && data.project.status === 'completed' && data.project.outputUrl) {
-          setFinalVideoUrl(data.project.outputUrl);
+        if (data.status === 'completed' && data.outputUrl) {
+          setFinalVideoUrl(data.outputUrl);
           setIsGenerating(false);
           
           // Speichere die URL im localStorage
-          localStorage.setItem('finalVideoUrl', data.project.outputUrl);
+          localStorage.setItem('finalVideoUrl', data.outputUrl);
           
           // Stoppe die Statusabfrage
           return true;
         }
         
         // Wenn das Projekt fehlgeschlagen ist, zeige einen Fehler an
-        if (data.project && data.project.status === 'failed') {
-          setError(`Fehler bei der Videogenerierung: ${data.project.error || 'Unbekannter Fehler'}`);
+        if (data.status === 'failed') {
+          const errorMessage = data.error || 'Unbekannter Fehler bei der Videogenerierung';
+          console.error('Video generation failed:', errorMessage);
+          
+          setError(`Fehler bei der Videogenerierung: ${errorMessage}`);
           setIsGenerating(false);
+          
+          // Setze den Fortschritt zurück
+          setGenerationProgress(0);
+          
           return true;
         }
         
@@ -251,7 +262,12 @@ export default function EditorPage() {
         return false;
       } catch (error) {
         console.error('Error checking project status:', error);
-        return false;
+        
+        // Bei einem Fehler setzen wir den Status zurück und zeigen eine Fehlermeldung an
+        setError(`Fehler beim Abrufen des Projektstatus: ${error instanceof Error ? error.message : 'Unbekannter Fehler'}`);
+        setIsGenerating(false);
+        
+        return true;
       }
     };
     
@@ -908,9 +924,55 @@ export default function EditorPage() {
                       {errorDetails && (
                         <div className="mt-2 text-sm">
                           <p className="font-medium">Details:</p>
-                          <pre className="mt-1 bg-red-500/5 p-2 rounded overflow-auto text-xs">
-                            {JSON.stringify(errorDetails, null, 2)}
-                          </pre>
+                          {errorDetails.jobDetails ? (
+                            <>
+                              <div className="mt-2">
+                                <h4 className="font-medium">Job Details:</h4>
+                                <pre className="mt-1 bg-red-500/5 p-2 rounded overflow-auto text-xs">
+                                  {JSON.stringify(errorDetails.jobDetails, null, 2)}
+                                </pre>
+                              </div>
+                              {errorDetails.logs && (
+                                <div className="mt-2">
+                                  <h4 className="font-medium">Logs:</h4>
+                                  <pre className="mt-1 bg-red-500/5 p-2 rounded overflow-auto text-xs max-h-40">
+                                    {errorDetails.logs}
+                                  </pre>
+                                </div>
+                              )}
+                            </>
+                          ) : (
+                            <pre className="mt-1 bg-red-500/5 p-2 rounded overflow-auto text-xs">
+                              {JSON.stringify(errorDetails, null, 2)}
+                            </pre>
+                          )}
+                        </div>
+                      )}
+                      
+                      {/* Job-Details-Button */}
+                      {jobId && (
+                        <div className="mt-3">
+                          <button 
+                            onClick={async () => {
+                              try {
+                                const response = await fetch(`/api/aws-batch-logs/${jobId}`);
+                                if (!response.ok) {
+                                  throw new Error('Failed to fetch job logs');
+                                }
+                                const data = await response.json();
+                                setErrorDetails({
+                                  error: 'AWS Batch Job Details',
+                                  jobDetails: data.job,
+                                  logs: data.logs.map((log: any) => log.message).join('\n')
+                                });
+                              } catch (error) {
+                                console.error('Error fetching job logs:', error);
+                              }
+                            }}
+                            className="btn btn-xs btn-outline"
+                          >
+                            Show Job Details
+                          </button>
                         </div>
                       )}
                     </div>
