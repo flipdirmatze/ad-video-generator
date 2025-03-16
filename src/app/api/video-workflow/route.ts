@@ -1,223 +1,162 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { v4 as uuidv4 } from 'uuid';
 import dbConnect from '@/lib/mongoose';
-import ProjectModel from '@/models/Project';
 import VideoModel from '@/models/Video';
-import { getS3Url, generateUniqueFileName } from '@/lib/storage';
+import JobModel from '@/models/Job';
 import { submitAwsBatchJob } from '@/utils/aws-batch-utils';
+import { getSignedVideoUrl } from '@/lib/storage';
 
-type VideoSegment = {
+// Typen für die Anfrage
+export type VideoSegment = {
   videoId: string;
+  url: string;
   startTime: number;
   duration: number;
   position: number;
 };
 
-type WorkflowRequest = {
-  title: string;                  // Projekttitel
-  description?: string;          // Optionale Projektbeschreibung
-  voiceoverScript?: string;      // Text für die Voiceover-Generierung (optional)
-  voiceoverUrl?: string;         // URL zu einer bereits generierten Voiceover-Datei (optional)
-  videos: {                      // Videos, die verwendet werden sollen
-    id: string;                  // Video-ID aus der Datenbank
-    segments?: VideoSegment[];   // Segmente, die aus diesem Video verwendet werden sollen (optional)
-  }[];
-  // Weitere Optionen für die Videobearbeitung
-  options?: {
-    resolution?: string;         // z.B. "1080p", "720p"
-    aspectRatio?: string;        // z.B. "16:9", "1:1", "9:16"
-    addSubtitles?: boolean;      // Untertitel hinzufügen?
-    addWatermark?: boolean;      // Wasserzeichen hinzufügen?
-    watermarkText?: string;      // Text für das Wasserzeichen
-    outputFormat?: string;       // z.B. "mp4", "mov"
-  };
+export type WorkflowRequest = {
+  segments: VideoSegment[];
+  voiceoverUrl?: string;
+  outputFileName: string;
 };
 
 /**
- * POST /api/video-workflow
- * Startet einen neuen Workflow zur Erstellung eines Werbevideos
+ * Verarbeitet POST-Anfragen zum Starten eines Video-Workflows
  */
 export async function POST(request: NextRequest) {
-  console.log('Starting new video workflow');
-  
   try {
-    // Authentifizierung prüfen
+    // Überprüfe die Authentifizierung
     const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!session?.user) {
+      return NextResponse.json({ error: 'Nicht authentifiziert' }, { status: 401 });
     }
 
-    const userId = session.user.id;
+    // Extrahiere die Anfragedaten
     const data: WorkflowRequest = await request.json();
-    
-    // Grundlegende Validierung
-    if (!data.title || !data.videos || data.videos.length === 0) {
+    const { segments, voiceoverUrl, outputFileName } = data;
+
+    console.log('Starte Video-Workflow mit:', {
+      segmentsCount: segments.length,
+      hasVoiceover: !!voiceoverUrl,
+      outputFileName
+    });
+
+    // Validiere die Anfrage
+    if (!segments || segments.length === 0) {
       return NextResponse.json(
-        { error: 'Titel und mindestens ein Video sind erforderlich' },
+        { error: 'Keine Videosegmente angegeben' },
         { status: 400 }
       );
     }
-    
-    // Mit Datenbank verbinden
-    await dbConnect();
-    
-    // Prüfen, ob die angegebenen Videos existieren und dem Benutzer gehören
-    const videoIds = data.videos.map(v => v.id);
-    const videos = await VideoModel.find({ 
-      _id: { $in: videoIds },
-      userId
-    });
-    
-    if (videos.length !== videoIds.length) {
-      const foundIds = videos.map(v => v._id.toString());
-      const missingIds = videoIds.filter(id => !foundIds.includes(id));
-      
+
+    if (!outputFileName) {
       return NextResponse.json(
-        { error: 'Einige Videos wurden nicht gefunden oder gehören nicht dir', missingIds },
+        { error: 'Kein Ausgabedateiname angegeben' },
+        { status: 400 }
+      );
+    }
+
+    // Verbinde zur Datenbank
+    await dbConnect();
+
+    // Überprüfe, ob alle Videos existieren
+    const videoIds = segments.map(segment => segment.videoId);
+    const videos = await VideoModel.find({
+      _id: { $in: videoIds },
+      userId: session.user.id
+    }).lean();
+
+    if (videos.length !== segments.length) {
+      return NextResponse.json(
+        { error: 'Einige Videos wurden nicht gefunden' },
         { status: 404 }
       );
     }
-    
-    // Projekt in der Datenbank erstellen
-    const projectId = uuidv4();
-    const outputFileName = generateUniqueFileName(`${data.title.toLowerCase().replace(/\s+/g, '-')}.mp4`);
-    const outputKey = `final/${userId}/${outputFileName}`;
-    
-    // Segmente vorbereiten
-    const segments = [];
-    let position = 0;
-    
-    for (const videoEntry of data.videos) {
-      const video = videos.find(v => v._id.toString() === videoEntry.id);
-      
-      if (videoEntry.segments && videoEntry.segments.length > 0) {
-        // Benutze die angegebenen Segmente
-        for (const segment of videoEntry.segments) {
-          segments.push({
-            videoId: video._id.toString(),
-            videoKey: video.path,
-            startTime: segment.startTime,
-            duration: segment.duration,
-            position: segment.position || position++
-          });
+
+    // Generiere signierte URLs für alle Videos
+    const segmentsWithSignedUrls = await Promise.all(
+      segments.map(async segment => {
+        try {
+          const signedUrl = await getSignedVideoUrl(segment.videoId);
+          return {
+            ...segment,
+            url: signedUrl
+          };
+        } catch (error) {
+          console.error(`Fehler beim Generieren der signierten URL für Video ${segment.videoId}:`, error);
+          throw new Error(`Fehler beim Generieren der signierten URL für Video ${segment.videoId}`);
         }
-      } else {
-        // Wenn keine Segmente angegeben sind, verwende das gesamte Video
-        segments.push({
-          videoId: video._id.toString(),
-          videoKey: video.path,
-          startTime: 0,
-          duration: video.duration || 0, // Fallback, falls keine Dauer bekannt ist
-          position: position++
-        });
-      }
-    }
-    
+      })
+    );
+
+    // Bereite die Segmente für die Verarbeitung vor
+    const processedSegments = segmentsWithSignedUrls.map(segment => ({
+      ...segment,
+      startTime: Number(segment.startTime) || 0,
+      duration: Number(segment.duration) || 0,
+      position: Number(segment.position) || 0
+    }));
+
     // Sortiere die Segmente nach Position
-    segments.sort((a, b) => a.position - b.position);
-    
-    // Voiceover-Verarbeitung
-    let voiceoverId = null;
-    let voiceoverUrl = data.voiceoverUrl;
-    
-    // Wenn ein Voiceover-Skript angegeben wurde, generiere ein Voiceover
-    if (data.voiceoverScript && !voiceoverUrl) {
-      try {
-        const voiceoverResponse = await fetch('/api/generate-voiceover', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ script: data.voiceoverScript }),
-        });
-        
-        if (!voiceoverResponse.ok) {
-          throw new Error(`Failed to generate voiceover: ${voiceoverResponse.statusText}`);
-        }
-        
-        const voiceoverData = await voiceoverResponse.json();
-        voiceoverId = voiceoverData.voiceoverId;
-        voiceoverUrl = voiceoverData.url;
-      } catch (error) {
-        console.error('Error generating voiceover:', error);
-        // Wir setzen den Workflow trotzdem fort, aber loggen den Fehler
+    processedSegments.sort((a, b) => a.position - b.position);
+
+    console.log('Verarbeite Segmente:', {
+      count: processedSegments.length,
+      firstSegment: processedSegments[0]?.videoId,
+      lastSegment: processedSegments[processedSegments.length - 1]?.videoId
+    });
+
+    // Starte den AWS Batch Job
+    const jobResult = await submitAwsBatchJob(
+      'generate-final',
+      processedSegments[0].url,
+      outputFileName,
+      {
+        VIDEO_SEGMENTS: JSON.stringify(processedSegments),
+        VOICEOVER_URL: voiceoverUrl || '',
+        USER_ID: session.user.id
       }
-    }
-    
-    // Erstelle das Projekt in der Datenbank
-    const project = new ProjectModel({
-      userId,
-      title: data.title,
-      description: data.description || '',
-      status: 'pending',
-      segments,
-      voiceoverId,
-      outputKey,
+    );
+
+    console.log('AWS Batch Job gestartet:', jobResult);
+
+    // Speichere den Job in der Datenbank
+    const job = new JobModel({
+      jobId: jobResult.jobId,
+      jobName: jobResult.jobName,
+      userId: session.user.id,
+      status: 'submitted',
+      segments: processedSegments,
+      voiceoverUrl,
+      outputFileName,
       createdAt: new Date(),
       updatedAt: new Date()
     });
-    
-    await project.save();
-    
-    // Starte den AWS Batch-Job
-    const jobParams: Record<string, string | number | boolean> = {
-      PROJECT_ID: project._id.toString(),
-      USER_ID: userId,
-      SEGMENTS: JSON.stringify(segments),
-    };
-    
-    // Füge optionale Parameter hinzu
-    if (voiceoverUrl) {
-      jobParams.VOICEOVER_URL = voiceoverUrl;
-    }
-    
-    if (data.options) {
-      if (data.options.resolution) jobParams.RESOLUTION = data.options.resolution;
-      if (data.options.aspectRatio) jobParams.ASPECT_RATIO = data.options.aspectRatio;
-      if (data.options.addSubtitles) jobParams.ADD_SUBTITLES = 'true';
-      if (data.options.addWatermark) {
-        jobParams.ADD_WATERMARK = 'true';
-        if (data.options.watermarkText) jobParams.WATERMARK_TEXT = data.options.watermarkText;
-      }
-      if (data.options.outputFormat) jobParams.OUTPUT_FORMAT = data.options.outputFormat;
-    }
-    
-    // Nehme das erste Video als Referenz
-    const firstVideoPath = segments[0]?.videoKey;
-    let inputVideoUrl = '';
-    
-    if (firstVideoPath) {
-      inputVideoUrl = getS3Url(firstVideoPath);
-    }
-    
-    // Starte den Batch-Job
-    const { jobId, jobName } = await submitAwsBatchJob(
-      'generate-final',
-      inputVideoUrl,
-      outputKey,
-      jobParams
-    );
-    
-    // Aktualisiere das Projekt mit den Job-Informationen
-    project.batchJobId = jobId;
-    project.batchJobName = jobName;
-    project.status = 'processing';
-    await project.save();
-    
+
+    await job.save();
+
+    // Sende die Antwort
     return NextResponse.json({
-      success: true,
-      message: 'Videogenerierungs-Workflow gestartet',
-      projectId: project._id,
-      jobId,
-      status: 'processing',
-      estimatedTime: 'Dein Video wird in wenigen Minuten fertig sein'
+      jobId: jobResult.jobId,
+      jobName: jobResult.jobName,
+      message: 'Video-Workflow wurde gestartet'
     });
+
   } catch (error) {
-    console.error('Error starting video workflow:', error);
+    console.error('Fehler im Video-Workflow:', error);
+    
+    // Detaillierte Fehlerinformationen
+    const errorMessage = error instanceof Error ? error.message : 'Unbekannter Fehler';
+    const errorStack = error instanceof Error ? error.stack : undefined;
+    
     return NextResponse.json(
-      { error: 'Fehler beim Starten des Video-Workflows', details: error instanceof Error ? error.message : String(error) },
+      {
+        error: 'Fehler beim Starten des Video-Workflows',
+        message: errorMessage,
+        stack: process.env.NODE_ENV === 'development' ? errorStack : undefined
+      },
       { status: 500 }
     );
   }

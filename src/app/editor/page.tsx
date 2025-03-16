@@ -5,6 +5,8 @@ import { ArrowLeftIcon, ArrowRightIcon, CheckCircleIcon, PlayIcon, PauseIcon, Ar
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
+import { toast } from 'react-hot-toast'
+import { VideoSegment } from '@/app/api/video-workflow/route'
 
 type UploadedVideo = {
   id: string;
@@ -15,25 +17,26 @@ type UploadedVideo = {
   tags: string[];
   filepath?: string;
   key?: string; // S3-Key des Videos
+  duration: number;
 }
 
 // Define error response type to match the backend
 type ErrorResponse = {
   error: string;
-  code: string;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  details?: any;
-  suggestions?: string[];
+  message?: string;
+  stack?: string;
 }
 
 // Define the type for file objects returned from the API
 type FileInfo = {
-  name: string;
-  path: string;
-  size: number;
-  type: string;
-  lastModified: string;
   id: string;
+  name: string;
+  url: string;
+  duration: number;
+  path?: string;
+  key?: string;
+  type?: string;
+  tags?: string[];
 }
 
 export default function EditorPage() {
@@ -51,7 +54,7 @@ export default function EditorPage() {
   const [voiceoverUrl, setVoiceoverUrl] = useState<string | null>(null)
   const [voiceoverScript, setVoiceoverScript] = useState<string>('')
   const [uploadedVideos, setUploadedVideos] = useState<UploadedVideo[]>([])
-  const [selectedVideos, setSelectedVideos] = useState<string[]>([])
+  const [selectedVideos, setSelectedVideos] = useState<FileInfo[]>([])
   const [availableUploads, setAvailableUploads] = useState<FileInfo[]>([])
   const [finalVideoUrl, setFinalVideoUrl] = useState<string | null>(null)
   
@@ -143,7 +146,7 @@ export default function EditorPage() {
     const videoElements: {[key: string]: HTMLVideoElement} = {}
     
     // Create video elements for each unique video
-    const uniqueVideoIds = [...new Set(selectedVideos)]
+    const uniqueVideoIds = [...new Set(selectedVideos.map(v => v.id))]
     uniqueVideoIds.forEach(videoId => {
       const video = uploadedVideos.find(v => v.id === videoId)
       if (video) {
@@ -244,20 +247,17 @@ export default function EditorPage() {
     const videoElements: {[key: string]: HTMLVideoElement} = {};
     
     // Create video elements for each selected video
-    selectedVideos.forEach(videoId => {
-      const video = uploadedVideos.find(v => v.id === videoId);
-      if (video) {
-        const videoElement = document.createElement('video');
-        videoElement.src = video.url;
-        videoElement.muted = true;
-        videoElement.preload = 'auto';
-        videoElement.load();
-        videoElements[videoId] = videoElement;
-      }
+    selectedVideos.forEach(video => {
+      const videoElement = document.createElement('video');
+      videoElement.src = video.url;
+      videoElement.muted = true;
+      videoElement.preload = 'auto';
+      videoElement.load();
+      videoElements[video.id] = videoElement;
     });
     
     // Berechne die Dauer jedes Videos (standardmäßig 10 Sekunden)
-    const videoDurations = selectedVideos.map(() => 10); // Standard: 10 Sekunden pro Video
+    const videoDurations = selectedVideos.map(v => v.duration);
     
     // Berechne die Positionen, an denen jedes Video beginnt
     const videoPositions: number[] = [];
@@ -288,7 +288,7 @@ export default function EditorPage() {
       }
       
       if (currentVideoIndex >= 0) {
-        const videoId = selectedVideos[currentVideoIndex];
+        const videoId = selectedVideos[currentVideoIndex].id;
         const videoElement = videoElements[videoId];
         
         if (videoElement) {
@@ -340,10 +340,10 @@ export default function EditorPage() {
   // Toggle video selection
   const toggleVideoSelection = useCallback((videoId: string) => {
     setSelectedVideos(prev => {
-      if (prev.includes(videoId)) {
-        return prev.filter(id => id !== videoId)
+      if (prev.some(v => v.id === videoId)) {
+        return prev.filter(v => v.id !== videoId)
       } else {
-        return [...prev, videoId]
+        return [...prev, { id: videoId, name: '', url: '', duration: 0 }]
       }
     })
   }, []);
@@ -360,21 +360,14 @@ export default function EditorPage() {
     setError(null);
     
     try {
-      // Für jedes ausgewählte Video den S3-Key ermitteln
-      const segmentsWithKeys = selectedVideos.map((videoId, index) => {
-        const video = uploadedVideos.find(v => v.id === videoId);
-        if (!video) return null;
-        
-        const videoKey = video.key || `uploads/${video.id}.${video.type.split('/')[1]}`;
-        
-        return {
-          videoId: video.id,
-          videoKey,
-          startTime: 0, // Start am Anfang des Videos
-          duration: 10, // Standard-Länge von 10 Sekunden pro Video
-          position: index // Position basierend auf der Reihenfolge in selectedVideos
-        };
-      }).filter(Boolean);
+      // Bereite die Segmente vor
+      const segments: VideoSegment[] = selectedVideos.map((video, index) => ({
+        videoId: video.id,
+        url: video.url,
+        startTime: 0,
+        duration: video.duration,
+        position: index
+      }));
       
       // Voiceover ID aus localStorage holen
       let voiceoverId = null;
@@ -395,15 +388,15 @@ export default function EditorPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          segments: segmentsWithKeys,
+          segments,
           voiceoverId,
           title: 'Ad Video'
         })
       });
       
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || errorData.message || 'Fehler bei der Generierung');
+        const errorData: ErrorResponse = await response.json();
+        throw new Error(errorData.message || 'Fehler bei der Generierung');
       }
       
       // Antwort verarbeiten
@@ -464,7 +457,8 @@ export default function EditorPage() {
             url: video.url,
             tags: video.tags || [],
             filepath: video.path,
-            key: video.key
+            key: video.key,
+            duration: video.duration || 0
           }));
           
           setUploadedVideos(serverVideos);
@@ -551,7 +545,7 @@ export default function EditorPage() {
               ) : (
                 <div className="space-y-3">
                   {uploadedVideos.map(video => {
-                    const isSelected = selectedVideos.includes(video.id);
+                    const isSelected = selectedVideos.some(v => v.id === video.id);
                     const videoExists = availableUploads.some(
                       file => 
                         file.id === video.id || 
@@ -574,6 +568,17 @@ export default function EditorPage() {
                               src={video.url} 
                               className="w-full h-full object-cover"
                               preload="metadata"
+                              onError={(e) => {
+                                const target = e.target as HTMLVideoElement;
+                                console.error('Video-Ladefehler:', {
+                                  error: e,
+                                  src: target.src,
+                                  networkState: target.networkState,
+                                  readyState: target.readyState
+                                });
+                                // Versuche das Video neu zu laden
+                                target.load();
+                              }}
                             />
                           </div>
                           <div className="flex-grow">
