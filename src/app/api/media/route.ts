@@ -30,28 +30,27 @@ export async function GET(request: NextRequest) {
     // Rückmeldung formatieren mit signierten URLs
     const formattedVideos = await Promise.all(videos.map(async video => {
       try {
-        // Verwende den path oder key für die signierte URL
-        const videoKey = video.path || video.key;
-        if (!videoKey) {
-          console.error('Video has no path or key:', video);
+        if (!video.path) {
+          console.error('Video has no path:', video);
           return null;
         }
 
         // Generiere eine signierte URL für jedes Video
-        const signedUrl = await getSignedVideoUrl(videoKey);
+        const signedUrl = await getSignedVideoUrl(video.path);
         console.log(`Generated signed URL for video ${video.id}:`, signedUrl);
         
         return {
           id: video.id,
-          _id: video._id ? video._id.toString() : undefined,
           name: video.name,
-          path: videoKey,
+          path: video.path,
           url: signedUrl,
           size: video.size,
           type: video.type,
           tags: video.tags || [],
           createdAt: video.createdAt,
-          isPublic: video.isPublic
+          isPublic: video.isPublic,
+          status: video.status || 'complete',
+          progress: video.progress || 100
         };
       } catch (error) {
         console.error(`Error processing video ${video.id}:`, error);

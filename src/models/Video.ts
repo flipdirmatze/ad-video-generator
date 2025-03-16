@@ -5,13 +5,13 @@ import { IUser } from './User';
 // 1. Create an interface representing a document in MongoDB
 export interface IVideo {
   id?: string; // Optional in der Interface-Definition, wird aber beim Speichern gesetzt
-  userId: mongoose.Types.ObjectId | IUser;
+  userId: string; // Änderung: String statt mongoose.Types.ObjectId | IUser
   name: string;
   originalFilename: string;
   size: number;
   type: string;
   path: string;
-  url: string;
+  url?: string; // Optional, da wir die URL dynamisch generieren
   tags: string[];
   width?: number;
   height?: number;
@@ -33,13 +33,18 @@ const VideoSchema = new mongoose.Schema({
   },
   userId: {
     type: String,
-    required: true
+    required: true,
+    index: true // Index für schnellere Abfragen
   },
   name: {
     type: String,
     required: true
   },
-  url: {
+  originalFilename: {
+    type: String,
+    required: true
+  },
+  path: {
     type: String,
     required: true
   },
@@ -55,16 +60,20 @@ const VideoSchema = new mongoose.Schema({
     type: [String],
     default: []
   },
+  isPublic: {
+    type: Boolean,
+    default: false
+  },
   status: {
     type: String,
     enum: ['draft', 'processing', 'complete'],
-    default: 'draft'
+    default: 'complete'
   },
   progress: {
     type: Number,
     min: 0,
     max: 100,
-    default: 0
+    default: 100
   },
   duration: {
     type: Number,

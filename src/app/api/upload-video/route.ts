@@ -53,26 +53,25 @@ export async function POST(request: Request) {
       console.log(`[${requestId}] Creating video document with ID: ${videoId}`);
       try {
         const video = await VideoModel.create({
-          id: videoId, // Explizit die id setzen
+          id: videoId,
           userId: session.user.id,
           name: name,
           originalFilename: name,
           size: size,
           type: type,
-          path: key,
-          url: url,
+          path: key.startsWith('uploads/') ? key : `uploads/${key}`,
           tags: tags || [],
           isPublic: false,
-          createdAt: new Date(),
-          updatedAt: new Date()
+          status: 'complete',
+          progress: 100
         });
         
         console.log(`[${requestId}] Video document created successfully: ${video._id}`);
         
         return NextResponse.json({
           success: true,
-          videoId: video._id,
-          fileUrl: url
+          videoId: video.id,
+          key: video.path
         });
       } catch (unknownError) {
         console.error(`[${requestId}] Error creating video document:`, unknownError);
@@ -144,27 +143,25 @@ export async function POST(request: Request) {
       console.log(`[${requestId}] Creating video document with ID: ${uniqueId}`);
       try {
         const video = await VideoModel.create({
-          id: uniqueId, // Explizit die id setzen
+          id: uniqueId,
           userId: session.user.id,
           name: file.name,
           originalFilename: file.name,
           size: file.size,
           type: file.type,
           path: `uploads/${uniqueFileName}`,
-          url: fileUrl,
           tags: tags ? JSON.parse(tags) : [],
           isPublic: false,
-          createdAt: new Date(),
-          updatedAt: new Date()
+          status: 'complete',
+          progress: 100
         });
         
         console.log(`[${requestId}] Video document created successfully: ${video._id}`);
         
         return NextResponse.json({
           success: true,
-          fileUrl: fileUrl,
-          fileName: uniqueFileName,
-          fileId: uniqueId
+          videoId: video.id,
+          key: video.path
         });
       } catch (unknownError) {
         console.error(`[${requestId}] Error creating video document:`, unknownError);
