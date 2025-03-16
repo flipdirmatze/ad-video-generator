@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { uploadToS3, generateUniqueFileName } from '@/lib/storage'
 import dbConnect from '@/lib/mongoose'
 import Voiceover from '@/models/Voiceover'
+import { Types } from 'mongoose'
 
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY
 const VOICE_ID = 'pNInz6obpgDQGcFmaJgB' // Example voice ID, you can change this
@@ -79,8 +80,18 @@ export async function POST(request: Request) {
       const audioBase64 = buffer.toString('base64')
       const dataUrl = `data:audio/mpeg;base64,${audioBase64}`
       
-      // Eindeutigen Dateinamen generieren und zu S3 hochladen
-      const fileName = generateUniqueFileName('voiceover.mp3')
+      // Connect to database first to generate MongoDB ID
+      console.log('Connecting to MongoDB to prepare voiceover document');
+      await dbConnect();
+      
+      // Generate a MongoDB ObjectId first
+      const voiceoverId = new Types.ObjectId();
+      
+      // Use the MongoDB ID as the filename
+      const fileName = `${voiceoverId.toString()}.mp3`;
+      console.log(`Using MongoDB ID as filename: ${fileName}`);
+      
+      // Upload to S3 with the MongoDB ID as the filename
       console.log(`Uploading voiceover to S3 with filename: ${fileName}`);
       
       try {
@@ -93,12 +104,10 @@ export async function POST(request: Request) {
         
         console.log(`Voiceover uploaded to S3 successfully. URL: ${s3Url}`);
         
-        // In der Datenbank speichern
-        console.log('Connecting to MongoDB to save voiceover metadata');
-        await dbConnect()
-        
         try {
+          // Create the voiceover document with the pre-generated ID
           const voiceover = await Voiceover.create({
+            _id: voiceoverId, // Use the pre-generated ID
             userId: session.user.id,
             name: fileName,
             text: script,
@@ -128,6 +137,7 @@ export async function POST(request: Request) {
             dataUrl,
             url: s3Url,
             fileName,
+            voiceoverId: voiceoverId.toString(),
             warning: 'Voiceover generated but metadata could not be saved to database'
           })
         }
