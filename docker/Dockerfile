@@ -2,6 +2,7 @@ FROM node:18-slim
 
 # Umgebungsvariablen
 ENV DEBIAN_FRONTEND=noninteractive
+ENV BATCH_CALLBACK_URL=https://ad-video-generator.vercel.app/api/batch-callback
 
 # Installiere notwendige Abhängigkeiten und FFmpeg
 RUN apt-get update && apt-get install -y \
