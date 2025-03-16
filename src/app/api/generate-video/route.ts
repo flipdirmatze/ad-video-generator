@@ -5,6 +5,7 @@ import dbConnect from '@/lib/mongoose';
 import ProjectModel from '@/models/Project';
 import VideoModel from '@/models/Video';
 import { generateUniqueFileName } from '@/lib/storage';
+import { Types } from 'mongoose';
 
 // Typ für eingehende Video-Segment-Daten
 type VideoSegmentRequest = {
@@ -21,6 +22,17 @@ type VideoGenerationRequest = {
   voiceoverId?: string;
   title?: string;
 };
+
+// Interface für das Video-Dokument mit _id
+interface VideoDocument {
+  _id: Types.ObjectId;
+  id: string;
+  userId: string;
+  name: string;
+  path: string;
+  size: number;
+  type: string;
+}
 
 export async function POST(request: Request) {
   try {
@@ -52,11 +64,11 @@ export async function POST(request: Request) {
     const videos = await VideoModel.find({
       _id: { $in: videoIds },
       userId: session.user.id
-    }).lean();
+    }, '_id').lean();
 
     if (videos.length !== videoIds.length) {
       console.error('Some videos not found or not owned by user');
-      const foundIds = videos.map(v => v._id.toString());
+      const foundIds = videos.map(v => String(v._id));
       const missingIds = videoIds.filter(id => !foundIds.includes(id));
       return NextResponse.json({
         error: 'Some videos not found or not accessible',
