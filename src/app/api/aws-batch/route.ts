@@ -141,6 +141,10 @@ export async function GET(request: NextRequest) {
 
     // Berechne den Fortschritt basierend auf dem Status
     let progress = 0;
+    let startedAt = 0;
+    let now = 0;
+    let elapsed = 0;
+
     switch (job.status) {
       case 'SUBMITTED':
         progress = 0;
@@ -156,9 +160,9 @@ export async function GET(request: NextRequest) {
         break;
       case 'RUNNING':
         // Schätze den Fortschritt basierend auf der verstrichenen Zeit
-        const startedAt = job.startedAt ? new Date(job.startedAt).getTime() : Date.now();
-        const now = Date.now();
-        const elapsed = now - startedAt;
+        startedAt = job.startedAt ? new Date(job.startedAt).getTime() : Date.now();
+        now = Date.now();
+        elapsed = now - startedAt;
         // Nehme an, dass ein Job etwa 5 Minuten dauert
         progress = Math.min(90, Math.floor((elapsed / (5 * 60 * 1000)) * 100));
         break;
