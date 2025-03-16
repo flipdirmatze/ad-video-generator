@@ -179,10 +179,30 @@ export async function POST(request: NextRequest) {
     // Füge zusätzliche Parameter hinzu
     if (additionalParams) {
       Object.entries(additionalParams).forEach(([key, value]) => {
-        environment.push({
-          name: key,
-          value: typeof value === 'string' ? value : JSON.stringify(value)
-        });
+        // Spezielle Behandlung für TEMPLATE_DATA, um sicherzustellen, dass es ein gültiger JSON-String ist
+        if (key === 'TEMPLATE_DATA') {
+          let templateDataStr;
+          if (typeof value === 'string') {
+            try {
+              // Versuche zu parsen, um zu prüfen, ob es gültiges JSON ist
+              JSON.parse(value);
+              templateDataStr = value;
+            } catch (e) {
+              // Wenn es kein gültiges JSON ist, konvertiere es
+              console.warn('TEMPLATE_DATA is not valid JSON, converting:', value);
+              templateDataStr = JSON.stringify(value);
+            }
+          } else {
+            // Wenn es kein String ist, konvertiere es zu JSON
+            templateDataStr = JSON.stringify(value);
+          }
+          environment.push({ name: key, value: templateDataStr });
+        } else {
+          environment.push({
+            name: key,
+            value: typeof value === 'string' ? value : JSON.stringify(value)
+          });
+        }
       });
     }
 

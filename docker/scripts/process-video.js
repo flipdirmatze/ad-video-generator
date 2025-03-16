@@ -39,6 +39,8 @@ const AWS_REGION = process.env.AWS_REGION || 'eu-central-1';
 const BATCH_CALLBACK_SECRET = process.env.BATCH_CALLBACK_SECRET || '';
 const CALLBACK_URL = process.env.CALLBACK_URL || 'https://your-app-url.com/api/batch-callback';
 const AWS_BATCH_JOB_ID = process.env.AWS_BATCH_JOB_ID || '';
+const DEBUG = process.env.DEBUG === 'true';
+const TEMPLATE_DATA = process.env.TEMPLATE_DATA ? JSON.parse(process.env.TEMPLATE_DATA) : null;
 
 // S3-Client
 const s3Client = new S3Client({
@@ -51,7 +53,20 @@ const s3Client = new S3Client({
 async function main() {
   try {
     console.log(`Starting video processing job '${JOB_TYPE}' for user ${USER_ID}`);
-    console.log(`Job parameters: ${JSON.stringify(JOB_PARAMS)}`);
+    
+    if (DEBUG) {
+      console.log('DEBUG mode enabled - showing detailed logs');
+      console.log(`Job parameters: ${JSON.stringify(JOB_PARAMS)}`);
+      
+      if (TEMPLATE_DATA) {
+        console.log('Template data available:');
+        console.log(`- Segments: ${TEMPLATE_DATA.segments ? TEMPLATE_DATA.segments.length : 0} segments`);
+        console.log(`- Voiceover ID: ${TEMPLATE_DATA.voiceoverId || 'None'}`);
+        console.log(`- Options: ${JSON.stringify(TEMPLATE_DATA.options || {})}`);
+      } else {
+        console.log('No template data available');
+      }
+    }
     
     // Erstelle temporäre Verzeichnisse
     await createDirectories();
@@ -71,8 +86,12 @@ async function main() {
       case 'voiceover':
         outputFilePath = await addVoiceover(inputFiles[0], JOB_PARAMS.voiceoverKey, inputFiles[1]);
         break;
-      case 'complete':
-        outputFilePath = await generateCompleteVideo(inputFiles, JOB_PARAMS);
+      case 'generate-final':
+        // Verwende TEMPLATE_DATA für generate-final
+        if (!TEMPLATE_DATA) {
+          throw new Error('TEMPLATE_DATA is required for generate-final job type');
+        }
+        outputFilePath = await generateCompleteVideo(inputFiles, TEMPLATE_DATA);
         break;
       default:
         throw new Error(`Unbekannter Job-Typ: ${JOB_TYPE}`);
@@ -235,25 +254,52 @@ async function addVoiceover(videoFile, voiceoverKey, audioFile) {
  * Generiere ein komplettes Video mit allen Schritten
  */
 async function generateCompleteVideo(inputFiles, params) {
-  const { segments, voiceoverKey } = params;
+  console.log('Starting complete video generation with params:', JSON.stringify(params, null, 2));
   
-  // 1. Trimme jedes Segment
-  const trimmedFiles = [];
+  // Extrahiere Segmente aus den Parametern
+  const segments = params.segments || [];
+  
+  if (segments.length === 0) {
+    throw new Error('No video segments provided');
+  }
+  
+  console.log(`Processing ${segments.length} video segments`);
+  
+  // 1. Lade die Segmente herunter, wenn sie noch nicht lokal sind
+  const segmentFiles = [];
   for (let i = 0; i < segments.length; i++) {
     const segment = segments[i];
-    const videoFile = inputFiles.find((_, index) => 
-      INPUT_KEYS[index].includes(segment.videoKey)
-    );
+    console.log(`Processing segment ${i+1}/${segments.length}: ${segment.url}`);
     
-    if (!videoFile) {
-      throw new Error(`Video file not found for segment ${i}`);
+    // Extrahiere den S3-Key aus der URL
+    const urlParts = segment.url.split('/');
+    const fileName = urlParts[urlParts.length - 1];
+    const localPath = path.join(INPUT_DIR, `segment_${i}_${fileName}`);
+    
+    // Prüfe, ob die Datei bereits heruntergeladen wurde
+    if (!fs.existsSync(localPath)) {
+      console.log(`Downloading segment from ${segment.url}`);
+      await downloadFromUrl(segment.url, localPath);
     }
     
-    const outputFile = path.join(OUTPUT_DIR, `segment_${i}.mp4`);
+    segmentFiles.push({
+      file: localPath,
+      startTime: segment.startTime,
+      duration: segment.duration,
+      position: segment.position
+    });
+  }
+  
+  // 2. Trimme jedes Segment
+  console.log('Trimming segments...');
+  const trimmedFiles = [];
+  for (let i = 0; i < segmentFiles.length; i++) {
+    const segment = segmentFiles[i];
+    const outputFile = path.join(OUTPUT_DIR, `trimmed_${i}.mp4`);
     
     // FFmpeg-Befehl zum Trimmen eines Segments
     const args = [
-      '-i', videoFile,
+      '-i', segment.file,
       '-ss', segment.startTime.toString(),
       '-t', segment.duration.toString(),
       '-c', 'copy',
@@ -261,17 +307,19 @@ async function generateCompleteVideo(inputFiles, params) {
       outputFile
     ];
     
+    console.log(`Trimming segment ${i+1}/${segmentFiles.length}`);
     await runFFmpeg(args);
+    
     trimmedFiles.push({
       file: outputFile,
       position: segment.position
     });
   }
   
-  // 2. Sortiere Segmente nach Position
+  // 3. Sortiere Segmente nach Position
   trimmedFiles.sort((a, b) => a.position - b.position);
   
-  // 3. Erstelle temporäre Dateiliste für Verkettung
+  // 4. Erstelle temporäre Dateiliste für Verkettung
   const concatFile = path.join(TEMP_DIR, 'concat.txt');
   const fileContents = trimmedFiles.map(item => 
     `file '${item.file.replace(/'/g, "'\\''")}'`
@@ -281,7 +329,8 @@ async function generateCompleteVideo(inputFiles, params) {
   
   const concatenatedFile = path.join(OUTPUT_DIR, 'concatenated.mp4');
   
-  // 4. Verkette die Segmente
+  // 5. Verkette die Segmente
+  console.log('Concatenating trimmed segments...');
   await runFFmpeg([
     '-f', 'concat',
     '-safe', '0',
@@ -291,31 +340,69 @@ async function generateCompleteVideo(inputFiles, params) {
     concatenatedFile
   ]);
   
-  // 5. Wenn ein Voiceover vorhanden ist, füge es hinzu
-  if (voiceoverKey) {
-    const voiceoverFile = inputFiles.find((_, index) => 
-      INPUT_KEYS[index].includes(voiceoverKey)
-    );
+  // 6. Wenn ein Voiceover vorhanden ist, füge es hinzu
+  if (params.voiceoverId) {
+    console.log(`Voiceover ID found: ${params.voiceoverId}`);
     
-    if (!voiceoverFile) {
-      throw new Error('Voiceover file not found');
+    try {
+      // Lade die Voiceover-Datei von S3 herunter
+      const voiceoverPath = path.join(INPUT_DIR, `voiceover_${params.voiceoverId}.mp3`);
+      const voiceoverKey = `audio/${params.voiceoverId}.mp3`;
+      
+      console.log(`Attempting to download voiceover from S3 with key: ${voiceoverKey}`);
+      
+      try {
+        // Versuche zuerst, die Datei direkt mit der ID als Dateiname zu laden
+        await downloadFromS3(voiceoverKey, voiceoverPath);
+      } catch (error) {
+        console.log(`Failed to download voiceover with ID as filename: ${error.message}`);
+        
+        // Wenn das fehlschlägt, versuche alternative Pfade
+        const alternativePaths = [
+          `audio/voiceover_${params.voiceoverId}.mp3`,
+          `voiceovers/${params.voiceoverId}.mp3`,
+          `voiceovers/voiceover_${params.voiceoverId}.mp3`
+        ];
+        
+        let downloaded = false;
+        for (const altPath of alternativePaths) {
+          try {
+            console.log(`Trying alternative path: ${altPath}`);
+            await downloadFromS3(altPath, voiceoverPath);
+            downloaded = true;
+            console.log(`Successfully downloaded voiceover from ${altPath}`);
+            break;
+          } catch (altError) {
+            console.log(`Failed with alternative path ${altPath}: ${altError.message}`);
+          }
+        }
+        
+        if (!downloaded) {
+          throw new Error(`Could not find voiceover file for ID: ${params.voiceoverId}`);
+        }
+      }
+      
+      const finalFile = path.join(OUTPUT_DIR, 'final.mp4');
+      
+      // FFmpeg-Befehl zum Hinzufügen des Voiceovers
+      console.log('Adding voiceover to video...');
+      await runFFmpeg([
+        '-i', concatenatedFile,
+        '-i', voiceoverPath,
+        '-map', '0:v', // Video vom ersten Input
+        '-map', '1:a', // Audio vom zweiten Input
+        '-c:v', 'copy',
+        '-shortest',
+        '-y',
+        finalFile
+      ]);
+      
+      return finalFile;
+    } catch (voiceoverError) {
+      console.error(`Error processing voiceover: ${voiceoverError.message}`);
+      console.log('Continuing without voiceover due to error');
+      return concatenatedFile;
     }
-    
-    const finalFile = path.join(OUTPUT_DIR, 'final.mp4');
-    
-    // FFmpeg-Befehl zum Hinzufügen des Voiceovers
-    await runFFmpeg([
-      '-i', concatenatedFile,
-      '-i', voiceoverFile,
-      '-map', '0:v', // Video vom ersten Input
-      '-map', '1:a', // Audio vom zweiten Input
-      '-c:v', 'copy',
-      '-shortest',
-      '-y',
-      finalFile
-    ]);
-    
-    return finalFile;
   }
   
   return concatenatedFile;
@@ -455,6 +542,64 @@ async function cleanupTempFiles() {
   }
   
   deleteFolderRecursive(TEMP_DIR);
+}
+
+/**
+ * Lade eine Datei von einer URL herunter
+ */
+async function downloadFromUrl(url, outputPath) {
+  return new Promise((resolve, reject) => {
+    https.get(url, (response) => {
+      if (response.statusCode !== 200) {
+        reject(new Error(`Failed to download file: ${response.statusCode} ${response.statusMessage}`));
+        return;
+      }
+      
+      const fileStream = fs.createWriteStream(outputPath);
+      response.pipe(fileStream);
+      
+      fileStream.on('finish', () => {
+        fileStream.close();
+        resolve(outputPath);
+      });
+      
+      fileStream.on('error', (err) => {
+        fs.unlink(outputPath, () => {}); // Lösche die unvollständige Datei
+        reject(err);
+      });
+    }).on('error', (err) => {
+      reject(err);
+    });
+  });
+}
+
+/**
+ * Lade eine Datei von S3 herunter
+ */
+async function downloadFromS3(key, outputPath) {
+  console.log(`Downloading from S3: ${S3_BUCKET}/${key} to ${outputPath}`);
+  
+  const command = new GetObjectCommand({
+    Bucket: S3_BUCKET,
+    Key: key
+  });
+  
+  try {
+    const response = await s3Client.send(command);
+    const fileStream = fs.createWriteStream(outputPath);
+    
+    await new Promise((resolve, reject) => {
+      response.Body.pipe(fileStream)
+        .on('error', reject)
+        .on('finish', resolve);
+    });
+    
+    console.log(`Successfully downloaded ${key}`);
+    return outputPath;
+  } catch (error) {
+    console.error(`Error downloading from S3: ${error.message}`);
+    throw error;
+  }
 }
 
 // Starte die Hauptfunktion

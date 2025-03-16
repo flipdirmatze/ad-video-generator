@@ -331,6 +331,7 @@ export async function POST(request: NextRequest) {
         // Prüfe, ob die voiceoverId ein gültiges Format hat
         if (typeof data.voiceoverId === 'string' && data.voiceoverId.length > 0) {
           templateData.voiceoverId = data.voiceoverId;
+          console.log(`Voiceover ID validated and added to template data: ${data.voiceoverId}`);
         } else {
           console.warn(`Invalid voiceover ID format: ${data.voiceoverId}, skipping voiceover`);
         }
