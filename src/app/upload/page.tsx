@@ -347,6 +347,58 @@ export default function UploadPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
               {allVideos.map((video) => (
                 <div key={video.id} className="relative rounded-lg overflow-hidden bg-gray-800">
+                  {/* Tags Section - Moved to top */}
+                  <div className="p-2 bg-black/80">
+                    <div className="flex flex-wrap gap-1 mb-2">
+                      {video.tags.map((tag, index) => (
+                        <span
+                          key={index}
+                          className="bg-purple-500/20 text-purple-300 text-xs px-2 py-1 rounded-full flex items-center"
+                        >
+                          {tag}
+                          <button
+                            onClick={() => removeTag(video.id, tag)}
+                            className="ml-1 hover:text-white"
+                            aria-label={`Remove tag ${tag}`}
+                          >
+                            <XMarkIcon className="h-3 w-3" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                    
+                    {selectedVideoId === video.id ? (
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={currentTag}
+                          onChange={(e) => setCurrentTag(e.target.value)}
+                          onKeyPress={(e) => e.key === 'Enter' && addTag(video.id)}
+                          placeholder="Add tag..."
+                          className="flex-1 bg-white/10 text-white text-sm rounded px-2 py-1"
+                          aria-label="Enter new tag"
+                        />
+                        <button
+                          onClick={() => addTag(video.id)}
+                          className="bg-purple-500 text-white px-2 py-1 rounded text-sm hover:bg-purple-600 transition-colors"
+                          aria-label="Add tag"
+                        >
+                          Add
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setSelectedVideoId(video.id)}
+                        className="text-white/60 text-sm flex items-center hover:text-white transition-colors"
+                        aria-label="Show tag input"
+                      >
+                        <TagIcon className="h-4 w-4 mr-1" />
+                        Add Tag
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Video Element */}
                   <video 
                     className="w-full h-full object-cover"
                     src={video.url}
@@ -399,54 +451,7 @@ export default function UploadPage() {
                     </div>
                   )}
 
-                  {/* Tags Section */}
-                  <div className="absolute bottom-0 left-0 right-0 p-2 bg-black/80">
-                    <div className="flex flex-wrap gap-1 mb-2">
-                      {video.tags.map((tag, index) => (
-                        <span
-                          key={index}
-                          className="bg-purple-500/20 text-purple-300 text-xs px-2 py-1 rounded-full flex items-center"
-                        >
-                          {tag}
-                          <button
-                            onClick={() => removeTag(video.id, tag)}
-                            className="ml-1 hover:text-white"
-                          >
-                            <XMarkIcon className="h-3 w-3" />
-                          </button>
-                        </span>
-                      ))}
-                    </div>
-                    
-                    {selectedVideoId === video.id ? (
-                      <div className="flex gap-2">
-                        <input
-                          type="text"
-                          value={currentTag}
-                          onChange={(e) => setCurrentTag(e.target.value)}
-                          onKeyPress={(e) => e.key === 'Enter' && addTag(video.id)}
-                          placeholder="Add tag..."
-                          className="flex-1 bg-white/10 text-white text-sm rounded px-2 py-1"
-                        />
-                        <button
-                          onClick={() => addTag(video.id)}
-                          className="bg-purple-500 text-white px-2 py-1 rounded text-sm"
-                        >
-                          Add
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => setSelectedVideoId(video.id)}
-                        className="text-white/60 text-sm flex items-center hover:text-white"
-                      >
-                        <TagIcon className="h-4 w-4 mr-1" />
-                        Add Tag
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Video Controls Overlay */}
+                  {/* Video Name Overlay */}
                   <div className="absolute bottom-0 left-0 right-0 p-2 bg-black bg-opacity-50">
                     <div className="flex items-center justify-between">
                       <span className="text-white text-sm truncate">{video.name}</span>
