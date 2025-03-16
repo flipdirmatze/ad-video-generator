@@ -23,6 +23,19 @@
    },
    "src/app/api/get-upload-url/route.ts": {
      "maxDuration": 10
+   },
+   "src/app/api/upload-video/route.ts": {
+     "maxDuration": 60,
+     "memory": 3008
+   }
+ },
+ "serverFiles": [
+   "package.json"
+ ],
+ "regions": ["fra1"],
+ "limits": {
+   "bodyParser": {
+     "sizeLimit": "500mb"
    }
  }
 }
