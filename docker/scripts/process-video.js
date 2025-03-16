@@ -286,8 +286,8 @@ async function generateFinalVideo() {
       '-i', segment.file,
       '-t', segment.duration.toString(),
       '-c:v', 'libx264', 
-      '-preset', 'veryfast',
-      '-crf', '26',
+      '-preset', 'veryfast', // Schneller Preset für bessere Geschwindigkeit
+      '-crf', '23', // Bessere Qualität (niedrigerer Wert = höhere Qualität)
       '-pix_fmt', 'yuv420p',
       '-movflags', '+faststart',
       '-y',
@@ -353,10 +353,14 @@ async function generateFinalVideo() {
       '-safe', '0',
       '-i', concatFile,
       '-c:v', 'libx264',
-      '-preset', 'veryfast', // Schnellerer Preset (statt 'medium')
-      '-crf', '26', // Etwas niedrigere Qualität für schnellere Verarbeitung
+      '-preset', 'veryfast', // Schneller Preset für bessere Geschwindigkeit
+      '-crf', '23', // Bessere Qualität (niedrigerer Wert = höhere Qualität)
       '-pix_fmt', 'yuv420p',
       '-movflags', '+faststart',
+      '-maxrate', '5M', // Maximale Bitrate für bessere Qualität
+      '-bufsize', '10M', // Buffer-Größe für konstante Qualität
+      '-profile:v', 'high', // High-Profile für bessere Kompression
+      '-level', '4.1', // Kompatibilitätslevel
       '-y',
       concatenatedFile
     ]);
@@ -441,8 +445,8 @@ async function generateFinalVideo() {
           '-map', '0:v', // Video vom ersten Input
           '-map', '1:a', // Audio vom zweiten Input
           '-c:v', 'libx264',
-          '-preset', 'veryfast', // Schnellerer Preset (statt 'medium')
-          '-crf', '26', // Etwas niedrigere Qualität für schnellere Verarbeitung
+          '-preset', 'veryfast', // Schneller Preset für bessere Geschwindigkeit
+          '-crf', '23', // Bessere Qualität (niedrigerer Wert = höhere Qualität)
           '-pix_fmt', 'yuv420p',
           '-movflags', '+faststart',
           '-shortest',
