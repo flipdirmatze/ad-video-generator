@@ -306,17 +306,21 @@ export async function POST(request: NextRequest) {
       // Erstelle einen eindeutigen Ausgabeschlüssel
       const outputKey = `final/${uuidv4()}.mp4`;
       
+      // Konvertiere den S3-Key zu einer vollständigen URL
+      const inputVideoUrl = getS3Url(segments[0].videoKey);
+      console.log(`Converting S3 key to full URL: ${segments[0].videoKey} -> ${inputVideoUrl}`);
+      
       // Sende den Job an AWS Batch
       const jobResult = await submitAwsBatchJob(
         BatchJobTypes.GENERATE_FINAL,
-        segments[0].videoKey,
+        inputVideoUrl, // Verwende die vollständige URL statt nur des Keys
         outputKey,
         {
           USER_ID: userId,
           PROJECT_ID: project._id.toString(),
           TEMPLATE_DATA: JSON.stringify({
             segments: segments.map(segment => ({
-              url: segment.videoKey,
+              url: getS3Url(segment.videoKey), // Konvertiere auch hier zu vollständigen URLs
               startTime: segment.startTime,
               duration: segment.duration,
               position: segment.position
