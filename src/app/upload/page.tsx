@@ -54,16 +54,17 @@ export default function UploadPage() {
   // Memoize allVideos to prevent unnecessary recalculations
   const allVideos = useMemo(() => [...uploadedVideos, ...pendingUploads], [uploadedVideos, pendingUploads]);
   
-  // Entfernen des gesamten loadVideoMetadata useCallback und useEffect-Hooks
-  // Füge einen Callback für das Laden von Video-Metadaten hinzu - außerhalb von useEffect
-  // const loadVideoMetadata = useCallback((video: UploadedVideo) => {
-  // ...
-  // }, [videoAspectRatios]);
+  // Memoize videoPlaybackUrlsRef to maintain stable reference
+  const videoPlaybackUrlsRef = useRef(videoPlaybackUrls);
+  useEffect(() => {
+    videoPlaybackUrlsRef.current = videoPlaybackUrls;
+  }, [videoPlaybackUrls]);
   
   // Funktion zum Abrufen einer signierten URL für die Videowiedergabe
   const getVideoPlaybackUrl = useCallback(async (video: UploadedVideo): Promise<string> => {
-    if (videoPlaybackUrls[video.id]) {
-      return videoPlaybackUrls[video.id];
+    const currentUrls = videoPlaybackUrlsRef.current;
+    if (currentUrls[video.id]) {
+      return currentUrls[video.id];
     }
     
     if (video.url.startsWith('blob:')) {
@@ -132,7 +133,8 @@ export default function UploadPage() {
     let isMounted = true;
     
     const prepareVideoPlayback = async () => {
-      const videosWithoutUrls = allVideos.filter(video => !videoPlaybackUrls[video.id]);
+      const currentUrls = videoPlaybackUrlsRef.current;
+      const videosWithoutUrls = allVideos.filter(video => !currentUrls[video.id]);
       
       for (let i = 0; i < videosWithoutUrls.length; i += MAX_CONCURRENT_REQUESTS) {
         if (!isMounted) return;
@@ -173,19 +175,21 @@ export default function UploadPage() {
     };
   }, [allVideos, getVideoPlaybackUrl]);
   
-  // HOOK 3: Aspektverhältnisse verwalten
-  // useEffect(() => {
-  // ...
-  // }, [allVideos, videoAspectRatios, loadVideoMetadata]);
+  // Memoize videoAspectRatiosRef to maintain stable reference
+  const videoAspectRatiosRef = useRef(videoAspectRatios);
+  useEffect(() => {
+    videoAspectRatiosRef.current = videoAspectRatios;
+  }, [videoAspectRatios]);
   
-  // Stattdessen: Einfacher Ansatz für Video-Vorschau mit festem Format
+  // Optimierter Video-Format-Handler
   const getVideoFormat = useCallback((video: UploadedVideo) => {
-    if (videoAspectRatios[video.id]) {
-      return videoAspectRatios[video.id];
+    const currentRatios = videoAspectRatiosRef.current;
+    if (currentRatios[video.id]) {
+      return currentRatios[video.id];
     }
     
     const determineFormat = () => {
-      if (!videoAspectRatios[video.id]) {
+      if (!videoAspectRatiosRef.current[video.id]) {
         const videoEl = document.createElement('video');
         
         const cleanup = () => {
@@ -445,19 +449,11 @@ export default function UploadPage() {
     };
     
     interval = setInterval(() => {
-      if (progress < 30) {
-        progress += Math.random() * 5;
-      } else if (progress < 70) {
-        progress += Math.random() * 3;
-      } else if (progress < 90) {
-        progress += Math.random() * 1;
-      } else {
-        progress += Math.random() * 0.5;
-      }
+      progress = Math.min(progress + (Math.random() * (progress < 30 ? 5 : progress < 70 ? 3 : progress < 90 ? 1 : 0.5)), 99);
       
       setUploadProgress(prev => ({
         ...prev,
-        [videoId]: Math.min(Math.floor(progress), 99)
+        [videoId]: Math.floor(progress)
       }));
       
       if (progress >= 99) {
@@ -748,14 +744,20 @@ export default function UploadPage() {
     }
   }
 
-  // Optimierter Upload-Error-Handler
+  // Optimierter Upload-Error-Handler mit Cleanup
   const handleUploadError = useCallback((videoId: string, errorMessage: string) => {
+    const cleanup = () => {
+      setError(null);
+      setIsUploading(prev => ({ ...prev, [videoId]: false }));
+      setPendingUploads(prev => prev.filter(v => v.id !== videoId));
+    };
+
     setError(`Upload-Fehler: ${errorMessage}`);
-    setIsUploading(prev => ({ ...prev, [videoId]: false }));
-    setPendingUploads(prev => prev.filter(v => v.id !== videoId));
-    
-    const timeoutId = setTimeout(() => setError(null), 5000);
-    return () => clearTimeout(timeoutId);
+    const timeoutId = setTimeout(cleanup, 5000);
+    return () => {
+      clearTimeout(timeoutId);
+      cleanup();
+    };
   }, []);
 
   return (
