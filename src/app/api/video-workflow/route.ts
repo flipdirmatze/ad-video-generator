@@ -46,13 +46,25 @@ export async function POST(request: NextRequest) {
   
   try {
     // Authentifizierung prüfen
+    let userId;
     const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      console.error('Unauthorized: No session found');
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    
+    if (session?.user?.id) {
+      userId = session.user.id;
+      console.log('User authenticated via session:', userId);
+    } else {
+      // Prüfe auf interne API-Aufrufe
+      const authHeader = request.headers.get('Authorization');
+      const apiKey = request.headers.get('x-api-key');
+      
+      if (apiKey === (process.env.API_SECRET_KEY || 'internal-api-call') && authHeader?.startsWith('Bearer ')) {
+        userId = authHeader.substring(7); // Entferne 'Bearer ' vom Anfang
+        console.log('User authenticated via API key:', userId);
+      } else {
+        console.error('Unauthorized: No valid session or API key');
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      }
     }
-
-    const userId = session.user.id;
     
     // Request-Daten validieren
     let data: WorkflowRequest;
@@ -66,6 +78,15 @@ export async function POST(request: NextRequest) {
         details: error instanceof Error ? error.message : 'Failed to parse JSON'
       }, { status: 400 });
     }
+    
+    // Stelle sicher, dass die userId im Request mit der authentifizierten userId übereinstimmt
+    if (data.userId && data.userId !== userId) {
+      console.error('User ID mismatch:', { requestUserId: data.userId, authenticatedUserId: userId });
+      return NextResponse.json({ error: 'User ID mismatch' }, { status: 403 });
+    }
+    
+    // Setze die userId im Request auf die authentifizierte userId
+    data.userId = userId;
     
     // Grundlegende Validierung
     if (!data.title || !data.videos || data.videos.length === 0) {

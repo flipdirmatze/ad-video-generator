@@ -63,10 +63,8 @@ export const submitAwsBatchJob = async (
   outputKey?: string,
   additionalParams?: Record<string, string | number | boolean | object>
 ): Promise<BatchJobResult> => {
-  // Bestimme die Basis-URL für API-Aufrufe
-  const baseUrl = typeof window !== 'undefined' 
-    ? window.location.origin 
-    : process.env.NEXT_PUBLIC_APP_URL || 'https://ad-video-generator.vercel.app';
+  // Bestimme die Basis-URL für API-Aufrufe (nur Server-seitig)
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://ad-video-generator.vercel.app';
 
   try {
     // Validiere den Job-Typ
@@ -80,13 +78,14 @@ export const submitAwsBatchJob = async (
       throw new Error('Input video URL is required');
     }
 
-    console.log(`Submitting AWS Batch job to ${baseUrl}/api/aws-batch`);
+    console.log(`Submitting AWS Batch job to ${baseUrl}/api/aws-batch with job type ${jobType}`);
 
     // Erstelle die Anfrage an unsere API-Route
     const response = await fetch(`${baseUrl}/api/aws-batch`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'x-api-key': process.env.API_SECRET_KEY || 'internal-api-call'
       },
       body: JSON.stringify({
         jobType,
@@ -94,6 +93,8 @@ export const submitAwsBatchJob = async (
         outputKey,
         additionalParams,
       } as BatchJobParams),
+      // Erhöhe das Timeout für die Anfrage
+      signal: AbortSignal.timeout(30000) // 30 Sekunden Timeout
     });
 
     if (!response.ok) {
@@ -126,19 +127,22 @@ export const submitAwsBatchJob = async (
  * Ruft den Status eines AWS Batch Jobs ab
  */
 export const getJobStatus = async (jobId: string): Promise<string> => {
-  // Bestimme die Basis-URL für API-Aufrufe
-  const baseUrl = typeof window !== 'undefined' 
-    ? window.location.origin 
-    : process.env.NEXT_PUBLIC_APP_URL || 'https://ad-video-generator.vercel.app';
+  // Bestimme die Basis-URL für API-Aufrufe (nur Server-seitig)
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://ad-video-generator.vercel.app';
 
   try {
+    console.log(`Fetching job status for job ${jobId} from ${baseUrl}/api/aws-batch`);
+    
     const response = await fetch(
       `${baseUrl}/api/aws-batch?jobId=${jobId}`,
       {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
+          'x-api-key': process.env.API_SECRET_KEY || 'internal-api-call'
         },
+        // Erhöhe das Timeout für die Anfrage
+        signal: AbortSignal.timeout(30000) // 30 Sekunden Timeout
       }
     );
 

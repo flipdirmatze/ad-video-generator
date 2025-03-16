@@ -6,6 +6,7 @@ import ProjectModel from '@/models/Project';
 import VideoModel from '@/models/Video';
 import { generateUniqueFileName } from '@/lib/storage';
 import { Types } from 'mongoose';
+import { NextRequest } from 'next/server';
 
 // Typ für eingehende Video-Segment-Daten
 type VideoSegmentRequest = {
@@ -167,34 +168,36 @@ export async function POST(request: Request) {
 
     // Starte den Video-Workflow
     try {
-      // Bestimme die Basis-URL für API-Aufrufe
-      const baseUrl = typeof window !== 'undefined' 
-        ? window.location.origin 
-        : process.env.NEXT_PUBLIC_APP_URL || 'https://ad-video-generator.vercel.app';
+      // Erstelle ein Objekt mit den Workflow-Daten
+      const workflowData = {
+        projectId: project._id.toString(),
+        workflowType: 'video_generation',
+        userId: session.user.id,
+        title: title,
+        videos: segments.map(segment => ({
+          id: segment.videoId,
+          key: segment.videoKey,
+          segments: [{
+            startTime: segment.startTime,
+            duration: segment.duration,
+            position: segment.position
+          }]
+        })),
+        voiceoverId: voiceoverId
+      };
       
-      console.log(`Starting video workflow at ${baseUrl}/api/video-workflow`);
+      console.log('Preparing workflow data:', workflowData);
       
+      // Verwende die direkte Methode, um den Workflow zu starten
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://ad-video-generator.vercel.app';
       const workflowResponse = await fetch(`${baseUrl}/api/video-workflow`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'x-api-key': process.env.API_SECRET_KEY || 'internal-api-call',
+          'Authorization': `Bearer ${session.user.id}`
         },
-        body: JSON.stringify({
-          projectId: project._id.toString(),
-          workflowType: 'video_generation',
-          userId: session.user.id,
-          title: title,
-          videos: segments.map(segment => ({
-            id: segment.videoId,
-            key: segment.videoKey,
-            segments: [{
-              startTime: segment.startTime,
-              duration: segment.duration,
-              position: segment.position
-            }]
-          })),
-          voiceoverId: voiceoverId
-        })
+        body: JSON.stringify(workflowData)
       });
 
       if (!workflowResponse.ok) {
@@ -210,22 +213,22 @@ export async function POST(request: Request) {
         throw new Error(errorData.message || errorData.error || 'Failed to start video workflow');
       }
 
-      const workflowData = await workflowResponse.json();
-      console.log('Workflow started successfully:', workflowData);
+      const workflowResponseData = await workflowResponse.json();
+      console.log('Workflow started successfully:', workflowResponseData);
 
       // Update project with workflow data
       await ProjectModel.findByIdAndUpdate(project._id, {
         status: 'processing',
-        batchJobId: workflowData.jobId,
-        batchJobName: workflowData.jobName
+        batchJobId: workflowResponseData.jobId,
+        batchJobName: workflowResponseData.jobName
       });
 
       return NextResponse.json({
         success: true,
         message: 'Video generation started',
         projectId: project._id.toString(),
-        jobId: workflowData.jobId,
-        jobName: workflowData.jobName || workflowData.status,
+        jobId: workflowResponseData.jobId,
+        jobName: workflowResponseData.jobName || workflowResponseData.status,
         estimatedTime: "Your video will be processed and will be ready in a few minutes"
       });
     } catch (error) {
