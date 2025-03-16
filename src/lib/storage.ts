@@ -15,10 +15,10 @@ export type S3BucketFolder = 'uploads' | 'processed' | 'final' | 'audio';
 // S3 Client Konfiguration
 const s3Config: S3ClientConfig = {
   region: process.env.AWS_REGION || 'eu-central-1', // Fallback auf eu-central-1
-  credentials: process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY ? {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-  } : undefined,
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || ''
+  },
 };
 
 // S3 Client erstellen - mit Fehlerprüfung
@@ -184,4 +184,26 @@ export function generateUniqueFileName(originalName: string): string {
   const extension = getFileExtension(originalName);
   
   return `${timestamp}-${randomStr}.${extension}`;
+}
+
+export async function getSignedVideoUrl(key: string, expiresIn: number = 3600): Promise<string> {
+  // Entferne führenden Schrägstrich, falls vorhanden
+  const cleanKey = key.startsWith('/') ? key.slice(1) : key;
+  
+  // Wenn der Key nicht mit 'uploads/' beginnt, füge es hinzu
+  const fullKey = cleanKey.startsWith('uploads/') ? cleanKey : `uploads/${cleanKey}`;
+
+  const command = new GetObjectCommand({
+    Bucket: bucketName,
+    Key: fullKey,
+  });
+
+  try {
+    const signedUrl = await getSignedUrl(s3Client, command, { expiresIn });
+    console.log(`Generated signed URL for video: ${fullKey}`);
+    return signedUrl;
+  } catch (error) {
+    console.error(`Error generating signed URL for ${fullKey}:`, error);
+    throw error;
+  }
 } 

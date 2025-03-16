@@ -50,21 +50,24 @@ export default function UploadPage() {
         if (response.ok) {
           const data = await response.json()
           if (data.files?.length > 0) {
-            setUploadedVideos(data.files.map((video: any) => ({
+            // Stelle sicher, dass wir die signierten URLs verwenden
+            const videos = data.files.map((video: any) => ({
               id: video.id,
               name: video.name,
               size: video.size,
               type: video.type,
-              url: video.url,
+              url: video.url, // Diese URL sollte bereits signiert sein
               tags: video.tags || [],
               key: video.key
-            })))
+            }));
+            setUploadedVideos(videos);
           } else {
             setUploadedVideos([])
           }
         }
       } catch (error) {
         console.error('Error loading videos:', error)
+        setError('Failed to load videos')
       }
     }
     
@@ -189,9 +192,9 @@ export default function UploadPage() {
     
     if (isPending) {
       setPendingUploads(prev => prev.map(video => {
-        if (video.id === videoId && !video.tags.includes(currentTag)) {
+          if (video.id === videoId && !video.tags.includes(currentTag)) {
           return { ...video, tags: [...video.tags, currentTag] }
-        }
+          }
         return video
       }))
     } else {
@@ -210,9 +213,9 @@ export default function UploadPage() {
         if (!response.ok) throw new Error('Failed to update tags')
         
         setUploadedVideos(prev => prev.map(video => {
-          if (video.id === videoId) {
+            if (video.id === videoId) {
             return { ...video, tags: newTags }
-          }
+            }
           return video
         }))
       } catch (error) {
@@ -230,9 +233,9 @@ export default function UploadPage() {
     
     if (isPending) {
       setPendingUploads(prev => prev.map(video => {
-        if (video.id === videoId) {
+          if (video.id === videoId) {
           return { ...video, tags: video.tags.filter(tag => tag !== tagToRemove) }
-        }
+          }
         return video
       }))
     } else {
@@ -251,9 +254,9 @@ export default function UploadPage() {
         if (!response.ok) throw new Error('Failed to remove tag')
         
         setUploadedVideos(prev => prev.map(video => {
-          if (video.id === videoId) {
+            if (video.id === videoId) {
             return { ...video, tags: newTags }
-          }
+            }
           return video
         }))
       } catch (error) {
@@ -358,6 +361,8 @@ export default function UploadPage() {
                       if (target.error) {
                         console.error('Error code:', target.error.code);
                         console.error('Error message:', target.error.message);
+                        // Versuche das Video neu zu laden
+                        target.load();
                       }
                     }}
                   />
@@ -430,6 +435,13 @@ export default function UploadPage() {
                         Add Tag
                       </button>
                     )}
+                  </div>
+
+                  {/* Video Controls Overlay */}
+                  <div className="absolute bottom-0 left-0 right-0 p-2 bg-black bg-opacity-50">
+                    <div className="flex items-center justify-between">
+                      <span className="text-white text-sm truncate">{video.name}</span>
+                    </div>
                   </div>
                 </div>
               ))}
