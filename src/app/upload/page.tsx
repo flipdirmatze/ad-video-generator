@@ -346,9 +346,9 @@ export default function UploadPage() {
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
               {allVideos.map((video) => (
-                <div key={video.id} className="relative rounded-lg overflow-hidden bg-gray-800">
-                  {/* Tags Section - Moved to top */}
-                  <div className="p-2 bg-black/80">
+                <div key={video.id} className="flex flex-col rounded-lg overflow-hidden bg-gray-800">
+                  {/* Tags Section - Above video */}
+                  <div className="p-2 bg-gray-800 border-b border-gray-700">
                     <div className="flex flex-wrap gap-1 mb-2">
                       {video.tags.map((tag, index) => (
                         <span
@@ -398,63 +398,64 @@ export default function UploadPage() {
                     )}
                   </div>
 
-                  {/* Video Element */}
-                  <video 
-                    className="w-full h-full object-cover"
-                    src={video.url}
-                    controls
-                    controlsList="nodownload"
-                    preload="metadata"
-                    playsInline
-                    muted
-                    crossOrigin="anonymous"
-                    onError={(e) => {
-                      console.error('Video loading error:', e);
-                      const target = e.target as HTMLVideoElement;
-                      if (target.error) {
-                        console.error('Error code:', target.error.code);
-                        console.error('Error message:', target.error.message);
-                        console.error('Failed URL:', video.url);
-                        
-                        // Wenn es ein Upload in Bearbeitung ist, ignoriere den Fehler
-                        if (uploadProgress[video.id] !== undefined && uploadProgress[video.id] < 100) {
-                          return;
+                  {/* Video Container */}
+                  <div className="relative">
+                    {/* Video Element */}
+                    <video 
+                      className="w-full object-cover"
+                      src={video.url}
+                      controls
+                      controlsList="nodownload"
+                      preload="metadata"
+                      playsInline
+                      muted
+                      crossOrigin="anonymous"
+                      onError={(e) => {
+                        console.error('Video loading error:', e);
+                        const target = e.target as HTMLVideoElement;
+                        if (target.error) {
+                          console.error('Error code:', target.error.code);
+                          console.error('Error message:', target.error.message);
+                          console.error('Failed URL:', video.url);
+                          
+                          if (uploadProgress[video.id] !== undefined && uploadProgress[video.id] < 100) {
+                            return;
+                          }
+                          
+                          setError(`Failed to load video: ${video.name}`);
                         }
-                        
-                        // Setze einen Fehler-Status für dieses Video
-                        setError(`Failed to load video: ${video.name}`);
-                      }
-                    }}
-                    style={{ minHeight: '200px' }} // Mindesthöhe für bessere Darstellung
-                  />
-                  
-                  {/* Upload Progress */}
-                  {uploadProgress[video.id] !== undefined && uploadProgress[video.id] < 100 && (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/70">
-                      <div className="w-2/3 h-2 bg-gray-700 rounded-full overflow-hidden">
-                        <div 
-                          className="h-full bg-purple-500 rounded-full"
-                          style={{ width: `${uploadProgress[video.id]}%` }}
-                        />
+                      }}
+                      style={{ minHeight: '200px' }}
+                    />
+                    
+                    {/* Upload Progress */}
+                    {uploadProgress[video.id] !== undefined && uploadProgress[video.id] < 100 && (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/70">
+                        <div className="w-2/3 h-2 bg-gray-700 rounded-full overflow-hidden">
+                          <div 
+                            className="h-full bg-purple-500 rounded-full"
+                            style={{ width: `${uploadProgress[video.id]}%` }}
+                          />
+                        </div>
+                        <p className="mt-2 text-white text-sm">
+                          Uploading... {Math.floor(uploadProgress[video.id])}%
+                        </p>
                       </div>
-                      <p className="mt-2 text-white text-sm">
-                        Uploading... {Math.floor(uploadProgress[video.id])}%
-                      </p>
-                    </div>
-                  )}
-                  
-                  {/* Upload Complete Indicator */}
-                  {uploadProgress[video.id] === 100 && (
-                    <div className="absolute top-2 right-2 bg-green-500/20 text-green-400 py-1 px-2 rounded-md flex items-center text-xs">
-                      <CheckCircleIcon className="h-4 w-4 mr-1" />
-                      Upload complete
-                    </div>
-                  )}
+                    )}
+                    
+                    {/* Upload Complete Indicator */}
+                    {uploadProgress[video.id] === 100 && (
+                      <div className="absolute top-2 right-2 bg-green-500/20 text-green-400 py-1 px-2 rounded-md flex items-center text-xs">
+                        <CheckCircleIcon className="h-4 w-4 mr-1" />
+                        Upload complete
+                      </div>
+                    )}
 
-                  {/* Video Name Overlay */}
-                  <div className="absolute bottom-0 left-0 right-0 p-2 bg-black bg-opacity-50">
-                    <div className="flex items-center justify-between">
-                      <span className="text-white text-sm truncate">{video.name}</span>
+                    {/* Video Name Overlay */}
+                    <div className="absolute bottom-0 left-0 right-0 p-2 bg-black bg-opacity-50">
+                      <div className="flex items-center justify-between">
+                        <span className="text-white text-sm truncate">{video.name}</span>
+                      </div>
                     </div>
                   </div>
                 </div>
