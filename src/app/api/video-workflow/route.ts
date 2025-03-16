@@ -260,21 +260,35 @@ export async function POST(request: NextRequest) {
     // Starte den Batch-Job
     let jobResult;
     try {
+      console.log('Submitting AWS Batch job with type:', BatchJobTypes.GENERATE_FINAL);
+      console.log('Using first segment key as input:', segments[0].videoKey);
+      
+      // Versuche den Job zu starten
       jobResult = await submitAwsBatchJob(
         BatchJobTypes.GENERATE_FINAL,
         segments[0].videoKey,
         outputKey,
         jobParams
       );
+      
+      if (!jobResult || !jobResult.jobId) {
+        throw new Error('AWS Batch job submission failed: No job ID returned');
+      }
+      
       console.log('AWS Batch job submitted successfully:', jobResult);
     } catch (error) {
       console.error('Error submitting AWS Batch job:', error);
       
       // Update project status to failed
-      await ProjectModel.findByIdAndUpdate(project._id, {
-        status: 'failed',
-        error: error instanceof Error ? error.message : 'Failed to submit AWS Batch job'
-      });
+      try {
+        await ProjectModel.findByIdAndUpdate(project._id, {
+          status: 'failed',
+          error: error instanceof Error ? error.message : 'Failed to submit AWS Batch job'
+        });
+        console.log('Project status updated to failed');
+      } catch (updateError) {
+        console.error('Failed to update project status:', updateError);
+      }
       
       return NextResponse.json({
         error: 'Failed to submit AWS Batch job',

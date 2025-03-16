@@ -4,14 +4,32 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { BatchJobTypes } from '@/utils/aws-batch-utils';
 
-// Konfiguriere AWS Batch-Client
-const batchClient = new BatchClient({
-  region: process.env.AWS_REGION || 'eu-central-1',
-  credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || ''
+// Konfiguriere AWS Batch-Client mit detailliertem Logging
+const createBatchClient = () => {
+  console.log('Creating AWS Batch client with region:', process.env.AWS_REGION || 'eu-central-1');
+  
+  try {
+    return new BatchClient({
+      region: process.env.AWS_REGION || 'eu-central-1',
+      credentials: {
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || ''
+      }
+    });
+  } catch (error) {
+    console.error('Error creating AWS Batch client:', error);
+    throw error;
   }
-});
+};
+
+// Erstelle den Client nur einmal
+let batchClient: BatchClient;
+try {
+  batchClient = createBatchClient();
+} catch (error) {
+  console.error('Failed to initialize AWS Batch client:', error);
+  // Wir erstellen den Client später bei Bedarf
+}
 
 // Validiere die erforderlichen Umgebungsvariablen
 function validateEnvironment() {
@@ -25,24 +43,50 @@ function validateEnvironment() {
   ];
 
   const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
+  
   if (missingVars.length > 0) {
+    console.error('Missing required environment variables:', missingVars);
     throw new Error(`Missing required environment variables: ${missingVars.join(', ')}`);
   }
+  
+  console.log('Environment validation successful');
 }
 
 /**
  * Verarbeitet POST-Anfragen zum Starten von AWS Batch-Jobs für Videobearbeitung
  */
 export async function POST(request: NextRequest) {
+  console.log('AWS Batch POST request received');
+  
   try {
     // Validiere Umgebungsvariablen
     validateEnvironment();
 
+    // Stelle sicher, dass der Batch-Client existiert
+    if (!batchClient) {
+      console.log('Initializing AWS Batch client on demand');
+      batchClient = createBatchClient();
+    }
+
     // Authentifizierung prüfen
+    let userId;
     const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      console.error('Unauthorized: No session or user ID');
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    
+    if (session?.user?.id) {
+      userId = session.user.id;
+      console.log('User authenticated via session:', userId);
+    } else {
+      // Prüfe auf interne API-Aufrufe
+      const authHeader = request.headers.get('Authorization');
+      const apiKey = request.headers.get('x-api-key');
+      
+      if (apiKey === (process.env.API_SECRET_KEY || 'internal-api-call') && authHeader?.startsWith('Bearer ')) {
+        userId = authHeader.substring(7); // Entferne 'Bearer ' vom Anfang
+        console.log('User authenticated via API key:', userId);
+      } else {
+        console.error('Unauthorized: No valid session or API key');
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      }
     }
 
     // Extrahiere JSON-Daten aus der Anfrage
@@ -101,7 +145,7 @@ export async function POST(request: NextRequest) {
     const environment = [
       { name: 'JOB_TYPE', value: jobType },
       { name: 'INPUT_VIDEO_URL', value: inputVideoUrl },
-      { name: 'USER_ID', value: session.user.id },
+      { name: 'USER_ID', value: userId },
       { name: 'S3_BUCKET', value: process.env.S3_BUCKET_NAME || '' },
       { name: 'AWS_REGION', value: process.env.AWS_REGION || 'eu-central-1' }
     ];
@@ -122,6 +166,8 @@ export async function POST(request: NextRequest) {
     }
 
     console.log('Prepared environment variables:', environment);
+    console.log('Using job queue:', process.env.AWS_BATCH_JOB_QUEUE);
+    console.log('Using job definition:', process.env.AWS_BATCH_JOB_DEFINITION);
 
     // Erstelle den AWS Batch Job Command
     const command = new SubmitJobCommand({
@@ -138,13 +184,28 @@ export async function POST(request: NextRequest) {
     // Sende den Job an AWS Batch
     let jobResponse;
     try {
+      console.log('Sending job to AWS Batch...');
       jobResponse = await batchClient.send(command);
-      console.log('AWS Batch job submitted:', { jobId: jobResponse.jobId, jobName });
+      console.log('AWS Batch job submitted successfully:', { jobId: jobResponse.jobId, jobName });
     } catch (error) {
       console.error('AWS Batch API error:', error);
+      
+      // Detaillierte Fehlerinformationen
+      let errorDetails = 'Unknown AWS Batch error';
+      if (error instanceof Error) {
+        errorDetails = error.message;
+        if ('$metadata' in error) {
+          // Typensichere Behandlung des Metadata-Objekts
+          const metadata = error as { $metadata?: { httpStatusCode?: number } };
+          if (metadata.$metadata?.httpStatusCode) {
+            errorDetails += ` (Status: ${metadata.$metadata.httpStatusCode})`;
+          }
+        }
+      }
+      
       return NextResponse.json({
         error: 'Failed to submit job to AWS Batch',
-        details: error instanceof Error ? error.message : 'Unknown AWS Batch error'
+        details: errorDetails
       }, { status: 500 });
     }
 

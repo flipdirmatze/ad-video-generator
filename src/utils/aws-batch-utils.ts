@@ -70,18 +70,22 @@ export const submitAwsBatchJob = async (
     // Validiere den Job-Typ
     const validJobTypes = Object.values(BatchJobTypes);
     if (!validJobTypes.includes(jobType)) {
+      console.error(`Invalid job type: ${jobType}. Valid types:`, validJobTypes);
       throw new Error(`Invalid job type: ${jobType}`);
     }
 
     // Validiere die Input-URL
     if (!inputVideoUrl) {
+      console.error('Input video URL is required but was not provided');
       throw new Error('Input video URL is required');
     }
 
     console.log(`Submitting AWS Batch job to ${baseUrl}/api/aws-batch with job type ${jobType}`);
-
+    console.log('Input video URL:', inputVideoUrl);
+    console.log('Output key:', outputKey || 'Not provided');
+    
     // Erstelle die Anfrage an unsere API-Route
-    const response = await fetch(`${baseUrl}/api/aws-batch`, {
+    const requestOptions = {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -95,18 +99,45 @@ export const submitAwsBatchJob = async (
       } as BatchJobParams),
       // Erhöhe das Timeout für die Anfrage
       signal: AbortSignal.timeout(30000) // 30 Sekunden Timeout
+    };
+    
+    console.log('Sending request to AWS Batch API with options:', {
+      url: `${baseUrl}/api/aws-batch`,
+      method: requestOptions.method,
+      headers: requestOptions.headers,
+      bodyLength: requestOptions.body.length
     });
+    
+    const response = await fetch(`${baseUrl}/api/aws-batch`, requestOptions);
 
+    console.log('AWS Batch API response status:', response.status);
+    
     if (!response.ok) {
-      const errorData = await response.json();
+      let errorData;
+      try {
+        errorData = await response.json();
+        console.error('AWS Batch API error response:', errorData);
+      } catch (parseError) {
+        console.error('Failed to parse error response:', parseError);
+        errorData = { error: 'Unknown error', status: response.status };
+      }
+      
       throw new Error(
-        `AWS Batch API error: ${errorData.error || errorData.message || response.statusText}`
+        `AWS Batch API error: ${errorData.error || errorData.message || response.statusText} (Status: ${response.status})`
       );
     }
 
-    const data = await response.json();
+    let data;
+    try {
+      data = await response.json();
+      console.log('AWS Batch API success response:', data);
+    } catch (parseError) {
+      console.error('Failed to parse success response:', parseError);
+      throw new Error('Failed to parse response from AWS Batch API');
+    }
     
     if (!data.jobId || !data.jobName) {
+      console.error('Invalid response from AWS Batch API:', data);
       throw new Error('Invalid response from AWS Batch API: Missing jobId or jobName');
     }
 

@@ -186,11 +186,13 @@ export async function POST(request: Request) {
         voiceoverId: voiceoverId
       };
       
-      console.log('Preparing workflow data:', workflowData);
+      console.log('Preparing workflow data:', JSON.stringify(workflowData, null, 2));
       
       // Verwende die direkte Methode, um den Workflow zu starten
       const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://ad-video-generator.vercel.app';
-      const workflowResponse = await fetch(`${baseUrl}/api/video-workflow`, {
+      console.log(`Sending request to video-workflow at ${baseUrl}/api/video-workflow`);
+      
+      const requestOptions = {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -198,23 +200,46 @@ export async function POST(request: Request) {
           'Authorization': `Bearer ${session.user.id}`
         },
         body: JSON.stringify(workflowData)
+      };
+      
+      console.log('Request options:', {
+        url: `${baseUrl}/api/video-workflow`,
+        method: requestOptions.method,
+        headers: requestOptions.headers,
+        bodyLength: JSON.stringify(workflowData).length
       });
+      
+      const workflowResponse = await fetch(`${baseUrl}/api/video-workflow`, requestOptions);
+      
+      console.log('Workflow response status:', workflowResponse.status);
 
       if (!workflowResponse.ok) {
-        const errorData = await workflowResponse.json();
-        console.error('Workflow API error:', errorData);
+        let errorData;
+        try {
+          errorData = await workflowResponse.json();
+          console.error('Workflow API error response:', errorData);
+        } catch (parseError) {
+          console.error('Failed to parse error response:', parseError);
+          errorData = { error: 'Unknown error', status: workflowResponse.status };
+        }
         
         // Update project status to failed
         await ProjectModel.findByIdAndUpdate(project._id, {
           status: 'failed',
-          error: errorData.message || errorData.error || 'Failed to start video workflow'
+          error: errorData.message || errorData.error || `Failed to start video workflow (Status: ${workflowResponse.status})`
         });
         
-        throw new Error(errorData.message || errorData.error || 'Failed to start video workflow');
+        throw new Error(errorData.message || errorData.error || `Failed to start video workflow (Status: ${workflowResponse.status})`);
       }
 
-      const workflowResponseData = await workflowResponse.json();
-      console.log('Workflow started successfully:', workflowResponseData);
+      let workflowResponseData;
+      try {
+        workflowResponseData = await workflowResponse.json();
+        console.log('Workflow started successfully:', workflowResponseData);
+      } catch (parseError) {
+        console.error('Failed to parse workflow response:', parseError);
+        throw new Error('Failed to parse response from workflow API');
+      }
 
       // Update project with workflow data
       await ProjectModel.findByIdAndUpdate(project._id, {
