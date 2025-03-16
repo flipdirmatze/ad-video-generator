@@ -4,12 +4,9 @@ import { authOptions } from '@/lib/auth';
 import { CloudWatchLogsClient, GetLogEventsCommand, LogEvent } from '@aws-sdk/client-cloudwatch-logs';
 import { BatchClient, DescribeJobsCommand } from '@aws-sdk/client-batch';
 
-// Define the correct type for the route handler
-type RouteParams = { params: { jobId: string } };
-
 export async function GET(
   request: NextRequest,
-  { params }: RouteParams
+  context: { params: { jobId: string } }
 ) {
   try {
     // Sichere Authentifizierung
@@ -18,7 +15,7 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const jobId = params.jobId;
+    const jobId = context.params.jobId;
     if (!jobId) {
       return NextResponse.json({ error: 'Job ID is required' }, { status: 400 });
     }

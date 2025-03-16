@@ -10,20 +10,13 @@ interface IVideoDocument extends IVideo {
   _id?: mongoose.Types.ObjectId;
 }
 
-interface Params {
-  id: string;
-}
-
-// Define the correct type for the route handler
-type RouteParams = { params: Params };
-
 /**
  * GET /api/media/[id]
  * Gibt ein einzelnes Video zurück
  */
 export async function GET(
   request: NextRequest,
-  { params }: RouteParams
+  context: { params: { id: string } }
 ) {
   try {
     // Authentifizierung prüfen
@@ -33,8 +26,7 @@ export async function GET(
     }
 
     const userId = session.user.id;
-    // Params ist jetzt kein Promise mehr
-    const { id: videoId } = params;
+    const videoId = context.params.id;
     
     // Verbindung zur Datenbank herstellen
     await dbConnect();
@@ -86,7 +78,7 @@ export async function GET(
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: RouteParams
+  context: { params: { id: string } }
 ) {
   try {
     // Authentifizierung prüfen
@@ -96,8 +88,7 @@ export async function DELETE(
     }
 
     const userId = session.user.id;
-    // Params ist jetzt kein Promise mehr
-    const { id: videoId } = params;
+    const videoId = context.params.id;
     
     // Verbindung zur Datenbank herstellen
     await dbConnect();
