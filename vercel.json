@@ -1,1 +1,28 @@
-{"installCommand": "npm install --omit=optional"}
+{"installCommand": "npm install --omit=optional",
+ "routes": [
+   {
+     "src": "/api/auth/(.*)",
+     "dest": "/api/auth/$1",
+     "methods": ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+     "headers": {
+       "Access-Control-Allow-Origin": "*",
+       "Access-Control-Allow-Headers": "Origin, X-Requested-With, Content-Type, Accept, Authorization",
+       "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, PATCH, OPTIONS"
+     }
+   }
+ ],
+ "functions": {
+   "api/auth/**": {
+     "maxDuration": 10
+   },
+   "api/media/**": {
+     "maxDuration": 10
+   },
+   "api/get-signed-url": {
+     "maxDuration": 10
+   },
+   "api/get-upload-url": {
+     "maxDuration": 10
+   }
+ }
+}

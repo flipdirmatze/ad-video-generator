@@ -268,11 +268,12 @@ export default function UploadPage() {
   useEffect(() => {
     if (!isLoading && status !== 'loading') {
       if (status !== 'authenticated') {
-        router.push('/auth/signin?callbackUrl=/upload')
+        // Verwende window.location.href anstelle von router.push für zuverlässigere Weiterleitung
+        window.location.href = '/auth/signin?callbackUrl=/upload';
       }
     }
-    setIsLoading(false)
-  }, [status, isLoading, router])
+    setIsLoading(false);
+  }, [status, isLoading]);
 
   // HOOK 2: Videos aus der Datenbank laden
   useEffect(() => {

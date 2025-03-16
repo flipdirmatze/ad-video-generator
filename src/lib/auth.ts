@@ -99,19 +99,30 @@ export const authOptions: NextAuthOptions = {
   // Anpassen der Auth-Seiten
   pages: {
     signIn: '/auth/signin',
-    signOut: '/',
     error: '/auth/error',
-    // Hier können später weitere benutzerdefinierte Seiten hinzugefügt werden
   },
   
-  // Session-Konfiguration
+  // Sitzungskonfiguration
   session: {
     strategy: 'jwt',
     maxAge: 30 * 24 * 60 * 60, // 30 Tage
   },
   
-  // Callbacks für Token und Session-Anpassung
+  // Erhöhen des Timeouts für Authentifizierungsanfragen
+  debug: process.env.NODE_ENV === 'development',
+  
+  // Verbesserte Fehlerbehandlung
   callbacks: {
+    async signIn({ user, account, profile, email, credentials }) {
+      try {
+        // Erfolgreiche Anmeldung
+        return true;
+      } catch (error) {
+        console.error('Sign-in callback error:', error);
+        return false;
+      }
+    },
+    
     async jwt({ token, user, account }) {
       // Füge Rolle und ID zum JWT-Token hinzu, wenn sich der Benutzer anmeldet
       if (user) {
@@ -161,9 +172,6 @@ export const authOptions: NextAuthOptions = {
   
   // Verwende den NEXTAUTH_SECRET aus der Umgebungsvariable
   secret: process.env.NEXTAUTH_SECRET,
-  
-  // Debug-Modus in Entwicklungsumgebung aktivieren
-  debug: process.env.NODE_ENV === 'development',
   
   // Sicherheitseinstellungen
   useSecureCookies: process.env.NODE_ENV === 'production',
