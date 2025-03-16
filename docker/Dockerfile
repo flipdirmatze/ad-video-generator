@@ -1,4 +1,4 @@
-FROM node:18-slim
+FROM --platform=linux/amd64 node:18-slim
 
 # Umgebungsvariablen
 ENV DEBIAN_FRONTEND=noninteractive
