@@ -6,15 +6,6 @@ import { authOptions } from '@/lib/auth';
 import dbConnect from '@/lib/mongoose';
 import VideoModel from '@/models/Video';
 
-// Konfiguriere die maximale Dateigröße (500MB)
-export const config = {
-  api: {
-    bodyParser: {
-      sizeLimit: '500mb'
-    }
-  }
-};
-
 export async function POST(request: Request) {
   // Unique request ID für Logging
   const requestId = `upload-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
@@ -98,22 +89,18 @@ export async function POST(request: Request) {
       const formData = await request.formData();
       const file = formData.get('file') as File;
       const tags = formData.get('tags') as string;
-      const videoId = formData.get('videoId') as string || uuidv4();
+      const videoId = formData.get('videoId') as string || uuidv4(); // Stelle sicher, dass immer eine ID existiert
       
       if (!file) {
         console.error(`[${requestId}] No file provided`);
         return NextResponse.json({ error: 'No file provided' }, { status: 400 });
       }
 
-      // Check file size limit (500MB)
-      const MAX_SIZE = 500 * 1024 * 1024; // 500MB in Bytes
+      // Check file size limit (e.g., 500MB)
+      const MAX_SIZE = 500 * 1024 * 1024;
       if (file.size > MAX_SIZE) {
         console.error(`[${requestId}] File too large: ${file.size} bytes`);
-        return NextResponse.json({ 
-          error: 'File too large',
-          maxSize: '500MB',
-          actualSize: `${Math.round(file.size / (1024 * 1024))}MB`
-        }, { status: 413 });
+        return NextResponse.json({ error: 'File too large' }, { status: 400 });
       }
       
       // Generate unique ID and filename
@@ -121,23 +108,40 @@ export async function POST(request: Request) {
       const fileExtension = file.name.split('.').pop();
       const uniqueFileName = `${uniqueId}.${fileExtension}`;
       
-      console.log(`[${requestId}] Uploading file to S3: ${uniqueFileName} (${Math.round(file.size / (1024 * 1024))}MB)`);
+      console.log(`[${requestId}] Uploading file to S3: ${uniqueFileName}`);
       
-      try {
-        // Convert file to buffer in chunks to handle large files
-        const arrayBuffer = await file.arrayBuffer();
-        const buffer = Buffer.from(arrayBuffer);
+      // Convert file to buffer
+      const arrayBuffer = await file.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
 
-        // Upload to S3 with error handling
-        const fileUrl = await uploadToS3(buffer, uniqueFileName, file.type);
+      // Upload to S3
+      let fileUrl;
+      try {
+        fileUrl = await uploadToS3(buffer, uniqueFileName, file.type);
         console.log(`[${requestId}] File uploaded to S3: ${fileUrl}`);
-        
-        // Mit Mongoose zur Datenbank verbinden
-        console.log(`[${requestId}] Connecting to database`);
+      } catch (s3Error) {
+        console.error(`[${requestId}] S3 upload error:`, s3Error);
+        return NextResponse.json({ 
+          error: 'Failed to upload to S3', 
+          details: s3Error instanceof Error ? s3Error.message : String(s3Error) 
+        }, { status: 500 });
+      }
+      
+      // Mit Mongoose zur Datenbank verbinden
+      console.log(`[${requestId}] Connecting to database`);
+      try {
         await dbConnect();
-        
-        // Save metadata to database
-        console.log(`[${requestId}] Creating video document with ID: ${uniqueId}`);
+      } catch (dbError) {
+        console.error(`[${requestId}] Database connection error:`, dbError);
+        return NextResponse.json({ 
+          error: 'Database connection failed', 
+          details: dbError instanceof Error ? dbError.message : String(dbError) 
+        }, { status: 500 });
+      }
+      
+      // Save metadata to database
+      console.log(`[${requestId}] Creating video document with ID: ${uniqueId}`);
+      try {
         const video = await VideoModel.create({
           id: uniqueId,
           userId: session.user.id,
@@ -159,11 +163,14 @@ export async function POST(request: Request) {
           videoId: video.id,
           key: video.path
         });
-      } catch (error) {
-        console.error(`[${requestId}] Error during upload:`, error);
+      } catch (unknownError) {
+        console.error(`[${requestId}] Error creating video document:`, unknownError);
+        
+        // Vereinfachte Fehlerbehandlung ohne komplexe Typprüfungen
+        const error = unknownError as Error;
         return NextResponse.json({ 
-          error: 'Upload failed',
-          details: error instanceof Error ? error.message : String(error)
+          error: 'Failed to save video metadata', 
+          details: error.message || String(unknownError)
         }, { status: 500 });
       }
     }
