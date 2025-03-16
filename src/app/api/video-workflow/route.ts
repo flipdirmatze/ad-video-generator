@@ -163,18 +163,40 @@ export async function POST(request: NextRequest) {
     let project;
     if (data.projectId) {
       try {
+        console.log(`Looking for project with ID: ${data.projectId}`);
+        
+        // Versuche zuerst mit der exakten ID zu finden
         project = await ProjectModel.findById(data.projectId);
-        if (!project || project.userId !== userId) {
+        
+        if (!project) {
+          console.log(`Project not found with exact ID, checking if it's a string representation of ObjectId`);
+          // Versuche es als String-Repräsentation einer ObjectId
+          project = await ProjectModel.findOne({ _id: data.projectId });
+        }
+        
+        if (!project) {
+          console.error(`Project not found with ID: ${data.projectId}`);
           return NextResponse.json(
-            { error: 'Project not found or no permission' },
+            { error: 'Project not found', projectId: data.projectId },
             { status: 404 }
           );
         }
+        
+        if (project.userId !== userId) {
+          console.error(`Project belongs to user ${project.userId}, but request is from user ${userId}`);
+          return NextResponse.json(
+            { error: 'No permission to access this project', projectId: data.projectId },
+            { status: 403 }
+          );
+        }
+        
+        console.log(`Found project: ${project._id}, title: ${project.title}`);
       } catch (error) {
-        console.error('Error fetching project:', error);
+        console.error(`Error fetching project with ID ${data.projectId}:`, error);
         return NextResponse.json({
           error: 'Failed to fetch project',
-          details: error instanceof Error ? error.message : 'Unknown database error'
+          details: error instanceof Error ? error.message : 'Unknown database error',
+          projectId: data.projectId
         }, { status: 500 });
       }
     }

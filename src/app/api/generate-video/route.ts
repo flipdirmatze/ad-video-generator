@@ -189,7 +189,7 @@ export async function POST(request: Request) {
       console.log('Preparing workflow data:', JSON.stringify(workflowData, null, 2));
       
       // Verwende die direkte Methode, um den Workflow zu starten
-      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://ad-video-generator.vercel.app';
+      const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || 'https://ad-video-generator.vercel.app').replace(/\/+$/, '');
       console.log(`Sending request to video-workflow at ${baseUrl}/api/video-workflow`);
       
       const requestOptions = {
@@ -222,6 +222,15 @@ export async function POST(request: Request) {
           console.error('Failed to parse error response:', parseError);
           errorData = { error: 'Unknown error', status: workflowResponse.status };
         }
+        
+        // Detaillierte Fehlerinformationen loggen
+        console.error('Workflow request failed with details:', {
+          status: workflowResponse.status,
+          statusText: workflowResponse.statusText,
+          url: `${baseUrl}/api/video-workflow`,
+          projectId: project._id.toString(),
+          errorData
+        });
         
         // Update project status to failed
         await ProjectModel.findByIdAndUpdate(project._id, {
