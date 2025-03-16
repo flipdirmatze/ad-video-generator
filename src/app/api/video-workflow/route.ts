@@ -310,25 +310,49 @@ export async function POST(request: NextRequest) {
       const inputVideoUrl = getS3Url(segments[0].videoKey);
       console.log(`Converting S3 key to full URL: ${segments[0].videoKey} -> ${inputVideoUrl}`);
       
+      // Bereite die Template-Daten vor
+      const templateData: {
+        segments: { url: string; startTime: number; duration: number; position: number; }[];
+        options: typeof data.options;
+        voiceoverId?: string;
+      } = {
+        segments: segments.map(segment => ({
+          url: getS3Url(segment.videoKey),
+          startTime: segment.startTime,
+          duration: segment.duration,
+          position: segment.position
+        })),
+        options: data.options || {}
+      };
+      
+      // Füge Voiceover-ID hinzu, wenn vorhanden und gültig
+      if (data.voiceoverId) {
+        console.log(`Including voiceover ID in job: ${data.voiceoverId}`);
+        // Prüfe, ob die voiceoverId ein gültiges Format hat
+        if (typeof data.voiceoverId === 'string' && data.voiceoverId.length > 0) {
+          templateData.voiceoverId = data.voiceoverId;
+        } else {
+          console.warn(`Invalid voiceover ID format: ${data.voiceoverId}, skipping voiceover`);
+        }
+      }
+      
+      // Bereite die zusätzlichen Parameter vor
+      const additionalParams = {
+        USER_ID: userId,
+        PROJECT_ID: project._id.toString(),
+        TEMPLATE_DATA: JSON.stringify(templateData),
+        // Füge Debug-Flag hinzu, um mehr Logging im Container zu aktivieren
+        DEBUG: 'true'
+      };
+      
+      console.log('Submitting job with template data:', JSON.stringify(templateData, null, 2));
+      
       // Sende den Job an AWS Batch
       const jobResult = await submitAwsBatchJob(
         BatchJobTypes.GENERATE_FINAL,
-        inputVideoUrl, // Verwende die vollständige URL statt nur des Keys
+        inputVideoUrl,
         outputKey,
-        {
-          USER_ID: userId,
-          PROJECT_ID: project._id.toString(),
-          TEMPLATE_DATA: JSON.stringify({
-            segments: segments.map(segment => ({
-              url: getS3Url(segment.videoKey), // Konvertiere auch hier zu vollständigen URLs
-              startTime: segment.startTime,
-              duration: segment.duration,
-              position: segment.position
-            })),
-            voiceoverId: data.voiceoverId,
-            options: data.options || {}
-          })
-        }
+        additionalParams
       );
       
       if (!jobResult || !jobResult.jobId) {
@@ -352,6 +376,15 @@ export async function POST(request: NextRequest) {
       });
     } catch (error) {
       console.error('Error submitting AWS Batch job:', error);
+      
+      // Detaillierte Fehlerinformationen loggen
+      if (error instanceof Error) {
+        console.error('Error details:', {
+          message: error.message,
+          stack: error.stack,
+          name: error.name
+        });
+      }
       
       // Aktualisiere das Projekt mit dem Fehlerstatus
       project.status = 'failed';
