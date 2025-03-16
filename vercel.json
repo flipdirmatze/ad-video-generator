@@ -9,6 +9,16 @@
        "Access-Control-Allow-Headers": "Origin, X-Requested-With, Content-Type, Accept, Authorization",
        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, PATCH, OPTIONS"
      }
+   },
+   {
+     "src": "/api/upload-video",
+     "dest": "/api/upload-video",
+     "methods": ["POST"],
+     "headers": {
+       "Access-Control-Allow-Origin": "*",
+       "Access-Control-Allow-Headers": "Origin, X-Requested-With, Content-Type, Accept, Authorization",
+       "Access-Control-Allow-Methods": "POST"
+     }
    }
  ],
  "functions": {
@@ -29,9 +39,6 @@
      "memory": 3008
    }
  },
- "serverFiles": [
-   "package.json"
- ],
  "regions": ["fra1"],
  "limits": {
    "bodyParser": {
