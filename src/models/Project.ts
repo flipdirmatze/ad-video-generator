@@ -1,76 +1,81 @@
-import mongoose, { Schema } from 'mongoose';
-import { IUser } from './User';
+import mongoose from 'mongoose';
+import { v4 as uuidv4 } from 'uuid';
 
 export interface IProject {
-  userId: mongoose.Types.ObjectId | IUser;
+  _id: string;
+  userId: string;
   title: string;
-  status: 'pending' | 'processing' | 'completed' | 'failed';
-  segments: Array<{
-    videoId: string;
-    videoKey: string;
-    startTime: number;
-    duration: number;
-    position: number;
-  }>;
-  voiceoverId?: mongoose.Types.ObjectId | null;
-  outputKey?: string;
+  description?: string;
+  status: 'draft' | 'processing' | 'complete' | 'failed';
+  progress: number;
   outputUrl?: string;
   batchJobId?: string;
   batchJobName?: string;
-  error?: string | null;
+  error?: string;
+  segments: {
+    videoId: string;
+    url: string;
+    startTime: number;
+    duration: number;
+    position: number;
+  }[];
+  voiceoverId?: string;
+  voiceoverUrl?: string;
   createdAt: Date;
   updatedAt: Date;
 }
 
-const ProjectSchema = new Schema<IProject>({
-  userId: { 
-    type: Schema.Types.ObjectId, 
-    ref: 'User', 
-    required: true 
-  },
-  title: { 
-    type: String, 
-    required: true 
-  },
-  status: {
+const projectSchema = new mongoose.Schema({
+  _id: {
     type: String,
-    enum: ['pending', 'processing', 'completed', 'failed'],
-    default: 'pending',
+    default: () => uuidv4(),
+  },
+  userId: {
+    type: String,
+    required: true,
+    index: true
+  },
+  title: {
+    type: String,
     required: true
   },
+  description: String,
+  status: {
+    type: String,
+    enum: ['draft', 'processing', 'complete', 'failed'],
+    default: 'draft'
+  },
+  progress: {
+    type: Number,
+    default: 0,
+    min: 0,
+    max: 100
+  },
+  outputUrl: String,
+  batchJobId: String,
+  batchJobName: String,
+  error: String,
   segments: [{
     videoId: String,
-    videoKey: String,
+    url: String,
     startTime: Number,
     duration: Number,
     position: Number
   }],
-  voiceoverId: {
-    type: Schema.Types.ObjectId,
-    ref: 'Voiceover',
-    default: null
+  voiceoverId: String,
+  voiceoverUrl: String,
+  createdAt: {
+    type: Date,
+    default: Date.now
   },
-  outputKey: {
-    type: String
-  },
-  outputUrl: {
-    type: String
-  },
-  batchJobId: {
-    type: String
-  },
-  batchJobName: {
-    type: String
-  },
-  error: {
-    type: String,
-    default: null
+  updatedAt: {
+    type: Date,
+    default: Date.now
   }
 }, {
   timestamps: true
 });
 
-// Verwende einen existierenden Mongoose-Model oder erstelle einen neuen
-const Project = mongoose.models.Project || mongoose.model<IProject>('Project', ProjectSchema);
+const ProjectModel = mongoose.models.Project || mongoose.model('Project', projectSchema);
 
-export default Project; 
+export default ProjectModel; 

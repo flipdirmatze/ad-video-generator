@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth';
 import dbConnect from '@/lib/mongoose';
 import VideoModel from '@/models/Video';
 import JobModel from '@/models/Job';
+import ProjectModel from '@/models/Project';
 import { submitAwsBatchJob } from '@/utils/aws-batch-utils';
 import { getSignedVideoUrl } from '@/lib/storage';
 
