@@ -341,7 +341,7 @@ export async function POST(request: NextRequest) {
       const additionalParams = {
         USER_ID: userId,
         PROJECT_ID: project._id.toString(),
-        TEMPLATE_DATA: templateData, // Direkt als Objekt übergeben, nicht als JSON-String
+        TEMPLATE_DATA: JSON.stringify(templateData), // Zurück zu JSON.stringify
         DEBUG: 'true'
       };
       
