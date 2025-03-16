@@ -63,9 +63,10 @@ export const submitAwsBatchJob = async (
   outputKey?: string,
   additionalParams?: Record<string, string | number | boolean | object>
 ): Promise<BatchJobResult> => {
-  if (!process.env.NEXT_PUBLIC_APP_URL) {
-    throw new Error('NEXT_PUBLIC_APP_URL environment variable is not set');
-  }
+  // Bestimme die Basis-URL für API-Aufrufe
+  const baseUrl = typeof window !== 'undefined' 
+    ? window.location.origin 
+    : process.env.NEXT_PUBLIC_APP_URL || 'https://ad-video-generator.vercel.app';
 
   try {
     // Validiere den Job-Typ
@@ -79,8 +80,10 @@ export const submitAwsBatchJob = async (
       throw new Error('Input video URL is required');
     }
 
+    console.log(`Submitting AWS Batch job to ${baseUrl}/api/aws-batch`);
+
     // Erstelle die Anfrage an unsere API-Route
-    const response = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/aws-batch`, {
+    const response = await fetch(`${baseUrl}/api/aws-batch`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -123,13 +126,14 @@ export const submitAwsBatchJob = async (
  * Ruft den Status eines AWS Batch Jobs ab
  */
 export const getJobStatus = async (jobId: string): Promise<string> => {
-  if (!process.env.NEXT_PUBLIC_APP_URL) {
-    throw new Error('NEXT_PUBLIC_APP_URL environment variable is not set');
-  }
+  // Bestimme die Basis-URL für API-Aufrufe
+  const baseUrl = typeof window !== 'undefined' 
+    ? window.location.origin 
+    : process.env.NEXT_PUBLIC_APP_URL || 'https://ad-video-generator.vercel.app';
 
   try {
     const response = await fetch(
-      `${process.env.NEXT_PUBLIC_APP_URL}/api/aws-batch?jobId=${jobId}`,
+      `${baseUrl}/api/aws-batch?jobId=${jobId}`,
       {
         method: 'GET',
         headers: {
@@ -285,7 +289,7 @@ export const concatVideosWithoutReencoding = async (
   
   // Sende den Job an AWS Batch
   const jobResult = await submitAwsBatchJob(
-    'concat',
+    BatchJobTypes.CONCAT,
     videoPaths[0], // Erster Videoclip als Referenz
     outputPath,
     {

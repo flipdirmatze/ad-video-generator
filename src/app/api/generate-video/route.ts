@@ -45,26 +45,81 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Request-Daten holen
-    const data: VideoGenerationRequest = await request.json();
-    console.log('Received video generation request:', data);
+    // Request-Daten holen und validieren
+    let data: VideoGenerationRequest;
+    try {
+      data = await request.json();
+      console.log('Received video generation request:', JSON.stringify(data, null, 2));
+    } catch (error) {
+      console.error('Failed to parse request data:', error);
+      return NextResponse.json({ 
+        error: 'Invalid request data',
+        details: error instanceof Error ? error.message : 'Failed to parse JSON'
+      }, { status: 400 });
+    }
     
     const { segments, voiceoverId, title = 'Mein Video' } = data;
 
     if (!segments || !Array.isArray(segments) || segments.length === 0) {
       console.error('Invalid segments data:', segments);
-      return NextResponse.json({ error: 'Video segments are required' }, { status: 400 });
+      return NextResponse.json({ 
+        error: 'Video segments are required',
+        details: {
+          received: segments,
+          type: typeof segments,
+          isArray: Array.isArray(segments),
+          length: Array.isArray(segments) ? segments.length : 0
+        }
+      }, { status: 400 });
+    }
+
+    // Validiere die Segment-Daten
+    for (const segment of segments) {
+      if (!segment.videoId || !segment.videoKey) {
+        console.error('Invalid segment data:', segment);
+        return NextResponse.json({
+          error: 'Invalid segment data',
+          details: {
+            segment,
+            missingFields: {
+              videoId: !segment.videoId,
+              videoKey: !segment.videoKey
+            }
+          }
+        }, { status: 400 });
+      }
     }
 
     // Datenbank verbinden
-    await dbConnect();
+    try {
+      await dbConnect();
+      console.log('Connected to database successfully');
+    } catch (error) {
+      console.error('Database connection failed:', error);
+      return NextResponse.json({
+        error: 'Database connection failed',
+        details: error instanceof Error ? error.message : 'Unknown database error'
+      }, { status: 500 });
+    }
     
     // Überprüfe, ob alle Videos existieren und dem Benutzer gehören
     const videoIds = [...new Set(segments.map(s => s.videoId))];
-    const videos = await VideoModel.find({
-      id: { $in: videoIds },
-      userId: session.user.id
-    }).lean();
+    console.log('Searching for videos with IDs:', videoIds);
+    
+    let videos;
+    try {
+      videos = await VideoModel.find({
+        id: { $in: videoIds },
+        userId: session.user.id
+      }).lean();
+      console.log('Found videos:', videos.map(v => ({ id: v.id, name: v.name })));
+    } catch (error) {
+      console.error('Failed to fetch videos:', error);
+      return NextResponse.json({
+        error: 'Failed to fetch videos',
+        details: error instanceof Error ? error.message : 'Unknown database error'
+      }, { status: 500 });
+    }
 
     if (videos.length !== videoIds.length) {
       console.error('Some videos not found or not owned by user');
@@ -72,91 +127,120 @@ export async function POST(request: Request) {
       const missingIds = videoIds.filter(id => !foundIds.includes(id));
       return NextResponse.json({
         error: 'Some videos not found or not accessible',
-        details: { missingIds }
+        details: { 
+          requestedIds: videoIds,
+          foundIds,
+          missingIds,
+          userId: session.user.id
+        }
       }, { status: 404 });
     }
 
     // Erstelle ein neues Projekt
-    const project = await ProjectModel.create({
-      userId: session.user.id,
-      title,
-      status: 'pending',
-      segments: segments.map(segment => ({
-        videoId: segment.videoId,
-        videoKey: segment.videoKey,
-        startTime: segment.startTime,
-        duration: segment.duration,
-        position: segment.position
-      })),
-      voiceoverId: voiceoverId || null
-    });
-
-    console.log('Created project:', project);
-
-    // Starte den Video-Workflow
-    const workflowResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/video-workflow`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        projectId: project._id.toString(),
-        workflowType: 'video_generation',
+    let project;
+    try {
+      project = await ProjectModel.create({
         userId: session.user.id,
-        title: title,
-        videos: segments.map(segment => ({
-          id: segment.videoId,
-          key: segment.videoKey,
-          segments: [{
-            startTime: segment.startTime,
-            duration: segment.duration,
-            position: segment.position
-          }]
+        title,
+        status: 'pending',
+        segments: segments.map(segment => ({
+          videoId: segment.videoId,
+          videoKey: segment.videoKey,
+          startTime: segment.startTime,
+          duration: segment.duration,
+          position: segment.position
         })),
-        voiceoverId: voiceoverId
-      })
-    });
-
-    if (!workflowResponse.ok) {
-      const errorData = await workflowResponse.json();
-      console.error('Workflow API error:', errorData);
-      
-      // Update project status to failed
-      await ProjectModel.findByIdAndUpdate(project._id, {
-        status: 'failed',
-        error: errorData.message || errorData.error || 'Failed to start video workflow'
+        voiceoverId: voiceoverId || null
       });
-      
-      throw new Error(errorData.message || errorData.error || 'Failed to start video workflow');
+      console.log('Created project:', {
+        id: project._id,
+        title: project.title,
+        segments: project.segments.length
+      });
+    } catch (error) {
+      console.error('Failed to create project:', error);
+      return NextResponse.json({
+        error: 'Failed to create project',
+        details: error instanceof Error ? error.message : 'Unknown database error'
+      }, { status: 500 });
     }
 
-    const workflowData = await workflowResponse.json();
-    console.log('Workflow started successfully:', workflowData);
+    // Starte den Video-Workflow
+    try {
+      // Bestimme die Basis-URL für API-Aufrufe
+      const baseUrl = typeof window !== 'undefined' 
+        ? window.location.origin 
+        : process.env.NEXT_PUBLIC_APP_URL || 'https://ad-video-generator.vercel.app';
+      
+      console.log(`Starting video workflow at ${baseUrl}/api/video-workflow`);
+      
+      const workflowResponse = await fetch(`${baseUrl}/api/video-workflow`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          projectId: project._id.toString(),
+          workflowType: 'video_generation',
+          userId: session.user.id,
+          title: title,
+          videos: segments.map(segment => ({
+            id: segment.videoId,
+            key: segment.videoKey,
+            segments: [{
+              startTime: segment.startTime,
+              duration: segment.duration,
+              position: segment.position
+            }]
+          })),
+          voiceoverId: voiceoverId
+        })
+      });
 
-    // Update project with workflow data
-    await ProjectModel.findByIdAndUpdate(project._id, {
-      status: 'processing',
-      batchJobId: workflowData.jobId,
-      batchJobName: workflowData.jobName
-    });
+      if (!workflowResponse.ok) {
+        const errorData = await workflowResponse.json();
+        console.error('Workflow API error:', errorData);
+        
+        // Update project status to failed
+        await ProjectModel.findByIdAndUpdate(project._id, {
+          status: 'failed',
+          error: errorData.message || errorData.error || 'Failed to start video workflow'
+        });
+        
+        throw new Error(errorData.message || errorData.error || 'Failed to start video workflow');
+      }
 
-    return NextResponse.json({
-      success: true,
-      message: 'Video generation started',
-      projectId: project._id.toString(),
-      jobId: workflowData.jobId,
-      jobName: workflowData.jobName || workflowData.status,
-      estimatedTime: "Your video will be processed and will be ready in a few minutes"
-    });
+      const workflowData = await workflowResponse.json();
+      console.log('Workflow started successfully:', workflowData);
+
+      // Update project with workflow data
+      await ProjectModel.findByIdAndUpdate(project._id, {
+        status: 'processing',
+        batchJobId: workflowData.jobId,
+        batchJobName: workflowData.jobName
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: 'Video generation started',
+        projectId: project._id.toString(),
+        jobId: workflowData.jobId,
+        jobName: workflowData.jobName || workflowData.status,
+        estimatedTime: "Your video will be processed and will be ready in a few minutes"
+      });
+    } catch (error) {
+      console.error('Error in workflow process:', error);
+      return NextResponse.json({
+        error: 'Failed to start video workflow',
+        details: error instanceof Error ? error.message : 'Unknown workflow error'
+      }, { status: 500 });
+    }
   } catch (error) {
-    console.error('Error generating video:', error);
-    return NextResponse.json(
-      { 
-        error: 'Failed to generate video', 
-        details: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : undefined
-      },
-      { status: 500 }
-    );
+    console.error('Unhandled error in video generation:', error);
+    return NextResponse.json({ 
+      error: 'Failed to generate video',
+      details: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined
+    }, { status: 500 });
   }
 } 

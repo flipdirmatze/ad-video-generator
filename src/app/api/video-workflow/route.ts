@@ -6,7 +6,7 @@ import dbConnect from '@/lib/mongoose';
 import ProjectModel from '@/models/Project';
 import VideoModel from '@/models/Video';
 import { getS3Url, generateUniqueFileName } from '@/lib/storage';
-import { submitAwsBatchJob } from '@/utils/aws-batch-utils';
+import { submitAwsBatchJob, BatchJobTypes } from '@/utils/aws-batch-utils';
 
 type VideoSegment = {
   videoId: string;
@@ -48,36 +48,92 @@ export async function POST(request: NextRequest) {
     // Authentifizierung prüfen
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
+      console.error('Unauthorized: No session found');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const userId = session.user.id;
-    const data: WorkflowRequest = await request.json();
+    
+    // Request-Daten validieren
+    let data: WorkflowRequest;
+    try {
+      data = await request.json();
+      console.log('Received workflow request:', JSON.stringify(data, null, 2));
+    } catch (error) {
+      console.error('Failed to parse request data:', error);
+      return NextResponse.json({
+        error: 'Invalid request data',
+        details: error instanceof Error ? error.message : 'Failed to parse JSON'
+      }, { status: 400 });
+    }
     
     // Grundlegende Validierung
     if (!data.title || !data.videos || data.videos.length === 0) {
+      console.error('Missing required fields:', {
+        hasTitle: !!data.title,
+        hasVideos: !!data.videos,
+        videosLength: data.videos?.length
+      });
       return NextResponse.json(
-        { error: 'Titel und mindestens ein Video sind erforderlich' },
+        { 
+          error: 'Title and at least one video are required',
+          details: {
+            missingFields: {
+              title: !data.title,
+              videos: !data.videos || data.videos.length === 0
+            }
+          }
+        },
         { status: 400 }
       );
     }
     
     // Mit Datenbank verbinden
-    await dbConnect();
+    try {
+      await dbConnect();
+      console.log('Connected to database successfully');
+    } catch (error) {
+      console.error('Database connection failed:', error);
+      return NextResponse.json({
+        error: 'Database connection failed',
+        details: error instanceof Error ? error.message : 'Unknown database error'
+      }, { status: 500 });
+    }
     
     // Prüfen, ob die angegebenen Videos existieren und dem Benutzer gehören
     const videoIds = data.videos.map(v => v.id);
-    const videos = await VideoModel.find({ 
-      _id: { $in: videoIds },
-      userId
-    });
+    console.log('Checking videos with IDs:', videoIds);
+    
+    let videos;
+    try {
+      videos = await VideoModel.find({ 
+        id: { $in: videoIds },
+        userId
+      });
+      console.log('Found videos:', videos.map(v => ({ id: v.id, name: v.name })));
+    } catch (error) {
+      console.error('Error fetching videos:', error);
+      return NextResponse.json({
+        error: 'Failed to fetch videos',
+        details: error instanceof Error ? error.message : 'Unknown database error'
+      }, { status: 500 });
+    }
     
     if (videos.length !== videoIds.length) {
-      const foundIds = videos.map(v => v._id.toString());
+      const foundIds = videos.map(v => v.id);
       const missingIds = videoIds.filter(id => !foundIds.includes(id));
+      console.error('Some videos not found:', { missingIds, userId });
       
       return NextResponse.json(
-        { error: 'Einige Videos wurden nicht gefunden oder gehören nicht dir', missingIds },
+        { 
+          error: 'Some videos not found or not accessible',
+          details: {
+            requestedIds: videoIds,
+            foundIds,
+            missingIds,
+            userId
+          }
+        },
         { status: 404 }
       );
     }
@@ -85,20 +141,29 @@ export async function POST(request: NextRequest) {
     // Wenn eine projectId übergeben wurde, aktualisiere das bestehende Projekt
     let project;
     if (data.projectId) {
-      project = await ProjectModel.findById(data.projectId);
-      if (!project || project.userId !== userId) {
-        return NextResponse.json(
-          { error: 'Projekt nicht gefunden oder keine Berechtigung' },
-          { status: 404 }
-        );
+      try {
+        project = await ProjectModel.findById(data.projectId);
+        if (!project || project.userId !== userId) {
+          return NextResponse.json(
+            { error: 'Project not found or no permission' },
+            { status: 404 }
+          );
+        }
+      } catch (error) {
+        console.error('Error fetching project:', error);
+        return NextResponse.json({
+          error: 'Failed to fetch project',
+          details: error instanceof Error ? error.message : 'Unknown database error'
+        }, { status: 500 });
       }
     }
     
     // Ausgabedateinamen generieren
     const outputFileName = generateUniqueFileName(`${data.title.toLowerCase().replace(/\s+/g, '-')}.mp4`);
     const outputKey = `final/${userId}/${outputFileName}`;
+    console.log('Generated output key:', outputKey);
     
-    // Segmente aus den Videos extrahieren
+    // Segmente aus den Videos extrahieren und sortieren
     const segments = data.videos.flatMap(video => 
       video.segments.map(segment => ({
         videoId: video.id,
@@ -107,34 +172,46 @@ export async function POST(request: NextRequest) {
         duration: segment.duration,
         position: segment.position
       }))
-    );
+    ).sort((a, b) => a.position - b.position);
     
-    // Sortiere die Segmente nach Position
-    segments.sort((a, b) => a.position - b.position);
+    console.log('Prepared segments:', segments);
     
-    if (!project) {
-      // Erstelle ein neues Projekt
-      project = new ProjectModel({
-        userId,
-        title: data.title,
-        description: data.description || '',
-        status: 'pending',
-        segments,
-        voiceoverId: data.voiceoverId,
-        outputKey,
-        createdAt: new Date(),
-        updatedAt: new Date()
+    try {
+      if (!project) {
+        // Erstelle ein neues Projekt
+        project = new ProjectModel({
+          userId,
+          title: data.title,
+          description: data.description || '',
+          status: 'pending',
+          segments,
+          voiceoverId: data.voiceoverId,
+          outputKey,
+          createdAt: new Date(),
+          updatedAt: new Date()
+        });
+      } else {
+        // Aktualisiere das bestehende Projekt
+        project.segments = segments;
+        project.status = 'pending';
+        project.outputKey = outputKey;
+        project.updatedAt = new Date();
+        if (data.voiceoverId) project.voiceoverId = data.voiceoverId;
+      }
+      
+      await project.save();
+      console.log('Project saved successfully:', {
+        id: project._id,
+        title: project.title,
+        segments: segments.length
       });
-    } else {
-      // Aktualisiere das bestehende Projekt
-      project.segments = segments;
-      project.status = 'pending';
-      project.outputKey = outputKey;
-      project.updatedAt = new Date();
-      if (data.voiceoverId) project.voiceoverId = data.voiceoverId;
+    } catch (error) {
+      console.error('Error saving project:', error);
+      return NextResponse.json({
+        error: 'Failed to save project',
+        details: error instanceof Error ? error.message : 'Unknown database error'
+      }, { status: 500 });
     }
-    
-    await project.save();
     
     // Bereite die Job-Parameter vor
     const jobParams: Record<string, string | number | boolean> = {
@@ -145,10 +222,7 @@ export async function POST(request: NextRequest) {
     };
     
     // Füge optionale Parameter hinzu
-    if (data.voiceoverId) {
-      jobParams.VOICEOVER_ID = data.voiceoverId;
-    }
-    
+    if (data.voiceoverId) jobParams.VOICEOVER_ID = data.voiceoverId;
     if (data.options) {
       if (data.options.resolution) jobParams.RESOLUTION = data.options.resolution;
       if (data.options.aspectRatio) jobParams.ASPECT_RATIO = data.options.aspectRatio;
@@ -160,33 +234,61 @@ export async function POST(request: NextRequest) {
       if (data.options.outputFormat) jobParams.OUTPUT_FORMAT = data.options.outputFormat;
     }
     
+    console.log('Submitting AWS Batch job with params:', jobParams);
+    
     // Starte den Batch-Job
-    const { jobId, jobName } = await submitAwsBatchJob(
-      'generate-final',
-      segments[0].videoKey, // Erstes Video als Input
-      outputKey,
-      jobParams
-    );
+    let jobResult;
+    try {
+      jobResult = await submitAwsBatchJob(
+        BatchJobTypes.GENERATE_FINAL,
+        segments[0].videoKey,
+        outputKey,
+        jobParams
+      );
+      console.log('AWS Batch job submitted successfully:', jobResult);
+    } catch (error) {
+      console.error('Error submitting AWS Batch job:', error);
+      
+      // Update project status to failed
+      await ProjectModel.findByIdAndUpdate(project._id, {
+        status: 'failed',
+        error: error instanceof Error ? error.message : 'Failed to submit AWS Batch job'
+      });
+      
+      return NextResponse.json({
+        error: 'Failed to submit AWS Batch job',
+        details: error instanceof Error ? error.message : 'Unknown AWS Batch error'
+      }, { status: 500 });
+    }
     
     // Aktualisiere das Projekt mit den Job-Informationen
-    project.batchJobId = jobId;
-    project.batchJobName = jobName;
-    project.status = 'processing';
-    await project.save();
+    try {
+      project.batchJobId = jobResult.jobId;
+      project.batchJobName = jobResult.jobName;
+      project.status = 'processing';
+      await project.save();
+    } catch (error) {
+      console.error('Error updating project with job info:', error);
+      // Wir geben hier keinen Fehler zurück, da der Job bereits gestartet wurde
+    }
     
     return NextResponse.json({
       success: true,
       message: 'Video generation started',
       projectId: project._id.toString(),
-      jobId,
-      jobName,
+      jobId: jobResult.jobId,
+      jobName: jobResult.jobName,
       status: 'processing',
       estimatedTime: 'Your video will be ready in a few minutes'
     });
   } catch (error) {
-    console.error('Error starting video workflow:', error);
+    console.error('Unhandled error in video workflow:', error);
     return NextResponse.json(
-      { error: 'Failed to start video workflow', details: error instanceof Error ? error.message : String(error) },
+      { 
+        error: 'Failed to start video workflow',
+        details: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined
+      },
       { status: 500 }
     );
   }

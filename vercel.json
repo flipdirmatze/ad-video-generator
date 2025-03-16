@@ -23,6 +23,18 @@
    },
    "src/app/api/get-upload-url/route.ts": {
      "maxDuration": 10
+   },
+   "src/app/api/aws-batch/route.ts": {
+     "maxDuration": 30
+   },
+   "src/app/api/generate-video/route.ts": {
+     "maxDuration": 30
+   },
+   "src/app/api/video-workflow/route.ts": {
+     "maxDuration": 30
+   },
+   "src/app/api/batch-callback/route.ts": {
+     "maxDuration": 30
    }
  }
 }
