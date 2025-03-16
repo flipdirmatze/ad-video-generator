@@ -5,9 +5,14 @@ import dbConnect from '@/lib/mongoose';
 import ProjectModel from '@/models/Project';
 import { getJobStatus } from '@/utils/aws-batch-utils';
 
+// Define the params type explicitly
+type Params = {
+  projectId: string;
+};
+
 export async function GET(
   request: NextRequest,
-  { params }: { params: { projectId: string } }
+  { params }: { params: Params }
 ) {
   try {
     // Sichere Authentifizierung
@@ -16,7 +21,7 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { projectId } = params;
+    const projectId = params.projectId;
     if (!projectId) {
       return NextResponse.json({ error: 'Project ID is required' }, { status: 400 });
     }
