@@ -62,13 +62,13 @@ export async function POST(request: Request) {
     // Überprüfe, ob alle Videos existieren und dem Benutzer gehören
     const videoIds = [...new Set(segments.map(s => s.videoId))];
     const videos = await VideoModel.find({
-      _id: { $in: videoIds },
+      id: { $in: videoIds },
       userId: session.user.id
-    }, '_id').lean();
+    }).lean();
 
     if (videos.length !== videoIds.length) {
       console.error('Some videos not found or not owned by user');
-      const foundIds = videos.map(v => String(v._id));
+      const foundIds = videos.map(v => v.id);
       const missingIds = videoIds.filter(id => !foundIds.includes(id));
       return NextResponse.json({
         error: 'Some videos not found or not accessible',
