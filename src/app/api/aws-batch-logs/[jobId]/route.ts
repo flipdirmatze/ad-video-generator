@@ -4,15 +4,9 @@ import { authOptions } from '@/lib/auth';
 import { CloudWatchLogsClient, GetLogEventsCommand, LogEvent } from '@aws-sdk/client-cloudwatch-logs';
 import { BatchClient, DescribeJobsCommand } from '@aws-sdk/client-batch';
 
-// Define the params type explicitly
-type Params = {
-  jobId: string;
-};
-
-// This is the correct type signature for dynamic route handlers in Next.js App Router
 export async function GET(
   request: NextRequest,
-  { params }: { params: Params }
+  { params }: { params: Promise<{ jobId: string }> }
 ) {
   try {
     // Sichere Authentifizierung
@@ -21,7 +15,9 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const jobId = params.jobId;
+    // Await the params Promise to get the jobId
+    const { jobId } = await params;
+    
     if (!jobId) {
       return NextResponse.json({ error: 'Job ID is required' }, { status: 400 });
     }
