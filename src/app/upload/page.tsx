@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useRef, useState, useCallback } from 'react'
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { ArrowUpTrayIcon, XMarkIcon, TagIcon, ArrowRightIcon, CheckCircleIcon, FilmIcon } from '@heroicons/react/24/outline'
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
@@ -51,8 +51,8 @@ export default function UploadPage() {
   const [videoPlaybackUrls, setVideoPlaybackUrls] = useState<{[key: string]: string}>({})
   const [videoToDelete, setVideoToDelete] = useState<UploadedVideo | null>(null)
 
-  // Kombiniere permanente und temporäre Videos für die Anzeige
-  const allVideos = [...uploadedVideos, ...pendingUploads];
+  // Memoize allVideos to prevent unnecessary recalculations
+  const allVideos = useMemo(() => [...uploadedVideos, ...pendingUploads], [uploadedVideos, pendingUploads]);
   
   // Entfernen des gesamten loadVideoMetadata useCallback und useEffect-Hooks
   // Füge einen Callback für das Laden von Video-Metadaten hinzu - außerhalb von useEffect
@@ -62,52 +62,38 @@ export default function UploadPage() {
   
   // Funktion zum Abrufen einer signierten URL für die Videowiedergabe
   const getVideoPlaybackUrl = useCallback(async (video: UploadedVideo): Promise<string> => {
-    // Wenn es bereits eine Playback-URL gibt, diese verwenden
     if (videoPlaybackUrls[video.id]) {
       return videoPlaybackUrls[video.id];
     }
     
-    // Für lokale Video-URLs (blob:) einfach die Original-URL verwenden
     if (video.url.startsWith('blob:')) {
       return video.url;
     }
     
     try {
-      // Extrahiere den S3-Key aus der URL oder den Metadaten
-      let key = '';
+      let key = video.key || '';
       
-      // Versuch 1: Verwende den expliziten Key, falls vorhanden
-      if (video.key) {
-        key = video.key;
-      } 
-      // Versuch 2: Falls video.name "1.mp4" oder "2.mp4" Format hat, präfixe mit "uploads/"
-      else if (video.name && /^\d+\.mp4$/.test(video.name)) {
-        key = `uploads/${video.name}`;
-      }
-      // Versuch 3: Extrahiere aus dem Dateinamen, falls einfacher Name
-      else if (video.name && !video.name.includes('/') && !video.name.includes(':')) {
-        // Stelle sicher, dass der Schlüssel mit 'uploads/' beginnt
-        key = video.name.startsWith('uploads/') ? video.name : `uploads/${video.name}`;
-      }
-      // Versuch 4: Extrahiere aus der URL
-      else if (video.url.includes('amazonaws.com')) {
-        const urlParts = video.url.split('.amazonaws.com/');
-        if (urlParts.length > 1) {
-          key = urlParts[1];
+      if (!key) {
+        if (video.name && /^\d+\.mp4$/.test(video.name)) {
+          key = `uploads/${video.name}`;
+        } else if (video.name && !video.name.includes('/') && !video.name.includes(':')) {
+          key = video.name.startsWith('uploads/') ? video.name : `uploads/${video.name}`;
+        } else if (video.url.includes('amazonaws.com')) {
+          const urlParts = video.url.split('.amazonaws.com/');
+          if (urlParts.length > 1) {
+            key = urlParts[1];
+          }
         }
       }
       
       if (!key) {
-        // Fallback: Verwende den Dateinamen als Key
         key = `uploads/${video.name}`;
       }
       
-      // Verwende die direkte S3-URL als Fallback, falls die signierte URL fehlschlägt
       const region = process.env.NEXT_PUBLIC_AWS_REGION || 'eu-central-1';
       const bucket = process.env.NEXT_PUBLIC_S3_BUCKET_NAME || 'ad-video-generator-bucket';
       const fallbackUrl = `https://${bucket}.s3.${region}.amazonaws.com/${key}`;
       
-      // Verwende die API für signierte URLs
       try {
         const response = await fetch(`/api/get-signed-url?key=${encodeURIComponent(key)}`);
         
@@ -121,7 +107,6 @@ export default function UploadPage() {
           throw new Error('Invalid response from signed URL endpoint');
         }
         
-        // Speichere die URL im Cache
         setVideoPlaybackUrls(prev => ({
           ...prev,
           [video.id]: data.url
@@ -129,7 +114,6 @@ export default function UploadPage() {
         
         return data.url;
       } catch (e) {
-        // Bei Fehler: Fallback-URL verwenden und im Cache speichern
         setVideoPlaybackUrls(prev => ({
           ...prev,
           [video.id]: fallbackUrl
@@ -138,21 +122,18 @@ export default function UploadPage() {
         return fallbackUrl;
       }
     } catch (e) {
-      // Bei allgemeinem Fehler: Original-URL verwenden
       return video.url;
     }
-  }, [videoPlaybackUrls, setVideoPlaybackUrls]);
+  }, []);
   
-  // Vorbereiten der Videowiedergabe beim Laden der Seite - mit Optimierungen
+  // Vorbereiten der Videowiedergabe beim Laden der Seite
   useEffect(() => {
-    // Begrenze die Anzahl der gleichzeitigen Anfragen
     const MAX_CONCURRENT_REQUESTS = 2;
     let isMounted = true;
     
     const prepareVideoPlayback = async () => {
       const videosWithoutUrls = allVideos.filter(video => !videoPlaybackUrls[video.id]);
       
-      // Verarbeite Videos in Batches, um die Anzahl der gleichzeitigen Anfragen zu begrenzen
       for (let i = 0; i < videosWithoutUrls.length; i += MAX_CONCURRENT_REQUESTS) {
         if (!isMounted) return;
         
@@ -177,7 +158,6 @@ export default function UploadPage() {
           }));
         }
         
-        // Kurze Pause zwischen den Batches, um den Browser nicht zu überlasten
         if (i + MAX_CONCURRENT_REQUESTS < videosWithoutUrls.length) {
           await new Promise(resolve => setTimeout(resolve, 100));
         }
@@ -188,11 +168,10 @@ export default function UploadPage() {
       prepareVideoPlayback();
     }
     
-    // Cleanup-Funktion
     return () => {
       isMounted = false;
     };
-  }, [allVideos, videoPlaybackUrls, getVideoPlaybackUrl, setVideoPlaybackUrls]);
+  }, [allVideos, getVideoPlaybackUrl]);
   
   // HOOK 3: Aspektverhältnisse verwalten
   // useEffect(() => {
@@ -201,68 +180,57 @@ export default function UploadPage() {
   
   // Stattdessen: Einfacher Ansatz für Video-Vorschau mit festem Format
   const getVideoFormat = useCallback((video: UploadedVideo) => {
-    // Wenn wir bereits ein Aspektverhältnis für dieses Video haben, verwenden wir es
     if (videoAspectRatios[video.id]) {
       return videoAspectRatios[video.id];
     }
     
-    // Ansonsten: Standard-Format (horizontal/landscape) zurückgeben
-    // und asynchron das Format bestimmen (außerhalb des Rendering-Zyklus)
-    setTimeout(() => {
-      // Nur ausführen, wenn das Video noch nicht verarbeitet wurde
+    const determineFormat = () => {
       if (!videoAspectRatios[video.id]) {
         const videoEl = document.createElement('video');
         
-        // Wichtig: Cleanup-Funktion hinzufügen
         const cleanup = () => {
           videoEl.src = '';
           videoEl.load();
-          videoEl.remove(); // Entferne das Element vollständig
+          videoEl.remove();
         };
         
-        // Timeout für den Fall, dass das Video nicht geladen werden kann
         const timeoutId = setTimeout(() => {
           cleanup();
-          // Standard-Format verwenden
-          setVideoAspectRatios(prev => {
-            if (prev[video.id]) return prev;
-            return { ...prev, [video.id]: 'horizontal' };
-          });
-        }, 5000); // 5 Sekunden Timeout
+          setVideoAspectRatios(prev => ({
+            ...prev,
+            [video.id]: 'horizontal'
+          }));
+        }, 5000);
         
         videoEl.onloadedmetadata = () => {
           clearTimeout(timeoutId);
           const aspectRatio = videoEl.videoWidth / videoEl.videoHeight;
           const format = aspectRatio < 0.8 ? 'vertical' : aspectRatio > 1.3 ? 'horizontal' : 'square';
           
-          // Werte nur aktualisieren, wenn sie sich ändern würden
-          setVideoAspectRatios(prev => {
-            if (prev[video.id] === format) return prev;
-            return { ...prev, [video.id]: format };
-          });
+          setVideoAspectRatios(prev => ({
+            ...prev,
+            [video.id]: format
+          }));
           
-          // Cleanup nach Verarbeitung
           cleanup();
         };
         
         videoEl.onerror = () => {
           clearTimeout(timeoutId);
-          // Bei Fehler: Standard-Format verwenden
-          setVideoAspectRatios(prev => {
-            if (prev[video.id]) return prev;
-            return { ...prev, [video.id]: 'horizontal' };
-          });
-          
-          // Cleanup nach Fehler
+          setVideoAspectRatios(prev => ({
+            ...prev,
+            [video.id]: 'horizontal'
+          }));
           cleanup();
         };
         
         videoEl.src = video.url;
       }
-    }, 0);
+    };
     
-    return 'horizontal'; // Standard-Format als Fallback
-  }, [videoAspectRatios, setVideoAspectRatios]);
+    setTimeout(determineFormat, 0);
+    return 'horizontal';
+  }, []);
 
   // HOOK 1: Authentifizierungs-Check und Redirect
   useEffect(() => {
@@ -463,48 +431,43 @@ export default function UploadPage() {
     }
   };
 
-  // Upload progress simulator (der wirkliche S3-Upload hat keinen Fortschrittsindikator)
+  // Optimierter Upload-Progress-Simulator
   const simulateProgress = useCallback((videoId: string) => {
     let progress = 0;
     let interval: NodeJS.Timeout | null = null;
     
-    // Funktion zum Stoppen der Simulation
     const stopSimulation = () => {
       if (interval) {
         clearInterval(interval);
         interval = null;
       }
-      
-      // Setze den Fortschritt auf 100%, um sicherzustellen, dass die Anzeige korrekt abgeschlossen wird
       setUploadProgress(prev => ({ ...prev, [videoId]: 100 }));
     };
     
-    // Starte die Interval-Simulation
     interval = setInterval(() => {
-      // Exponentielles Fortschrittsmodell - schnell am Anfang, langsamer am Ende
       if (progress < 30) {
-        progress += Math.random() * 5; // Langsamer als vorher
+        progress += Math.random() * 5;
       } else if (progress < 70) {
-        progress += Math.random() * 3; // Langsamer als vorher
+        progress += Math.random() * 3;
       } else if (progress < 90) {
-        progress += Math.random() * 1; // Langsamer als vorher
+        progress += Math.random() * 1;
       } else {
-        // Ab 90% stoppt der simulierte Fortschritt und wartet auf die tatsächliche Fertigstellung
-        progress += Math.random() * 0.5; // Sehr langsam bis 100%
+        progress += Math.random() * 0.5;
       }
       
-      // Begrenze den Fortschritt auf 99%, die letzten 1% werden nach erfolgreichem Upload gesetzt
-      setUploadProgress(prev => ({ ...prev, [videoId]: Math.min(Math.floor(progress), 99) }));
+      setUploadProgress(prev => ({
+        ...prev,
+        [videoId]: Math.min(Math.floor(progress), 99)
+      }));
       
-      // Wenn wir 99% erreicht haben, Interval stoppen
       if (progress >= 99) {
         clearInterval(interval!);
         interval = null;
       }
-    }, 500); // Längeres Interval für weniger CPU-Last
+    }, 500);
 
     return stopSimulation;
-  }, [setUploadProgress]);
+  }, []);
 
   const handleFiles = async (files: FileList) => {
     setError(null)
@@ -785,22 +748,15 @@ export default function UploadPage() {
     }
   }
 
-  // Funktion zum Behandeln von Upload-Fehlern
+  // Optimierter Upload-Error-Handler
   const handleUploadError = useCallback((videoId: string, errorMessage: string) => {
-    // Fehler setzen
     setError(`Upload-Fehler: ${errorMessage}`);
-    
-    // Upload-Status zurücksetzen
     setIsUploading(prev => ({ ...prev, [videoId]: false }));
-    
-    // Video aus den temporären Uploads entfernen
     setPendingUploads(prev => prev.filter(v => v.id !== videoId));
     
-    // Nach 5 Sekunden den Fehler zurücksetzen
-    setTimeout(() => {
-      setError(null);
-    }, 5000);
-  }, [setError, setIsUploading, setPendingUploads]);
+    const timeoutId = setTimeout(() => setError(null), 5000);
+    return () => clearTimeout(timeoutId);
+  }, []);
 
   return (
     <main className="container py-12 md:py-20">
