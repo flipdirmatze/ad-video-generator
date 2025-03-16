@@ -58,8 +58,9 @@ export default function UploadPage() {
               type: video.type,
               url: video.url, // Diese URL sollte bereits signiert sein
               tags: video.tags || [],
-              key: video.key
+              key: video.key || video.path // Fallback auf path wenn key nicht existiert
             }));
+            console.log('Loaded videos with signed URLs:', videos);
             setUploadedVideos(videos);
           } else {
             setUploadedVideos([])
@@ -361,10 +362,18 @@ export default function UploadPage() {
                       if (target.error) {
                         console.error('Error code:', target.error.code);
                         console.error('Error message:', target.error.message);
-                        // Versuche das Video neu zu laden
-                        target.load();
+                        console.error('Failed URL:', video.url);
+                        
+                        // Wenn es ein Upload in Bearbeitung ist, ignoriere den Fehler
+                        if (uploadProgress[video.id] !== undefined && uploadProgress[video.id] < 100) {
+                          return;
+                        }
+                        
+                        // Setze einen Fehler-Status für dieses Video
+                        setError(`Failed to load video: ${video.name}`);
                       }
                     }}
+                    style={{ minHeight: '200px' }} // Mindesthöhe für bessere Darstellung
                   />
                   
                   {/* Upload Progress */}

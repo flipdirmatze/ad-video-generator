@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import dbConnect from '@/lib/mongoose';
 import VideoModel from '@/models/Video';
+import { getSignedVideoUrl } from '@/lib/storage';
 
 /**
  * GET /api/media
@@ -26,25 +27,46 @@ export async function GET(request: NextRequest) {
       .sort({ createdAt: -1 })
       .lean();
     
-    // Rückmeldung formatieren
-    const formattedVideos = videos.map(video => ({
-      id: video.id, // Hier die ID aus dem Mongoose-Dokument
-      _id: video._id ? video._id.toString() : undefined,
-      name: video.name,
-      path: video.path,
-      url: video.url,
-      size: video.size,
-      type: video.type,
-      tags: video.tags || [],
-      createdAt: video.createdAt,
-      isPublic: video.isPublic
+    // Rückmeldung formatieren mit signierten URLs
+    const formattedVideos = await Promise.all(videos.map(async video => {
+      try {
+        // Verwende den path oder key für die signierte URL
+        const videoKey = video.path || video.key;
+        if (!videoKey) {
+          console.error('Video has no path or key:', video);
+          return null;
+        }
+
+        // Generiere eine signierte URL für jedes Video
+        const signedUrl = await getSignedVideoUrl(videoKey);
+        console.log(`Generated signed URL for video ${video.id}:`, signedUrl);
+        
+        return {
+          id: video.id,
+          _id: video._id ? video._id.toString() : undefined,
+          name: video.name,
+          path: videoKey,
+          url: signedUrl,
+          size: video.size,
+          type: video.type,
+          tags: video.tags || [],
+          createdAt: video.createdAt,
+          isPublic: video.isPublic
+        };
+      } catch (error) {
+        console.error(`Error processing video ${video.id}:`, error);
+        return null;
+      }
     }));
+    
+    // Filtere fehlgeschlagene Videos heraus
+    const validVideos = formattedVideos.filter(video => video !== null);
     
     // Erfolg zurückgeben
     return NextResponse.json({
       success: true,
-      count: formattedVideos.length,
-      files: formattedVideos
+      count: validVideos.length,
+      files: validVideos
     });
   } catch (error) {
     console.error('Error fetching videos from database:', error);
