@@ -6,7 +6,7 @@ import { BatchClient, DescribeJobsCommand } from '@aws-sdk/client-batch';
 
 export async function GET(
   request: NextRequest,
-  context: { params: { jobId: string } }
+  { params }: { params: { jobId: string } }
 ) {
   try {
     // Sichere Authentifizierung
@@ -15,7 +15,7 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const jobId = context.params.jobId;
+    const { jobId } = params;
     if (!jobId) {
       return NextResponse.json({ error: 'Job ID is required' }, { status: 400 });
     }

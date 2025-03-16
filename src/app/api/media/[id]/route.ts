@@ -16,7 +16,7 @@ interface IVideoDocument extends IVideo {
  */
 export async function GET(
   request: NextRequest,
-  context: { params: { id: string } }
+  { params }: { params: { id: string } }
 ) {
   try {
     // Authentifizierung prüfen
@@ -26,7 +26,7 @@ export async function GET(
     }
 
     const userId = session.user.id;
-    const videoId = context.params.id;
+    const { id: videoId } = params;
     
     // Verbindung zur Datenbank herstellen
     await dbConnect();
@@ -78,7 +78,7 @@ export async function GET(
  */
 export async function DELETE(
   request: NextRequest,
-  context: { params: { id: string } }
+  { params }: { params: { id: string } }
 ) {
   try {
     // Authentifizierung prüfen
@@ -88,7 +88,7 @@ export async function DELETE(
     }
 
     const userId = session.user.id;
-    const videoId = context.params.id;
+    const { id: videoId } = params;
     
     // Verbindung zur Datenbank herstellen
     await dbConnect();
