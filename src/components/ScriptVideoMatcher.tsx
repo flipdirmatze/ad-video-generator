@@ -287,7 +287,7 @@ export default function ScriptVideoMatcher() {
   if (!voiceoverData) {
     return (
       <div className="space-y-6">
-        <div className="p-4 bg-yellow-100 border border-yellow-400 text-yellow-700 rounded-md">
+        <div className="p-4 bg-yellow-900/30 border border-yellow-500/30 text-yellow-400 rounded-md">
           <h3 className="font-medium">Kein Voiceover gefunden</h3>
           <p className="mt-2">
             Du musst zuerst ein Voiceover erstellen, bevor du Videos matchen kannst.
@@ -305,15 +305,8 @@ export default function ScriptVideoMatcher() {
 
   return (
     <div className="space-y-6">
-      <div className="space-y-2">
-        <h2 className="text-2xl font-bold">KI-Video-Matching</h2>
-        <p className="text-gray-500">
-          Finde passende Videos für dein Voiceover
-        </p>
-      </div>
-
       {/* Voiceover-Player */}
-      <div className="p-4 bg-gray-100 border border-gray-200 rounded-md">
+      <div className="p-4 bg-gray-800 border border-gray-700 rounded-md">
         <div className="flex items-center justify-between">
           <div className="font-medium">Dein Voiceover</div>
           <button
@@ -350,13 +343,13 @@ export default function ScriptVideoMatcher() {
           value={script}
           onChange={(e) => setScript(e.target.value)}
           rows={8}
-          className="w-full p-2 border border-gray-300 rounded-md"
+          className="w-full p-2 border border-gray-700 bg-gray-800 rounded-md text-white"
           readOnly
         />
       </div>
 
       {error && (
-        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+        <div className="bg-red-900/30 border border-red-500/30 text-red-400 px-4 py-3 rounded">
           {error}
         </div>
       )}
@@ -364,7 +357,7 @@ export default function ScriptVideoMatcher() {
       <button 
         onClick={handleAnalyzeScript} 
         disabled={isAnalyzing || !script.trim()}
-        className="w-full py-2 px-4 bg-blue-600 text-white rounded-md disabled:bg-blue-300"
+        className="w-full py-2 px-4 bg-blue-600 text-white rounded-md disabled:bg-blue-300 disabled:opacity-50"
       >
         {isAnalyzing ? (
           <>
@@ -379,13 +372,13 @@ export default function ScriptVideoMatcher() {
       {segments.length > 0 && (
         <div className="space-y-4">
           <h3 className="text-xl font-semibold">Skript-Analyse</h3>
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-gray-400">
             Das Skript wurde in {segments.length} Segmente unterteilt.
             {totalVideos > 0 ? ` ${totalVideos} Videos mit Tags gefunden.` : ' Keine Videos mit Tags gefunden.'}
           </p>
           
           {totalVideos === 0 && (
-            <div className="p-4 bg-yellow-100 border border-yellow-400 text-yellow-700 rounded-md">
+            <div className="p-4 bg-yellow-900/30 border border-yellow-500/30 text-yellow-400 rounded-md">
               <h3 className="font-medium">Keine Videos mit Tags gefunden</h3>
               <p className="mt-2">
                 Um Videos automatisch zuzuordnen, musst du zuerst Videos hochladen und mit Tags versehen.
@@ -404,10 +397,10 @@ export default function ScriptVideoMatcher() {
               const match = matches.find(m => m.segment.text === segment.text);
               
               return (
-                <div key={index} className="border rounded-md p-4">
+                <div key={index} className="border border-gray-700 bg-gray-800/50 rounded-md p-4">
                   <div className="flex justify-between items-start">
                     <h4 className="font-medium">Segment {index + 1}</h4>
-                    <span className="text-sm text-gray-500">
+                    <span className="text-sm text-gray-400">
                       Dauer: {segment.duration} Sekunden
                     </span>
                   </div>
@@ -416,16 +409,16 @@ export default function ScriptVideoMatcher() {
                   
                   <div className="mt-2">
                     <span className="text-sm font-medium">Keywords: </span>
-                    <span className="text-sm text-gray-500">
+                    <span className="text-sm text-gray-400">
                       {segment.keywords.join(', ')}
                     </span>
                   </div>
                   
                   {match ? (
-                    <div className="mt-4 border-t pt-2">
+                    <div className="mt-4 border-t border-gray-700 pt-2">
                       <div className="flex justify-between items-start">
                         <h5 className="font-medium">Passendes Video</h5>
-                        <span className="text-sm text-gray-500">
+                        <span className="text-sm text-gray-400">
                           Match-Score: {Math.round(match.score * 100)}%
                         </span>
                       </div>
@@ -434,7 +427,7 @@ export default function ScriptVideoMatcher() {
                       
                       <div className="mt-1">
                         <span className="text-sm font-medium">Tags: </span>
-                        <span className="text-sm text-gray-500">
+                        <span className="text-sm text-gray-400">
                           {match.video.tags.join(', ')}
                         </span>
                       </div>
@@ -442,7 +435,7 @@ export default function ScriptVideoMatcher() {
                       {match.video.duration && (
                         <div className="mt-1 text-sm">
                           <span className="font-medium">Video-Länge: </span>
-                          <span className="text-gray-500">
+                          <span className="text-gray-400">
                             {match.video.duration} Sekunden
                             {match.video.duration > segment.duration && 
                               ` (wird auf ${segment.duration} Sekunden gekürzt)`}
@@ -451,7 +444,7 @@ export default function ScriptVideoMatcher() {
                       )}
                     </div>
                   ) : (
-                    <div className="mt-4 border-t pt-2 text-yellow-600">
+                    <div className="mt-4 border-t border-gray-700 pt-2 text-yellow-400">
                       Kein passendes Video gefunden
                     </div>
                   )}
