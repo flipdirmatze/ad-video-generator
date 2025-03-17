@@ -2,9 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import dbConnect from '@/lib/mongoose';
-import ProjectModel from '@/models/Project';
+import ProjectModel, { IProject } from '@/models/Project';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
+import mongoose from 'mongoose';
+
+// Erweitere den IProject-Typ für das Dokument aus MongoDB
+interface IProjectDocument extends IProject {
+  _id: mongoose.Types.ObjectId;
+}
 
 // S3 Client initialisieren
 const s3Client = new S3Client({
@@ -61,7 +67,7 @@ export async function GET(request: NextRequest) {
     // Projekte des Benutzers abfragen
     const projects = await ProjectModel.find({ userId })
       .sort({ createdAt: -1 })
-      .lean();
+      .lean() as unknown as IProjectDocument[];
     
     // Rückmeldung formatieren mit signierten URLs
     const formattedProjects = await Promise.all(projects.map(async project => {
