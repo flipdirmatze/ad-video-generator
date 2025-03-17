@@ -2,10 +2,22 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import dbConnect from '@/lib/mongoose';
-import ProjectModel from '@/models/Project';
+import ProjectModel, { IProject } from '@/models/Project';
 import { getJobStatus } from '@/utils/aws-batch-utils';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
+import mongoose from 'mongoose';
+
+// Definiere den Projektstatus-Typ
+type ProjectStatus = 'pending' | 'processing' | 'completed' | 'failed';
+
+// Erweitere den IProject-Typ für das Dokument aus MongoDB
+interface IProjectDocument extends Omit<IProject, 'status'> {
+  _id: mongoose.Types.ObjectId;
+  status: ProjectStatus;
+  progress?: number;
+  save(): Promise<IProjectDocument>;
+}
 
 // S3 Client initialisieren
 const s3Client = new S3Client({
@@ -66,7 +78,7 @@ export async function GET(
     await dbConnect();
 
     // Projekt aus der Datenbank abrufen
-    const project = await ProjectModel.findById(projectId);
+    const project = await ProjectModel.findById(projectId) as unknown as IProjectDocument;
     if (!project) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     }
@@ -110,7 +122,7 @@ export async function GET(
 
         // Berechne den Fortschritt basierend auf dem Job-Status
         let progress = 0;
-        let newStatus = project.status;
+        let newStatus: ProjectStatus = project.status;
         let error = project.error;
 
         // Prüfe, ob der Status einen Fehler enthält (z.B. "failed: Essential container in task exited")

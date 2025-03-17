@@ -2,9 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import dbConnect from '@/lib/mongoose';
-import ProjectModel from '@/models/Project';
+import ProjectModel, { IProject } from '@/models/Project';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { S3Client, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import mongoose from 'mongoose';
+
+// Erweitere den IProject-Typ für das Dokument aus MongoDB
+interface IProjectDocument extends IProject {
+  _id: mongoose.Types.ObjectId;
+}
 
 // S3 Client initialisieren
 const s3Client = new S3Client({
@@ -47,7 +53,7 @@ async function getSignedVideoUrlFromS3(outputUrl: string): Promise<string> {
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // Authentifizierung prüfen
@@ -57,7 +63,8 @@ export async function GET(
     }
 
     const userId = session.user.id;
-    const projectId = params.id;
+    // Await the params Promise to get the id
+    const { id: projectId } = await params;
     
     // Verbindung zur Datenbank herstellen
     await dbConnect();
@@ -66,7 +73,7 @@ export async function GET(
     const project = await ProjectModel.findOne({ 
       _id: projectId,
       userId 
-    }).lean();
+    }).lean() as unknown as IProjectDocument;
     
     if (!project) {
       return NextResponse.json({ error: 'Project not found or no permission' }, { status: 404 });
@@ -112,7 +119,7 @@ export async function GET(
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // Authentifizierung prüfen
@@ -122,7 +129,8 @@ export async function DELETE(
     }
 
     const userId = session.user.id;
-    const projectId = params.id;
+    // Await the params Promise to get the id
+    const { id: projectId } = await params;
     
     // Verbindung zur Datenbank herstellen
     await dbConnect();
@@ -131,7 +139,7 @@ export async function DELETE(
     const project = await ProjectModel.findOne({ 
       _id: projectId,
       userId 
-    });
+    }) as unknown as IProjectDocument;
     
     if (!project) {
       return NextResponse.json({ error: 'Project not found or no permission' }, { status: 404 });
