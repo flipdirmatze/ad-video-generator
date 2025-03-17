@@ -24,6 +24,8 @@ export default function VoiceoverPage() {
   const [audioElement, setAudioElement] = useState<HTMLAudioElement | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [projectId, setProjectId] = useState<string | null>(null)
+  const [isSaving, setIsSaving] = useState(false)
 
   // Authentifizierungsprüfung
   useEffect(() => {
@@ -37,33 +39,76 @@ export default function VoiceoverPage() {
 
   // Gespeicherte Voiceover-Daten laden
   useEffect(() => {
-    const savedVoiceoverData = localStorage.getItem('voiceoverData');
-    if (savedVoiceoverData) {
-      try {
-        setVoiceoverData(JSON.parse(savedVoiceoverData));
-      } catch (e) {
-        console.error('Error parsing saved voiceover data:', e);
+    const loadSavedData = async () => {
+      // Projekt-ID aus localStorage laden
+      const savedProjectId = localStorage.getItem('currentProjectId');
+      
+      if (savedProjectId) {
+        try {
+          // Projekt-Daten vom Server laden
+          const response = await fetch(`/api/workflow-state?projectId=${savedProjectId}`);
+          
+          if (response.ok) {
+            const data = await response.json();
+            
+            if (data.success && data.project) {
+              setProjectId(data.project.id);
+              
+              // Wenn das Projekt ein Voiceover hat, lade es
+              if (data.project.voiceoverScript) {
+                setScript(data.project.voiceoverScript);
+              }
+              
+              // Wenn das Projekt ein Voiceover-ID hat, versuche die Voiceover-Daten zu laden
+              if (data.project.voiceoverId) {
+                const savedVoiceoverData = localStorage.getItem('voiceoverData');
+                if (savedVoiceoverData) {
+                  try {
+                    setVoiceoverData(JSON.parse(savedVoiceoverData));
+                  } catch (e) {
+                    console.error('Error parsing saved voiceover data:', e);
+                  }
+                }
+              }
+            }
+          } else {
+            // Wenn das Projekt nicht gefunden wurde, entferne die ID aus dem localStorage
+            localStorage.removeItem('currentProjectId');
+          }
+        } catch (error) {
+          console.error('Error loading project data:', error);
+        }
+      } else {
+        // Fallback für ältere Version: Lade Daten aus localStorage
+        const savedVoiceoverData = localStorage.getItem('voiceoverData');
+        if (savedVoiceoverData) {
+          try {
+            setVoiceoverData(JSON.parse(savedVoiceoverData));
+          } catch (e) {
+            console.error('Error parsing saved voiceover data:', e);
+          }
+        } else {
+          // Fallback für ältere Version
+          const savedVoiceover = localStorage.getItem('voiceoverUrl');
+          if (savedVoiceover) {
+            setVoiceoverData({
+              dataUrl: savedVoiceover,
+              url: savedVoiceover, // Legacy: dataUrl und url sind identisch
+              voiceoverId: 'legacy',
+              fileName: 'voiceover.mp3'
+            });
+          }
+        }
+        
+        // Lade gespeichertes Skript
+        const savedScript = localStorage.getItem('voiceoverScript');
+        if (savedScript && !script) {
+          setScript(savedScript);
+        }
       }
-    } else {
-      // Fallback für ältere Version
-      const savedVoiceover = localStorage.getItem('voiceoverUrl');
-      if (savedVoiceover) {
-        setVoiceoverData({
-          dataUrl: savedVoiceover,
-          url: savedVoiceover, // Legacy: dataUrl und url sind identisch
-          voiceoverId: 'legacy',
-          fileName: 'voiceover.mp3'
-        });
-      }
-    }
-  }, []);
-
-  // Load saved script if available
-  useEffect(() => {
-    const savedScript = localStorage.getItem('voiceoverScript');
-    if (savedScript && !script) {
-      setScript(savedScript);
-    }
+    };
+    
+    loadSavedData();
   }, [script]);
 
   // Audio-Wiedergabe steuern
@@ -135,6 +180,9 @@ export default function VoiceoverPage() {
       localStorage.setItem('voiceoverData', JSON.stringify(newVoiceoverData));
       // Auch das Script speichern
       localStorage.setItem('voiceoverScript', script);
+      
+      // Workflow-Status speichern
+      await saveWorkflowState(data.voiceoverId, script);
     } catch (error) {
       console.error('Failed to generate voiceover:', error)
       setError(error instanceof Error ? error.message : 'Failed to generate voiceover')
@@ -142,6 +190,42 @@ export default function VoiceoverPage() {
       setIsGenerating(false)
     }
   }
+  
+  // Workflow-Status speichern
+  const saveWorkflowState = async (voiceoverId: string, voiceoverScript: string) => {
+    setIsSaving(true);
+    
+    try {
+      const response = await fetch('/api/workflow-state', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectId: projectId,
+          workflowStep: 'voiceover',
+          voiceoverId: voiceoverId,
+          voiceoverScript: voiceoverScript,
+          title: 'Mein Video-Projekt'
+        })
+      });
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to save workflow state');
+      }
+      
+      // Projekt-ID speichern
+      setProjectId(data.projectId);
+      localStorage.setItem('currentProjectId', data.projectId);
+      
+      console.log('Workflow state saved successfully:', data);
+    } catch (error) {
+      console.error('Failed to save workflow state:', error);
+      // Kein Fehler anzeigen, da dies ein Hintergrundprozess ist
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   // Zeige Ladeindikator während der Authentifizierung
   if (isLoading || status === 'loading') {
@@ -254,6 +338,9 @@ export default function VoiceoverPage() {
                 {voiceoverData.voiceoverId && voiceoverData.voiceoverId !== 'legacy' && (
                   <div className="mt-2 text-xs text-white/40">
                     Voiceover gespeichert in S3 mit ID: {voiceoverData.voiceoverId}
+                    {projectId && (
+                      <span className="ml-2">| Projekt-ID: {projectId}</span>
+                    )}
                   </div>
                 )}
               </div>

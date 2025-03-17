@@ -38,6 +38,16 @@ type FileInfo = {
   id: string;
 }
 
+// Typ für gematchte Videos aus dem Workflow
+type MatchedVideo = {
+  videoId: string;
+  segmentId: string;
+  score: number;
+  startTime: number;
+  duration: number;
+  position: number;
+}
+
 export default function EditorPage() {
   // Session and router
   const { data: session, status } = useSession()
@@ -50,6 +60,7 @@ export default function EditorPage() {
   const [generationProgress, setGenerationProgress] = useState(0)
   const [videoDuration, setVideoDuration] = useState(0)
   const [currentTime, setCurrentTime] = useState(0)
+  const [fromScriptMatcher, setFromScriptMatcher] = useState(false)
   
   // Content states
   const [voiceoverUrl, setVoiceoverUrl] = useState<string | null>(null)
@@ -72,9 +83,12 @@ export default function EditorPage() {
   const isMounted = useRef(false)
   
   // Zusätzliche State für Projekt-Tracking
-  const [projectId, setProjectId] = useState<string | null>(null);
-  const [jobId, setJobId] = useState<string | null>(null);
-
+  const [projectId, setProjectId] = useState<string | null>(null)
+  const [jobId, setJobId] = useState<string | null>(null)
+  const [matchedVideos, setMatchedVideos] = useState<MatchedVideo[]>([])
+  const [workflowStep, setWorkflowStep] = useState<string | null>(null)
+  const [isLoadingProject, setIsLoadingProject] = useState(false)
+  
   // ------------------- HOOKS SECTION -------------------
   
   // HOOK 1: Authentication check
@@ -93,37 +107,98 @@ export default function EditorPage() {
     if (typeof window !== 'undefined' && !isMounted.current) {
       isMounted.current = true;
       
-      const savedVoiceoverData = localStorage.getItem('voiceoverData');
-      if (savedVoiceoverData) {
+      // Lade das aktuelle Projekt aus dem localStorage
+      const loadProjectData = async () => {
+        setIsLoadingProject(true);
+        
         try {
-          const voiceoverData = JSON.parse(savedVoiceoverData);
-          // Für die lokale Vorschau die dataUrl verwenden
-          setVoiceoverUrl(voiceoverData.dataUrl);
-          // Für die Backend-Integration voiceoverId speichern
-          setVoiceoverScript(localStorage.getItem('voiceoverScript') || '');
-        } catch (e) {
-          console.error('Error parsing saved voiceover data:', e);
+          const savedProjectId = localStorage.getItem('currentProjectId');
+          
+          if (savedProjectId) {
+            console.log('Loading project data from server:', savedProjectId);
+            
+            // Projekt-Daten vom Server laden
+            const response = await fetch(`/api/workflow-state?projectId=${savedProjectId}`);
+            
+            if (response.ok) {
+              const data = await response.json();
+              
+              if (data.success && data.project) {
+                console.log('Project data loaded:', data.project);
+                
+                // Projekt-ID setzen
+                setProjectId(data.project.id);
+                
+                // Workflow-Schritt setzen
+                setWorkflowStep(data.project.workflowStep);
+                
+                // Wenn das Projekt ein Voiceover-Script hat, lade es
+                if (data.project.voiceoverScript) {
+                  setVoiceoverScript(data.project.voiceoverScript);
+                }
+                
+                // Wenn das Projekt gematchte Videos hat, lade sie
+                if (data.project.matchedVideos && data.project.matchedVideos.length > 0) {
+                  setMatchedVideos(data.project.matchedVideos);
+                  
+                  // Extrahiere die Video-IDs für die Auswahl
+                  const videoIds = data.project.matchedVideos.map((match: MatchedVideo) => match.videoId);
+                  setSelectedVideos(videoIds);
+                  setFromScriptMatcher(true);
+                }
+                
+                // Wenn das Projekt bereits ein fertiges Video hat, lade es
+                if (data.project.outputUrl) {
+                  setFinalVideoUrl(data.project.outputUrl);
+                }
+              }
+            } else {
+              // Wenn das Projekt nicht gefunden wurde, entferne die ID aus dem localStorage
+              localStorage.removeItem('currentProjectId');
+            }
+          }
+          
+          // Lade Voiceover-Daten aus localStorage (für Abwärtskompatibilität)
+          const savedVoiceoverData = localStorage.getItem('voiceoverData');
+          if (savedVoiceoverData) {
+            try {
+              const voiceoverData = JSON.parse(savedVoiceoverData);
+              // Für die lokale Vorschau die dataUrl verwenden
+              setVoiceoverUrl(voiceoverData.dataUrl);
+              // Für die Backend-Integration voiceoverId speichern
+              if (!voiceoverScript) {
+                setVoiceoverScript(localStorage.getItem('voiceoverScript') || '');
+              }
+            } catch (e) {
+              console.error('Error parsing saved voiceover data:', e);
+            }
+          } else {
+            // Fallback für ältere Version
+            const savedVoiceover = localStorage.getItem('voiceoverUrl');
+            if (savedVoiceover) {
+              setVoiceoverUrl(savedVoiceover);
+              if (!voiceoverScript) {
+                setVoiceoverScript(localStorage.getItem('voiceoverScript') || '');
+              }
+            }
+          }
+          
+          // Lade Videos vom Server
+          await fetchServerVideos();
+          
+          // Lade verfügbare Uploads vom Server (für die Verarbeitungswarteschlange)
+          await fetchAvailableUploads();
+          
+        } catch (error) {
+          console.error('Error loading project data:', error);
+          setError('Fehler beim Laden der Projektdaten');
+        } finally {
+          setIsLoadingProject(false);
+          setIsLoading(false);
         }
-      } else {
-        // Fallback für ältere Version
-        const savedVoiceover = localStorage.getItem('voiceoverUrl');
-        if (savedVoiceover) {
-          setVoiceoverUrl(savedVoiceover);
-          setVoiceoverScript(localStorage.getItem('voiceoverScript') || '');
-        }
-      }
+      };
       
-      const savedFinalVideo = localStorage.getItem('finalVideoUrl')
-      
-      // Lade direkt Videos vom Server anstatt von localStorage
-      fetchServerVideos();
-      
-      if (savedFinalVideo) {
-        setFinalVideoUrl(savedFinalVideo)
-      }
-      
-      // Fetch available uploads from the server (for processing queue)
-      fetchAvailableUploads();
+      loadProjectData();
     }
   }, [])
   
@@ -472,12 +547,15 @@ export default function EditorPage() {
         
         const videoKey = video.key || `uploads/${video.id}.${video.type.split('/')[1]}`;
         
+        // Wenn wir gematchte Videos haben, verwende deren Daten
+        const matchedVideo = matchedVideos.find(m => m.videoId === videoId);
+        
         return {
           videoId: video.id,
           videoKey,
-          startTime: 0, // Start am Anfang des Videos
-          duration: 10, // Standard-Länge von 10 Sekunden pro Video
-          position: index // Position basierend auf der Reihenfolge in selectedVideos
+          startTime: matchedVideo?.startTime || 0, // Start am Anfang des Videos
+          duration: matchedVideo?.duration || 10, // Verwende die Dauer aus dem Match oder Standard
+          position: matchedVideo?.position || index // Position basierend auf dem Match oder der Reihenfolge
         };
       }).filter(Boolean);
       
@@ -495,6 +573,25 @@ export default function EditorPage() {
         }
       }
       
+      // Aktualisiere den Workflow-Status auf 'processing'
+      if (projectId) {
+        try {
+          await fetch('/api/workflow-state', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              projectId,
+              workflowStep: 'processing'
+            })
+          });
+        } catch (error) {
+          console.error('Error updating workflow state:', error);
+          // Kein Fehler anzeigen, da dies ein Hintergrundprozess ist
+        }
+      }
+      
       // Die neue API für die Videogenerierung aufrufen
       const response = await fetch('/api/generate-video', {
         method: 'POST',
@@ -502,7 +599,8 @@ export default function EditorPage() {
         body: JSON.stringify({
           segments: segmentsWithKeys,
           voiceoverId,
-          title: 'Ad Video'
+          title: 'Ad Video',
+          projectId // Übergebe die Projekt-ID, falls vorhanden
         })
       });
       
@@ -572,21 +670,27 @@ export default function EditorPage() {
           }));
           
           setUploadedVideos(serverVideos);
+          return serverVideos; // Return the videos for chaining
         }
       } else {
         console.error('Failed to fetch videos from server');
       }
+      return []; // Return empty array if no videos found
     } catch (error) {
       console.error('Error fetching videos from server:', error);
+      return []; // Return empty array on error
     }
   };
 
   // ------------------- CONDITIONAL RENDERING -------------------
   
-  if (isLoading || status === 'loading') {
+  if (isLoading || status === 'loading' || isLoadingProject) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-900">
-        <div className="w-16 h-16 border-4 border-purple-600 border-t-transparent rounded-full animate-spin"></div>
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-900">
+        <div className="w-16 h-16 border-4 border-purple-600 border-t-transparent rounded-full animate-spin mb-4"></div>
+        <p className="text-white">
+          {isLoadingProject ? 'Lade Projektdaten...' : 'Lade...'}
+        </p>
       </div>
     )
   }
@@ -607,6 +711,24 @@ export default function EditorPage() {
         <div className="max-w-7xl mx-auto">
           <h1 className="text-3xl font-bold">Video Editor</h1>
           <p className="mt-2 opacity-80">Combine your videos and add a voiceover</p>
+          
+          {fromScriptMatcher && (
+            <div className="mb-6 p-4 bg-green-900/30 border border-green-500/30 rounded-lg text-green-400">
+              <p className="flex items-center">
+                <CheckCircleIcon className="h-5 w-5 mr-2" />
+                Videos wurden automatisch aus dem KI-Matching geladen.
+              </p>
+            </div>
+          )}
+          
+          {projectId && (
+            <div className="mt-4 text-sm opacity-70">
+              Projekt-ID: {projectId}
+              {workflowStep && (
+                <span className="ml-2">• Workflow-Schritt: {workflowStep}</span>
+              )}
+            </div>
+          )}
         </div>
       </div>
       
