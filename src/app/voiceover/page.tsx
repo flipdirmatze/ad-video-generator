@@ -54,8 +54,8 @@ export default function VoiceoverPage() {
             if (data.success && data.project) {
               setProjectId(data.project.id);
               
-              // Wenn das Projekt ein Voiceover hat, lade es
-              if (data.project.voiceoverScript) {
+              // Wenn das Projekt ein Voiceover hat und das Script noch leer ist, lade es
+              if (data.project.voiceoverScript && script === '') {
                 setScript(data.project.voiceoverScript);
               }
               
@@ -100,16 +100,16 @@ export default function VoiceoverPage() {
           }
         }
         
-        // Lade gespeichertes Skript
+        // Lade gespeichertes Skript nur wenn das aktuelle Script leer ist
         const savedScript = localStorage.getItem('voiceoverScript');
-        if (savedScript && !script) {
+        if (savedScript && script === '') {
           setScript(savedScript);
         }
       }
     };
     
     loadSavedData();
-  }, [script]);
+  }, []); // script aus den Dependencies entfernt
 
   // Audio-Wiedergabe steuern
   const togglePlay = useCallback(() => {
