@@ -85,6 +85,7 @@ export default function VoiceoverPage() {
               
               // Wenn das Projekt eine ausgewählte Stimme hat, Stimme laden
               if (data.project.voiceId) {
+                console.log('Setting voice from project:', data.project.voiceId);
                 setSelectedVoice(data.project.voiceId);
               }
             }
@@ -103,6 +104,7 @@ export default function VoiceoverPage() {
           
           // Gespeicherte Stimmen-ID abrufen
           if (parsedData.voiceId) {
+            console.log('Setting voice from localStorage parsedData:', parsedData.voiceId);
             setSelectedVoice(parsedData.voiceId);
           }
         } catch (error) {
@@ -129,6 +131,7 @@ export default function VoiceoverPage() {
         // Lade gespeicherte Stimmen-ID
         const savedVoiceId = localStorage.getItem('selectedVoiceId');
         if (savedVoiceId) {
+          console.log('Setting voice from localStorage selectedVoiceId:', savedVoiceId);
           setSelectedVoice(savedVoiceId);
         }
       }
@@ -230,6 +233,8 @@ export default function VoiceoverPage() {
     setIsGenerating(true)
     setError(null)
     
+    console.log('Generating voiceover with voice ID:', selectedVoice);
+    
     try {
       const response = await fetch('/api/generate-voiceover', {
         method: 'POST',
@@ -245,6 +250,8 @@ export default function VoiceoverPage() {
       if (!response.ok) {
         throw new Error(data.error || 'Failed to generate voiceover')
       }
+      
+      console.log('Received data from API, voice used:', data.voiceId);
       
       // Neue Datenstruktur mit allen relevanten Informationen
       const newVoiceoverData: VoiceoverData = {
