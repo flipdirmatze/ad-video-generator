@@ -467,6 +467,25 @@ export default function VoiceoverPage() {
                     </div>
                   </div>
 
+                  {/* Neuer "Generate Voiceover" Button, der auch bei vorhandenem Voiceover angezeigt wird */}
+                  <button
+                    onClick={handleGenerateVoiceover}
+                    disabled={isGenerating || !script.trim()}
+                    className="w-full inline-flex items-center justify-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isGenerating ? (
+                      <>
+                        <SpeakerWaveIcon className="h-5 w-5 mr-2 animate-pulse" />
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <SpeakerWaveIcon className="h-5 w-5 mr-2" />
+                        Voiceover neu generieren
+                      </>
+                    )}
+                  </button>
+
                   <button
                     onClick={handleContinue}
                     className="w-full inline-flex items-center justify-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
