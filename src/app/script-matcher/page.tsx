@@ -13,10 +13,10 @@ export default async function ScriptMatcherPage() {
   }
   
   return (
-    <div className="min-h-screen bg-[#0C0D1E]">
-      <div className="container mx-auto py-12 md:py-20">
+    <main className="min-h-screen">
+      <div className="container mx-auto py-12 px-4 sm:px-6 lg:px-8">
         <ScriptVideoMatcher />
       </div>
-    </div>
+    </main>
   );
 } 
