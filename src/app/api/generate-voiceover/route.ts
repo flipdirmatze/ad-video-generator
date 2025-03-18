@@ -7,7 +7,7 @@ import Voiceover from '@/models/Voiceover'
 import { Types } from 'mongoose'
 
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY
-const VOICE_ID = 'pNInz6obpgDQGcFmaJgB' // Example voice ID, you can change this
+const DEFAULT_VOICE_ID = 'pNInz6obpgDQGcFmaJgB' // Standard-Stimme als Fallback
 
 export async function POST(request: Request) {
   try {
@@ -28,7 +28,12 @@ export async function POST(request: Request) {
       )
     }
 
-    const { script } = await request.json()
+    const { script, voiceId } = await request.json()
+
+    // Verwende die übergebene Stimme oder die Standard-Stimme
+    const selectedVoiceId = voiceId || DEFAULT_VOICE_ID;
+    
+    console.log(`Using voice ID: ${selectedVoiceId}`);
 
     if (!script) {
       console.error('Voiceover generation error: Script is required');
@@ -43,7 +48,7 @@ export async function POST(request: Request) {
     // Voiceover mit ElevenLabs API generieren
     try {
       const response = await fetch(
-        `https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}`,
+        `https://api.elevenlabs.io/v1/text-to-speech/${selectedVoiceId}`,
         {
           method: 'POST',
           headers: {
@@ -114,6 +119,7 @@ export async function POST(request: Request) {
             url: s3Url,
             path: `audio/${fileName}`,
             size: buffer.length,
+            voiceId: selectedVoiceId, // Speichere die verwendete Stimmen-ID
             isPublic: false,
             createdAt: new Date(),
             updatedAt: new Date()
@@ -127,6 +133,7 @@ export async function POST(request: Request) {
             dataUrl, // Legacy-URL für vorhandene Implementierung
             url: s3Url, // S3-URL für die neue Implementierung
             voiceoverId: voiceover._id,
+            voiceId: selectedVoiceId, // Gib die verwendete Stimmen-ID zurück
             fileName
           })
         } catch (dbError) {
@@ -137,6 +144,7 @@ export async function POST(request: Request) {
             dataUrl,
             url: s3Url,
             fileName,
+            voiceId: selectedVoiceId, // Gib die verwendete Stimmen-ID zurück
             voiceoverId: voiceoverId.toString(),
             warning: 'Voiceover generated but metadata could not be saved to database'
           })
@@ -148,6 +156,7 @@ export async function POST(request: Request) {
           success: true,
           dataUrl,
           warning: 'Voiceover generated but could not be uploaded to S3',
+          voiceId: selectedVoiceId, // Gib die verwendete Stimmen-ID zurück
           fileName: 'voiceover.mp3'
         })
       }

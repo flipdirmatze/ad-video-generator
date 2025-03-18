@@ -6,6 +6,15 @@ import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 
+// ElevenLabs Stimmen Konfiguration - Deutsche Stimmen
+const ELEVENLABS_VOICES = [
+  { id: 'pNInz6obpgDQGcFmaJgB', name: 'Adam', description: 'Warme männliche Stimme' },
+  { id: 'piTKgcLEGmPE4e6mEKli', name: 'Nicole', description: 'Freundliche weibliche Stimme' },
+  { id: 'onwK4e9ZLuTAKqWW03F9', name: 'Daniel', description: 'Sachliche männliche Stimme' },
+  { id: '29vD33N1CtxCmqQRPOHJ', name: 'Sarah', description: 'Professionelle weibliche Stimme' },
+  { id: 'XrExE9yKIg1WjnnlVkGX', name: 'Thomas', description: 'Tiefe männliche Stimme' }
+];
+
 type VoiceoverData = {
   dataUrl: string; // Base64-URL für Browser-Vorschau
   url: string; // S3-URL für dauerhafte Speicherung
@@ -26,6 +35,7 @@ export default function VoiceoverPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [projectId, setProjectId] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
+  const [selectedVoice, setSelectedVoice] = useState(ELEVENLABS_VOICES[0].id)
 
   // Authentifizierungsprüfung
   useEffect(() => {
@@ -42,58 +52,62 @@ export default function VoiceoverPage() {
     const loadSavedData = async () => {
       // Projekt-ID aus localStorage laden
       const savedProjectId = localStorage.getItem('currentProjectId');
-      
       if (savedProjectId) {
+        setProjectId(savedProjectId);
+        
+        // Projekt-Daten vom Server laden
         try {
-          // Projekt-Daten vom Server laden
           const response = await fetch(`/api/workflow-state?projectId=${savedProjectId}`);
-          
           if (response.ok) {
             const data = await response.json();
             
             if (data.success && data.project) {
-              setProjectId(data.project.id);
+              // Wenn das Projekt ein Voiceover hat, Voiceover-Daten laden
+              if (data.project.voiceoverId && data.project.voiceoverUrl) {
+                setVoiceoverData({
+                  dataUrl: data.project.voiceoverUrl,
+                  url: data.project.voiceoverUrl,
+                  voiceoverId: data.project.voiceoverId,
+                  fileName: 'voiceover.mp3'
+                });
+              }
               
-              // Wenn das Projekt ein Voiceover hat und das Script noch leer ist, lade es
+              // Wenn das Projekt ein Voiceover-Script hat, Script laden
               if (data.project.voiceoverScript && script === '') {
                 setScript(data.project.voiceoverScript);
               }
               
-              // Wenn das Projekt ein Voiceover-ID hat, versuche die Voiceover-Daten zu laden
-              if (data.project.voiceoverId) {
-                const savedVoiceoverData = localStorage.getItem('voiceoverData');
-                if (savedVoiceoverData) {
-                  try {
-                    setVoiceoverData(JSON.parse(savedVoiceoverData));
-                  } catch (e) {
-                    console.error('Error parsing saved voiceover data:', e);
-                  }
-                }
+              // Wenn das Projekt eine ausgewählte Stimme hat, Stimme laden
+              if (data.project.voiceId) {
+                setSelectedVoice(data.project.voiceId);
               }
             }
-          } else {
-            // Wenn das Projekt nicht gefunden wurde, entferne die ID aus dem localStorage
-            localStorage.removeItem('currentProjectId');
           }
         } catch (error) {
           console.error('Error loading project data:', error);
         }
-      } else {
-        // Fallback für ältere Version: Lade Daten aus localStorage
-        const savedVoiceoverData = localStorage.getItem('voiceoverData');
-        if (savedVoiceoverData) {
-          try {
-            setVoiceoverData(JSON.parse(savedVoiceoverData));
-          } catch (e) {
-            console.error('Error parsing saved voiceover data:', e);
+      }
+      
+      // Legacy-Daten aus localStorage laden
+      const savedVoiceoverData = localStorage.getItem('voiceoverData');
+      if (savedVoiceoverData) {
+        try {
+          const parsedData = JSON.parse(savedVoiceoverData);
+          setVoiceoverData(parsedData);
+          
+          // Gespeicherte Stimmen-ID abrufen
+          if (parsedData.voiceId) {
+            setSelectedVoice(parsedData.voiceId);
           }
-        } else {
+        } catch (error) {
+          console.error('Error parsing saved voiceover data:', error);
+          
           // Fallback für ältere Version
           const savedVoiceover = localStorage.getItem('voiceoverUrl');
           if (savedVoiceover) {
             setVoiceoverData({
               dataUrl: savedVoiceover,
-              url: savedVoiceover, // Legacy: dataUrl und url sind identisch
+              url: savedVoiceover,
               voiceoverId: 'legacy',
               fileName: 'voiceover.mp3'
             });
@@ -104,6 +118,12 @@ export default function VoiceoverPage() {
         const savedScript = localStorage.getItem('voiceoverScript');
         if (savedScript && script === '') {
           setScript(savedScript);
+        }
+        
+        // Lade gespeicherte Stimmen-ID
+        const savedVoiceId = localStorage.getItem('selectedVoiceId');
+        if (savedVoiceId) {
+          setSelectedVoice(savedVoiceId);
         }
       }
     };
@@ -144,6 +164,14 @@ export default function VoiceoverPage() {
     localStorage.removeItem('voiceoverData');
     localStorage.removeItem('voiceoverUrl'); // Legacy-Eintrag auch entfernen
     localStorage.removeItem('voiceoverScript');
+    // Stimmenauswahl beibehalten
+  };
+
+  // Handle voice selection change
+  const handleVoiceChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const voiceId = e.target.value;
+    setSelectedVoice(voiceId);
+    localStorage.setItem('selectedVoiceId', voiceId);
   };
 
   // Voiceover-Generierung
@@ -157,7 +185,10 @@ export default function VoiceoverPage() {
       const response = await fetch('/api/generate-voiceover', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ script })
+        body: JSON.stringify({ 
+          script, 
+          voiceId: selectedVoice 
+        })
       })
       
       const data = await response.json()
@@ -176,10 +207,15 @@ export default function VoiceoverPage() {
       
       setVoiceoverData(newVoiceoverData);
       
-      // Als JSON in localStorage speichern
-      localStorage.setItem('voiceoverData', JSON.stringify(newVoiceoverData));
+      // Als JSON in localStorage speichern mit Stimmen-ID
+      const voiceoverDataWithVoice = {
+        ...newVoiceoverData,
+        voiceId: selectedVoice
+      };
+      localStorage.setItem('voiceoverData', JSON.stringify(voiceoverDataWithVoice));
       // Auch das Script speichern
       localStorage.setItem('voiceoverScript', script);
+      localStorage.setItem('selectedVoiceId', selectedVoice);
       
       // Workflow-Status speichern
       await saveWorkflowState(data.voiceoverId, script);
@@ -204,36 +240,52 @@ export default function VoiceoverPage() {
           workflowStep: 'voiceover',
           voiceoverId: voiceoverId,
           voiceoverScript: voiceoverScript,
+          voiceId: selectedVoice,
           title: 'Mein Video-Projekt'
         })
       });
       
-      const data = await response.json();
-      
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to save workflow state');
+        throw new Error('Failed to save workflow state');
       }
       
-      // Projekt-ID speichern
-      setProjectId(data.projectId);
-      localStorage.setItem('currentProjectId', data.projectId);
+      const data = await response.json();
       
-      console.log('Workflow state saved successfully:', data);
+      // Projekt-ID aktualisieren
+      if (data.projectId) {
+        setProjectId(data.projectId);
+        localStorage.setItem('currentProjectId', data.projectId);
+      }
     } catch (error) {
-      console.error('Failed to save workflow state:', error);
-      // Kein Fehler anzeigen, da dies ein Hintergrundprozess ist
+      console.error('Error saving workflow state:', error);
+      // Kein UI-Fehler anzeigen, da dies ein Hintergrundprozess ist
     } finally {
       setIsSaving(false);
     }
   };
 
-  // Zeige Ladeindikator während der Authentifizierung
-  if (isLoading || status === 'loading') {
+  // Lädt den nächsten Schritt im Workflow
+  const handleContinue = () => {
+    router.push('/upload')
+  }
+
+  const handleDownload = () => {
+    if (!voiceoverData) return
+    
+    const link = document.createElement('a')
+    link.href = voiceoverData.dataUrl
+    link.download = 'voiceover.mp3'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+
+  if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-900">
+      <div className="min-h-screen flex items-center justify-center bg-base-100">
         <div className="w-16 h-16 border-4 border-purple-600 border-t-transparent rounded-full animate-spin"></div>
       </div>
-    );
+    )
   }
 
   return (
@@ -258,124 +310,103 @@ export default function VoiceoverPage() {
                 name="script"
                 rows={6}
                 className="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-700 bg-gray-800 text-white rounded-md p-4"
-                placeholder="Write your voiceover script here..."
+                placeholder="Gib hier dein Skript ein..."
                 value={script}
                 onChange={(e) => setScript(e.target.value)}
               />
             </div>
             
-            <div className="mt-6 flex justify-between items-center">
-              <div className="text-sm text-white/40">
-                {script.length} characters
-              </div>
-              <div className="flex gap-2">
-                {voiceoverData && (
-                  <button
-                    onClick={handleReset}
-                    className="inline-flex items-center px-4 py-3 text-sm font-medium text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg hover:bg-red-500/20 transition-colors"
-                  >
-                    <TrashIcon className="h-4 w-4 mr-2" />
-                    Reset
-                  </button>
-                )}
-                <button
-                  onClick={handleGenerateVoiceover}
-                  disabled={isGenerating || !script.trim()}
-                  className="inline-flex items-center px-6 py-3 text-lg font-medium text-white bg-gradient-to-r from-primary to-primary-light rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+            {/* Voice Selection Dropdown */}
+            <div className="mt-4">
+              <label htmlFor="voice" className="block text-sm font-medium text-white/80">
+                Stimme auswählen
+              </label>
+              <div className="mt-1">
+                <select
+                  id="voice"
+                  name="voice"
+                  className="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-700 bg-gray-800 text-white rounded-md p-2.5"
+                  value={selectedVoice}
+                  onChange={handleVoiceChange}
                 >
-                  {isGenerating ? (
-                    <>
-                      <SpeakerWaveIcon className="animate-pulse h-5 w-5 mr-2" />
-                      Generating...
-                    </>
-                  ) : (
-                    <>
-                      <SpeakerWaveIcon className="h-5 w-5 mr-2" />
-                      Generate Voiceover
-                    </>
-                  )}
-                </button>
+                  {ELEVENLABS_VOICES.map(voice => (
+                    <option key={voice.id} value={voice.id}>
+                      {voice.name} - {voice.description}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
 
             {error && (
-              <div className="mt-4 p-4 rounded-lg bg-red-500/10 border border-red-500/20 text-red-500">
+              <div className="mt-4 p-3 bg-red-900/20 border border-red-500/30 text-red-400 rounded-md">
                 {error}
               </div>
             )}
 
-            {voiceoverData && (
-              <div className="mt-8 p-4 rounded-lg bg-white/5 border border-white/10">
-                <div className="flex items-center justify-between">
-                  <div className="text-white/80">Your Voiceover</div>
-                  <div className="flex gap-4">
-                    <button
-                      onClick={togglePlay}
-                      className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-white/10 rounded-lg hover:bg-white/20 transition-colors"
-                    >
-                      {isPlaying ? (
-                        <>
-                          <PauseIcon className="h-4 w-4 mr-2" />
-                          Pause
-                        </>
-                      ) : (
-                        <>
-                          <PlayIcon className="h-4 w-4 mr-2" />
-                          Play
-                        </>
-                      )}
-                    </button>
-                    <Link
-                      href="/upload"
-                      className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-primary to-primary-light rounded-lg hover:opacity-90 transition-opacity"
-                    >
-                      Weiter zum Video-Upload
-                      <ArrowRightIcon className="ml-2 h-4 w-4" />
-                    </Link>
+            {!voiceoverData ? (
+              <button
+                onClick={handleGenerateVoiceover}
+                disabled={isGenerating || !script.trim()}
+                className="mt-4 inline-flex items-center justify-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isGenerating ? (
+                  <>
+                    <SpeakerWaveIcon className="h-5 w-5 mr-2 animate-pulse" />
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    <SpeakerWaveIcon className="h-5 w-5 mr-2" />
+                    Generate Voiceover
+                  </>
+                )}
+              </button>
+            ) : (
+              <div className="mt-6 space-y-4">
+                <div className="bg-gray-800 p-4 rounded-md">
+                  <div className="flex justify-between items-center">
+                    <h2 className="text-lg font-medium">Dein Voiceover</h2>
+                    <div className="flex space-x-2">
+                      <button
+                        onClick={togglePlay}
+                        className="inline-flex items-center justify-center p-2 border border-transparent rounded-full text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                      >
+                        {isPlaying ? (
+                          <PauseIcon className="h-5 w-5" />
+                        ) : (
+                          <PlayIcon className="h-5 w-5" />
+                        )}
+                      </button>
+                      <button
+                        onClick={handleDownload}
+                        className="inline-flex items-center justify-center p-2 border border-transparent rounded-full text-white bg-gray-600 hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
+                      >
+                        <ArrowDownTrayIcon className="h-5 w-5" />
+                      </button>
+                      <button
+                        onClick={handleReset}
+                        className="inline-flex items-center justify-center p-2 border border-transparent rounded-full text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                      >
+                        <TrashIcon className="h-5 w-5" />
+                      </button>
+                    </div>
+                  </div>
+                  {/* Zeige die Name der ausgewählten Stimme an */}
+                  <div className="mt-2 text-sm text-gray-400">
+                    Stimme: {ELEVENLABS_VOICES.find(v => v.id === selectedVoice)?.name || 'Standard'}
                   </div>
                 </div>
-                {/* Zeige Voiceover-ID an, wenn sie aus S3 stammt */}
-                {voiceoverData.voiceoverId && voiceoverData.voiceoverId !== 'legacy' && (
-                  <div className="mt-2 text-xs text-white/40">
-                    Voiceover gespeichert in S3 mit ID: {voiceoverData.voiceoverId}
-                    {projectId && (
-                      <span className="ml-2">| Projekt-ID: {projectId}</span>
-                    )}
-                  </div>
-                )}
+
+                <button
+                  onClick={handleContinue}
+                  className="w-full inline-flex items-center justify-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+                >
+                  Weiter zum nächsten Schritt
+                  <ArrowRightIcon className="ml-2 h-5 w-5" />
+                </button>
               </div>
             )}
-          </div>
-        </div>
-
-        {/* Guidelines */}
-        <div className="max-w-4xl mx-auto mt-16">
-          <h2 className="text-xl font-semibold text-white">Tips for Great Voiceovers</h2>
-          <div className="mt-4 grid grid-cols-1 gap-6 sm:grid-cols-2">
-            <div className="p-4 rounded-lg bg-white/5 border border-white/10">
-              <h3 className="text-lg font-medium text-white/90">Keep it Conversational</h3>
-              <p className="mt-2 text-sm text-white/60">
-                Write like you speak. Avoid complex sentences and jargon that might sound unnatural when spoken.
-              </p>
-            </div>
-            <div className="p-4 rounded-lg bg-white/5 border border-white/10">
-              <h3 className="text-lg font-medium text-white/90">Consider Pacing</h3>
-              <p className="mt-2 text-sm text-white/60">
-                Add commas and periods to control pacing. This helps the AI understand where to pause naturally.
-              </p>
-            </div>
-            <div className="p-4 rounded-lg bg-white/5 border border-white/10">
-              <h3 className="text-lg font-medium text-white/90">Match Your Video Length</h3>
-              <p className="mt-2 text-sm text-white/60">
-                A typical speaking pace is about 150 words per minute. Plan your script according to your video length.
-              </p>
-            </div>
-            <div className="p-4 rounded-lg bg-white/5 border border-white/10">
-              <h3 className="text-lg font-medium text-white/90">Test and Iterate</h3>
-              <p className="mt-2 text-sm text-white/60">
-                Generate multiple versions and listen to how they sound. Tweak your script based on the results.
-              </p>
-            </div>
           </div>
         </div>
       </div>
