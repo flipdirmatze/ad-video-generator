@@ -33,6 +33,8 @@ export default function UploadPage() {
   const [selectedVideoId, setSelectedVideoId] = useState<string | null>(null)
   const [projectId, setProjectId] = useState<string | null>(null)
   const [workflowStep, setWorkflowStep] = useState<string | null>(null)
+  const [success, setSuccess] = useState('')
+  const [untaggedVideos, setUntaggedVideos] = useState(0)
 
   // Vereinfachte Authentifizierungs-Prüfung
   useEffect(() => {
@@ -101,6 +103,24 @@ export default function UploadPage() {
         });
     }
   }, [session]);
+
+  useEffect(() => {
+    // Prüfe auf Videos ohne Tags
+    const checkUntaggedVideos = async () => {
+      try {
+        const response = await fetch('/api/videos?untagged=true')
+        const data = await response.json()
+        
+        if (response.ok && data.videos) {
+          setUntaggedVideos(data.videos.length)
+        }
+      } catch (err) {
+        console.error('Fehler beim Prüfen der Videos ohne Tags:', err)
+      }
+    }
+    
+    checkUntaggedVideos()
+  }, [])
 
   // Vereinfachtes Drag & Drop
   function handleDrag(e: React.DragEvent) {
@@ -514,63 +534,34 @@ export default function UploadPage() {
         {/* Continue Button */}
         {allVideos.length > 0 && (
           <div className="mt-8 space-y-4">
-            {projectId && (
-              <div className="p-4 bg-blue-900/30 border border-blue-700/30 rounded-lg text-blue-400">
-                <h3 className="font-semibold">Laufendes Projekt</h3>
-                <p className="mt-1">
-                  Du hast ein aktives Projekt im Schritt "{workflowStep}". 
-                  Möchtest du es fortsetzen oder mit der Script-Zuordnung beginnen?
-                </p>
-                <div className="mt-4 flex flex-wrap gap-3">
-                  {workflowStep === 'voiceover' && (
-                    <button
-                      onClick={() => router.push('/script-matcher')}
-                      className="flex items-center bg-gradient-to-r from-blue-600 to-blue-500 text-white py-2 px-4 rounded-lg hover:from-blue-500 hover:to-blue-400"
-                    >
-                      Script Matching starten
-                      <DocumentMagnifyingGlassIcon className="h-5 w-5 ml-2" />
-                    </button>
-                  )}
-                  
-                  {workflowStep === 'matching' && (
-                    <button
-                      onClick={() => router.push('/script-matcher')}
-                      className="flex items-center bg-gradient-to-r from-blue-600 to-blue-500 text-white py-2 px-4 rounded-lg hover:from-blue-500 hover:to-blue-400"
-                    >
-                      Script Matching fortsetzen
-                      <DocumentMagnifyingGlassIcon className="h-5 w-5 ml-2" />
-                    </button>
-                  )}
-                  
-                  {workflowStep === 'editing' || workflowStep === 'processing' || workflowStep === 'completed' && (
-                    <button
-                      onClick={() => router.push('/editor')}
-                      className="flex items-center bg-gradient-to-r from-purple-600 to-purple-500 text-white py-2 px-4 rounded-lg hover:from-purple-500 hover:to-purple-400"
-                    >
-                      Zum Video-Editor
-                      <ArrowRightIcon className="h-5 w-5 ml-2" />
-                    </button>
-                  )}
-                </div>
-              </div>
-            )}
-            
-            <div className="flex flex-wrap justify-end gap-4">
+            <div className="flex justify-end">
               <Link
                 href="/script-matcher"
                 className="flex items-center bg-blue-600 hover:bg-blue-500 text-white py-2 px-4 rounded-lg"
               >
-                Script Matching
-                <DocumentMagnifyingGlassIcon className="h-5 w-5 ml-2" />
-              </Link>
-              <Link
-                href="/editor"
-                className="flex items-center bg-purple-600 hover:bg-purple-500 text-white py-2 px-4 rounded-lg"
-              >
-                Direkt zum Editor
+                Weiter zu Script Matching
                 <ArrowRightIcon className="h-5 w-5 ml-2" />
               </Link>
             </div>
+          </div>
+        )}
+
+        {(success || untaggedVideos > 0) && (
+          <div className="mt-8 space-y-6">
+            {success && (
+              <div className="p-4 bg-green-900/30 border border-green-500/30 text-green-400 rounded-md">
+                {success}
+              </div>
+            )}
+            
+            {untaggedVideos > 0 && (
+              <div className="p-4 bg-yellow-900/30 border border-yellow-500/30 text-yellow-400 rounded-md">
+                <h3 className="font-medium">Videos ohne Tags: {untaggedVideos}</h3>
+                <p className="mt-2">
+                  Um die besten Ergebnisse zu erzielen, solltest du alle Videos mit Tags versehen.
+                </p>
+              </div>
+            )}
           </div>
         )}
       </div>
