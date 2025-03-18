@@ -43,7 +43,9 @@ export async function analyzeScript(script: string): Promise<ScriptSegment[]> {
           Für jeden Abschnitt gib folgende Informationen zurück:
           1. Den Text des Abschnitts
           2. 3-5 Schlüsselwörter, die den visuellen Inhalt beschreiben (was im Video zu sehen sein sollte)
-          3. Eine geschätzte Sprechzeit in Sekunden (durchschnittlich 3 Wörter pro Sekunde)
+          3. Eine geschätzte Sprechzeit in Sekunden (durchschnittlich 3,5 Wörter pro Sekunde)
+          
+          Wichtig: Schätze die Sprechzeit eher kürzer, da in der Praxis die Szenen sonst 1 Sekunde zu lang sind.
           
           Formatiere die Antwort als JSON-Array mit Objekten, die die Felder "text", "keywords" und "duration" enthalten.
           
