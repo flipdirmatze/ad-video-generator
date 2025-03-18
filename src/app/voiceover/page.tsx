@@ -292,6 +292,14 @@ export default function VoiceoverPage() {
       
       // Workflow-Status speichern mit der aktuellen Stimmen-ID
       await saveWorkflowState(data.voiceoverId, script, currentVoiceId);
+      
+      // Automatisch abspielen nach der Generierung
+      const newAudio = new Audio(newVoiceoverData.dataUrl);
+      newAudio.addEventListener('ended', () => setIsPlaying(false));
+      setAudioElement(newAudio);
+      newAudio.play();
+      setIsPlaying(true);
+      console.log('Autoplay started for newly generated voiceover');
     } catch (error) {
       console.error('Failed to generate voiceover:', error)
       setError(error instanceof Error ? error.message : 'Failed to generate voiceover')
