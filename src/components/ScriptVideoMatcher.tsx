@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { ScriptSegment } from '@/lib/openai'
 import { VideoMatch } from '@/utils/tag-matcher'
-import { PlayIcon, PauseIcon, ArrowRightIcon, ArrowPathIcon, CheckCircleIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline'
+import { PlayIcon, PauseIcon, ArrowRightIcon, ArrowPathIcon, CheckCircleIcon, ExclamationTriangleIcon, FilmIcon } from '@heroicons/react/24/outline'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
@@ -441,7 +441,7 @@ export default function ScriptVideoMatcher() {
       </button>
 
       {segments.length > 0 && (
-        <div className="space-y-4">
+        <div className="space-y-6">
           <h3 className="text-xl font-semibold">Skript-Analyse</h3>
           <p className="text-sm text-gray-400">
             Das Skript wurde in {segments.length} Segmente unterteilt.
@@ -463,65 +463,221 @@ export default function ScriptVideoMatcher() {
             </div>
           )}
           
-          <div className="space-y-4">
-            {segments.map((segment, index) => {
-              const match = matches.find(m => m.segment.text === segment.text);
+          {/* Visuelle Timeline für die Segmente und zugeordneten Videos */}
+          <div className="mt-8 space-y-8">
+            <h4 className="text-lg font-medium">Vorschau der Videozuordnung</h4>
+            
+            <div className="relative">
+              {/* Zeitachse */}
+              <div className="absolute left-0 right-0 top-12 h-1 bg-gray-700"></div>
               
-              return (
-                <div key={index} className="border border-gray-700 bg-gray-800/50 rounded-md p-4">
-                  <div className="flex justify-between items-start">
-                    <h4 className="font-medium">Segment {index + 1}</h4>
-                    <span className="text-sm text-gray-400">
-                      Dauer: {segment.duration} Sekunden
-                    </span>
-                  </div>
+              {/* Segmente und Videos */}
+              <div className="flex mb-8">
+                {segments.map((segment, index) => {
+                  const match = matches.find(m => m.segment.text === segment.text);
+                  const segmentWidth = `${Math.max(15, segment.duration * 5)}%`;
                   
-                  <p className="mt-2">{segment.text}</p>
-                  
-                  <div className="mt-2">
-                    <span className="text-sm font-medium">Keywords: </span>
-                    <span className="text-sm text-gray-400">
-                      {segment.keywords.join(', ')}
-                    </span>
-                  </div>
-                  
-                  {match ? (
-                    <div className="mt-4 border-t border-gray-700 pt-2">
-                      <div className="flex justify-between items-start">
-                        <h5 className="font-medium">Passendes Video</h5>
-                        <span className="text-sm text-gray-400">
-                          Match-Score: {Math.round(match.score * 100)}%
-                        </span>
+                  return (
+                    <div 
+                      key={index} 
+                      className="relative first:ml-0 border-l border-gray-700"
+                      style={{ width: segmentWidth }}
+                    >
+                      {/* Zeitmarke */}
+                      <div className="absolute -left-1 top-12 w-2 h-2 bg-white rounded-full"></div>
+                      
+                      {/* Dauer */}
+                      <div className="absolute left-2 top-16 text-xs text-gray-400">
+                        {index === 0 ? '0s' : ''}
+                      </div>
+                      <div className="absolute right-0 top-16 text-xs text-gray-400">
+                        {segment.duration}s
                       </div>
                       
-                      <p className="mt-1 font-medium">{match.video.name}</p>
-                      
-                      <div className="mt-1">
-                        <span className="text-sm font-medium">Tags: </span>
-                        <span className="text-sm text-gray-400">
-                          {match.video.tags.join(', ')}
-                        </span>
-                      </div>
-                      
-                      {match.video.duration && (
-                        <div className="mt-1 text-sm">
-                          <span className="font-medium">Video-Länge: </span>
-                          <span className="text-gray-400">
-                            {match.video.duration} Sekunden
-                            {match.video.duration > segment.duration && 
-                              ` (wird auf ${segment.duration} Sekunden gekürzt)`}
+                      {/* Segment-Box */}
+                      <div className="mb-10 p-3 bg-gray-800/70 border border-gray-700 rounded-md">
+                        <div className="flex justify-between items-start mb-2">
+                          <span className="text-sm font-medium text-white/80">Segment {index + 1}</span>
+                          <span className="text-xs text-gray-400 bg-gray-700/60 rounded px-2 py-0.5">
+                            {segment.duration}s
                           </span>
+                        </div>
+                        <p className="text-sm mb-2 line-clamp-2">{segment.text}</p>
+                        <div className="flex flex-wrap gap-1">
+                          {segment.keywords.map((keyword, kIdx) => (
+                            <span 
+                              key={kIdx} 
+                              className="text-xs bg-purple-900/30 border border-purple-700/30 text-purple-400 rounded px-1.5 py-0.5"
+                            >
+                              {keyword}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                      
+                      {/* Video-Thumbnail und Info */}
+                      {match ? (
+                        <div className="p-3 bg-gray-800/70 border border-gray-700 rounded-md">
+                          <div className="flex justify-between items-start mb-2">
+                            <span className="text-sm font-medium text-white/80">Video</span>
+                            <span className="text-xs font-medium text-emerald-400 bg-emerald-900/30 border border-emerald-700/30 rounded px-2 py-0.5">
+                              {Math.round(match.score * 100)}% Match
+                            </span>
+                          </div>
+                          
+                          <div className="relative aspect-video bg-gray-900/50 rounded overflow-hidden mb-2">
+                            {match.video.url ? (
+                              <div className="relative w-full h-full">
+                                <div 
+                                  className="absolute inset-0 bg-center bg-cover" 
+                                  style={{ 
+                                    backgroundImage: `url(${match.video.url}#t=0.5)`,
+                                    filter: 'blur(1px)'
+                                  }}
+                                ></div>
+                                <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                                  <PlayIcon className="h-8 w-8 text-white/80" />
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center">
+                                <FilmIcon className="h-8 w-8 text-gray-600" />
+                              </div>
+                            )}
+                          </div>
+                          
+                          <p className="text-sm font-medium truncate">{match.video.name}</p>
+                          
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            {match.video.tags.map((tag, tIdx) => (
+                              <span 
+                                key={tIdx} 
+                                className="text-xs bg-blue-900/30 border border-blue-700/30 text-blue-400 rounded px-1.5 py-0.5"
+                              >
+                                {tag}
+                              </span>
+                            ))}
+                          </div>
+                          
+                          {match.video.duration && segment.duration < match.video.duration && (
+                            <div className="mt-2 text-xs text-yellow-400">
+                              Video wird von {match.video.duration}s auf {segment.duration}s gekürzt
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="p-3 bg-gray-800/70 border border-gray-700 rounded-md">
+                          <div className="flex items-center justify-center text-yellow-400 py-4">
+                            <ExclamationTriangleIcon className="h-5 w-5 mr-2" />
+                            Kein passendes Video gefunden
+                          </div>
                         </div>
                       )}
                     </div>
-                  ) : (
-                    <div className="mt-4 border-t border-gray-700 pt-2 text-yellow-400">
-                      Kein passendes Video gefunden
+                  );
+                })}
+              </div>
+            </div>
+            
+            {/* Alternative kompakte Ansicht */}
+            <div className="mt-12 space-y-6">
+              <h4 className="text-lg font-medium">Detaillierte Videozuordnung</h4>
+              
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {segments.map((segment, index) => {
+                  const match = matches.find(m => m.segment.text === segment.text);
+                  
+                  return (
+                    <div key={index} className="border border-gray-700 bg-gray-800/50 rounded-md overflow-hidden">
+                      {/* Segment-Header */}
+                      <div className="bg-gray-700/50 px-3 py-2 flex justify-between">
+                        <span className="font-medium">Segment {index + 1}</span>
+                        <span className="text-xs bg-gray-600 text-white px-2 py-0.5 rounded flex items-center">
+                          {segment.duration}s
+                        </span>
+                      </div>
+                      
+                      {/* Segment-Text */}
+                      <div className="p-3 border-b border-gray-700">
+                        <p className="text-sm line-clamp-2">{segment.text}</p>
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {segment.keywords.map((keyword, kIdx) => (
+                            <span 
+                              key={kIdx} 
+                              className="text-xs bg-purple-900/30 border border-purple-700/30 text-purple-400 rounded px-1.5 py-0.5"
+                            >
+                              {keyword}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                      
+                      {/* Video-Zuordnung */}
+                      {match ? (
+                        <div>
+                          {/* Video-Thumbnail */}
+                          <div className="relative aspect-video bg-gray-900">
+                            {match.video.url ? (
+                              <div className="relative w-full h-full">
+                                <div 
+                                  className="absolute inset-0 bg-center bg-cover" 
+                                  style={{ 
+                                    backgroundImage: `url(${match.video.url}#t=0.5)` 
+                                  }}
+                                ></div>
+                                <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
+                                  <div className="bg-white/20 backdrop-blur-sm rounded-full p-2">
+                                    <PlayIcon className="h-6 w-6 text-white" />
+                                  </div>
+                                </div>
+                                <div className="absolute top-2 right-2 bg-emerald-900/70 text-emerald-400 text-xs font-medium px-2 py-0.5 rounded-full">
+                                  {Math.round(match.score * 100)}% Match
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center">
+                                <FilmIcon className="h-10 w-10 text-gray-600" />
+                              </div>
+                            )}
+                          </div>
+                          
+                          {/* Video-Info */}
+                          <div className="p-3">
+                            <p className="font-medium text-sm mb-1 truncate">{match.video.name}</p>
+                            <div className="flex flex-wrap gap-1 mb-2">
+                              {match.video.tags.slice(0, 3).map((tag, tIdx) => (
+                                <span 
+                                  key={tIdx} 
+                                  className="text-xs bg-blue-900/30 border border-blue-700/30 text-blue-400 rounded px-1.5 py-0.5"
+                                >
+                                  {tag}
+                                </span>
+                              ))}
+                              {match.video.tags.length > 3 && (
+                                <span className="text-xs text-gray-400">
+                                  +{match.video.tags.length - 3} weitere
+                                </span>
+                              )}
+                            </div>
+                            
+                            {match.video.duration && segment.duration < match.video.duration && (
+                              <div className="text-xs text-yellow-400">
+                                Gekürzt von {match.video.duration}s → {segment.duration}s
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="p-6 flex flex-col items-center justify-center text-yellow-400">
+                          <ExclamationTriangleIcon className="h-8 w-8 mb-2" />
+                          <p className="text-sm text-center">Kein passendes Video gefunden</p>
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
-              );
-            })}
+                  );
+                })}
+              </div>
+            </div>
           </div>
           
           {matches.length > 0 && (
