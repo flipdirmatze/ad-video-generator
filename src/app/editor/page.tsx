@@ -576,14 +576,20 @@ export default function EditorPage() {
         // Finde das gematchte Video, falls vorhanden
         const matchedVideo = matchedVideos.find(m => m.videoId === videoId);
         
+        // Stelle sicher, dass wir den korrekten S3-Key verwenden
+        const videoKey = video?.key || (video?.filepath?.startsWith('uploads/') ? video.filepath : `uploads/${videoId}.mp4`);
+        
         return {
           videoId,
-          filepath: video?.filepath || video?.key || '',
+          // Wichtig: Der Backend erwartet den S3-Key und nicht den vollständigen Pfad
+          videoKey: videoKey,
           startTime: matchedVideo?.startTime || 0,
           duration: matchedVideo?.duration || 5, // Fallback auf 5 Sekunden
           position: matchedVideo?.position || index
         };
       });
+      
+      console.log('Sending segments to API:', segmentsWithKeys);
       
       // API-Request zum Generieren des Videos
       const response = await fetch('/api/generate-video', {
