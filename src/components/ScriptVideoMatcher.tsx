@@ -152,22 +152,45 @@ export default function ScriptVideoMatcher() {
     if (availableVideos.length > 0) {
       console.log(`${availableVideos.length} videos loaded, initializing video elements`);
       
-      // Update video sources if needed
-      Object.keys(videoRefs.current).forEach(videoId => {
-        const videoElement = videoRefs.current[videoId];
-        const videoData = availableVideos.find(v => v.id === videoId);
-        
-        if (videoElement && videoData && videoData.url) {
-          // Only update if source is different or empty
-          if (!videoElement.src || !videoElement.src.includes(videoData.url)) {
-            console.log(`Updating source for video ${videoId}`);
-            videoElement.src = videoData.url;
-            videoElement.load();
+      // Sofortiges Update der Video-Elemente
+      setTimeout(() => {
+        // Finde alle Matches mit Videoreferenzen
+        matches.forEach(match => {
+          if (match && match.video && match.video.id) {
+            const videoElement = videoRefs.current[match.video.id];
+            const videoData = availableVideos.find(v => v.id === match.video.id);
+            
+            // Stelle sicher, dass wir sowohl das Element als auch die Daten haben
+            if (videoElement && videoData && videoData.url) {
+              console.log(`Initializing video ${match.video.id} with URL ${videoData.url}`);
+              
+              // Versuche das Video zu laden
+              videoElement.src = videoData.url;
+              videoElement.load();
+              
+              // CORS-Einstellungen
+              videoElement.crossOrigin = "anonymous";
+              
+              // Event-Listener für besseres Fehler-Handling
+              const errorHandler = (e: any) => {
+                console.error(`Video error for ${match.video.id}:`, e);
+                // Wenn es ein CORS-Problem sein könnte, versuche erneut mit anderer CORS-Einstellung
+                if (e.name === 'NotSupportedError') {
+                  console.log('Possible CORS issue, trying with different settings');
+                  videoElement.crossOrigin = "use-credentials";
+                  videoElement.load();
+                }
+              };
+              
+              // Event-Listener entfernen und neu hinzufügen um Duplikate zu vermeiden
+              videoElement.removeEventListener('error', errorHandler);
+              videoElement.addEventListener('error', errorHandler);
+            }
           }
-        }
-      });
+        });
+      }, 500); // Kleiner Timeout für zuverlässigere Initialisierung
     }
-  }, [availableVideos]);
+  }, [availableVideos, matches]);
 
   // Audio-Wiedergabe steuern
   const togglePlay = useCallback(() => {
@@ -528,12 +551,46 @@ export default function ScriptVideoMatcher() {
         const videoData = availableVideos.find(v => v.id === id);
         if (videoData && videoData.url && (!element.src || element.src === '')) {
           console.log(`Setting source for video ${id}: ${videoData.url}`);
-          element.src = videoData.url;
-          element.load();
+          
+          // Stelle sicher, dass das Video korrekt geladen wird
+          try {
+            element.src = videoData.url;
+            element.crossOrigin = "anonymous"; // CORS-Einstellung
+            element.load();
+            
+            // Manuell Ladevorgang starten
+            updateVideoLoadingState(id, true);
+            
+            // Eventlistener hinzufügen
+            const loadHandler = () => {
+              console.log(`Video ${id} loaded successfully`);
+              updateVideoLoadingState(id, false);
+            };
+            
+            const errorHandler = (e: any) => {
+              console.error(`Video ${id} failed to load:`, e);
+              
+              // Versuche erneut mit anderen CORS-Einstellungen
+              if (e.name === 'NotSupportedError') {
+                console.log('Possible CORS issue, trying alternatives');
+                element.crossOrigin = "use-credentials";
+                element.load();
+              } else {
+                updateVideoLoadingState(id, false);
+              }
+            };
+            
+            // Event-Listener entfernen und neu hinzufügen
+            element.removeEventListener('canplaythrough', loadHandler);
+            element.removeEventListener('error', errorHandler);
+            
+            element.addEventListener('canplaythrough', loadHandler);
+            element.addEventListener('error', errorHandler);
+          } catch (err) {
+            console.error(`Error setting up video ${id}:`, err);
+            updateVideoLoadingState(id, false);
+          }
         }
-        
-        // Set CORS attributes
-        element.crossOrigin = "anonymous";
       }
     }
   };
@@ -771,7 +828,6 @@ export default function ScriptVideoMatcher() {
                                 {/* Video-Element für die Wiedergabe */}
                                 <video
                                   ref={(el) => setVideoRef(match.video.id, el)}
-                                  src={match.video.url}
                                   className="absolute inset-0 w-full h-full object-cover"
                                   muted
                                   playsInline
@@ -780,7 +836,19 @@ export default function ScriptVideoMatcher() {
                                   onLoadStart={() => updateVideoLoadingState(match.video.id, true)}
                                   onCanPlay={() => updateVideoLoadingState(match.video.id, false)}
                                   onEnded={() => setPlayingVideoId(null)}
-                                  onError={(e) => console.error(`Video error for ${match.video.id}:`, e)}
+                                  onError={(e) => {
+                                    console.error(`Video error for ${match.video.id}:`, e);
+                                    // Versuche es mit einer neuen URL, falls das Video nicht geladen werden kann
+                                    const videoElement = e.currentTarget as HTMLVideoElement;
+                                    if (!videoElement.src || videoElement.src === '') {
+                                      const videoData = availableVideos.find(v => v.id === match.video.id);
+                                      if (videoData && videoData.url) {
+                                        console.log(`Retrying with URL: ${videoData.url}`);
+                                        videoElement.src = videoData.url;
+                                        videoElement.load();
+                                      }
+                                    }
+                                  }}
                                 />
                                 
                                 {/* Play-Button und Overlay */}
