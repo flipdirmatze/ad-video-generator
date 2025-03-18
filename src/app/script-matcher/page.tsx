@@ -13,9 +13,8 @@ export default async function ScriptMatcherPage() {
   }
   
   return (
-    <div className="min-h-screen bg-base-100">
-      {/* Main content */}
-      <div className="max-w-7xl mx-auto p-4 md:p-6 pt-8">
+    <div className="min-h-screen bg-[#0C0D1E]">
+      <div className="container mx-auto py-12 md:py-20">
         <ScriptVideoMatcher />
       </div>
     </div>
