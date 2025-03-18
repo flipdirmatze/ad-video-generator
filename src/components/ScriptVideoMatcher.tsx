@@ -625,67 +625,22 @@ export default function ScriptVideoMatcher() {
 
   return (
     <div className="max-w-6xl mx-auto mt-10 p-4">
-      <h1 className="text-2xl font-bold mb-6">Script-Video Matcher</h1>
-      
-      {/* Workflow Status */}
-      {projectId && (
-        <div className="mb-8 bg-base-200 rounded-lg p-6">
-          <h2 className="text-xl font-semibold mb-4">Workflow Status</h2>
-          
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className={`flex-1 rounded-lg p-4 border ${workflowStep === 'voiceover' ? 'border-primary bg-primary/10' : 'border-white/10 bg-white/5'}`}>
-              <div className="flex items-center mb-2">
-                <span className={`flex items-center justify-center w-6 h-6 rounded-full mr-2 text-xs ${workflowStep === 'voiceover' ? 'bg-primary text-white' : workflowStep && ['matching', 'editing', 'processing', 'completed'].includes(workflowStep) ? 'bg-green-500 text-white' : 'bg-white/20 text-white/60'}`}>
-                  {workflowStep && ['matching', 'editing', 'processing', 'completed'].includes(workflowStep) ? '✓' : '1'}
-                </span>
-                <span className="font-medium">Voiceover</span>
-              </div>
-              <p className="text-sm text-white/60 ml-8">
-                {script ? 'Voiceover erstellt' : 'Voiceover erstellen'}
-              </p>
-            </div>
-            
-            <div className={`flex-1 rounded-lg p-4 border ${workflowStep === 'matching' ? 'border-primary bg-primary/10' : 'border-white/10 bg-white/5'}`}>
-              <div className="flex items-center mb-2">
-                <span className={`flex items-center justify-center w-6 h-6 rounded-full mr-2 text-xs ${workflowStep === 'matching' ? 'bg-primary text-white' : workflowStep && ['editing', 'processing', 'completed'].includes(workflowStep) ? 'bg-green-500 text-white' : 'bg-white/20 text-white/60'}`}>
-                  {workflowStep && ['editing', 'processing', 'completed'].includes(workflowStep) ? '✓' : '2'}
-                </span>
-                <span className="font-medium">Video Matching</span>
-              </div>
-              <p className="text-sm text-white/60 ml-8">
-                {segments.length > 0 ? `${segments.length} Segmente analysiert` : 'Skript in Segmente aufteilen'}
-              </p>
-            </div>
-            
-            <div className={`flex-1 rounded-lg p-4 border ${workflowStep === 'editing' ? 'border-primary bg-primary/10' : 'border-white/10 bg-white/5'}`}>
-              <div className="flex items-center mb-2">
-                <span className={`flex items-center justify-center w-6 h-6 rounded-full mr-2 text-xs ${workflowStep === 'editing' ? 'bg-primary text-white' : workflowStep && ['processing', 'completed'].includes(workflowStep) ? 'bg-green-500 text-white' : 'bg-white/20 text-white/60'}`}>
-                  {workflowStep && ['processing', 'completed'].includes(workflowStep) ? '✓' : '3'}
-                </span>
-                <span className="font-medium">Anpassen & Generieren</span>
-              </div>
-              <p className="text-sm text-white/60 ml-8">
-                {matches.length > 0 ? 'Videos zugeordnet' : 'Noch keine Videos zugeordnet'}
-              </p>
-            </div>
-            
-            <div className={`flex-1 rounded-lg p-4 border ${workflowStep === 'completed' ? 'border-primary bg-primary/10' : 'border-white/10 bg-white/5'}`}>
-              <div className="flex items-center mb-2">
-                <span className={`flex items-center justify-center w-6 h-6 rounded-full mr-2 text-xs ${workflowStep === 'completed' ? 'bg-primary text-white' : 'bg-white/20 text-white/60'}`}>
-                  {workflowStep === 'completed' ? '✓' : '4'}
-                </span>
-                <span className="font-medium">Fertig</span>
-              </div>
-              <p className="text-sm text-white/60 ml-8">
-                Video generieren
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-      
-      <div className="mb-6">
-        <h2 className="text-xl font-semibold mb-4">Voiceover-Skript</h2>
+      <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
+        Script-Video Matcher
+      </h1>
+
+      {/* Workflow-Tipp Box statt Workflow Status */}
+      <div className="mt-6 p-4 rounded-lg bg-blue-900/20 border border-blue-700/20 text-blue-400">
+        <h3 className="font-medium">Workflow-Tipp</h3>
+        <p className="mt-1">
+          Hier kannst du dein Voiceover-Skript analysieren lassen und automatisch passende Videos aus deiner Bibliothek finden.
+          Die KI teilt dein Skript in Segmente und ordnet Videos basierend auf ihren Tags zu.
+        </p>
+      </div>
+
+      <div className="mt-8">
+        <h2 className="text-xl font-semibold">Voiceover-Skript</h2>
+        <p className="text-sm text-gray-400 mt-1">Skript für die Analyse</p>
         <div className="space-y-2">
           <label htmlFor="script" className="block text-sm font-medium">
             Skript für die Analyse
