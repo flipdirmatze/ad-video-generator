@@ -806,8 +806,6 @@ export default function ScriptVideoMatcher() {
                                 >
                                   {loadingVideoIds.has(match.video.id) ? (
                                     <ArrowPathIcon className="h-8 w-8 text-white/80 animate-spin" />
-                                  ) : errorVideoIds.has(match.video.id) ? (
-                                    <ExclamationTriangleIcon className="h-8 w-8 text-red-500" />
                                   ) : playingVideoId === match.video.id ? (
                                     <PauseIcon className="h-8 w-8 text-white/80" />
                                   ) : (
