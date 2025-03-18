@@ -28,7 +28,7 @@ export async function analyzeScript(script: string): Promise<ScriptSegment[]> {
     console.log('Analysiere Skript mit OpenAI API...');
     
     const response = await openai.chat.completions.create({
-      model: "gpt-4",
+      model: "gpt-3.5-turbo",
       messages: [
         {
           role: "system",
@@ -76,7 +76,7 @@ export async function generateVideoTags(videoDescription: string): Promise<strin
     console.log('Generiere Tags für Video mit OpenAI API...');
     
     const response = await openai.chat.completions.create({
-      model: "gpt-4",
+      model: "gpt-3.5-turbo",
       messages: [
         {
           role: "system",
