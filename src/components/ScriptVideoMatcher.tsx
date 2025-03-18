@@ -780,23 +780,6 @@ export default function ScriptVideoMatcher() {
                               </span>
                               <span className="truncate">{match.video.name}</span>
                             </div>
-                            
-                            {/* Video-Auswahl Dropdown für zugeordnete Videos */}
-                            <div className="relative">
-                              <select 
-                                className="bg-gray-700 border border-gray-600 rounded text-xs px-2 py-1"
-                                onChange={(e) => handleManualVideoSelect(index, e.target.value)}
-                                value={match.video.id}
-                              >
-                                <option value={match.video.id}>{match.source === 'manual' ? 'Manuell ausgewählt' : 'Auto-Match'}</option>
-                                <option disabled>──────────</option>
-                                {availableVideos.map(video => (
-                                  <option key={video.id} value={video.id} disabled={video.id === match.video.id}>
-                                    {video.name} {video.tags.length > 0 ? `(Tags: ${video.tags.join(', ')})` : ''}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
                           </div>
                           
                           <div className="relative aspect-video bg-gray-900/50 rounded overflow-hidden mb-2">
@@ -856,6 +839,24 @@ export default function ScriptVideoMatcher() {
                               Video wird von {match.video.duration}s auf {segment.duration}s gekürzt
                             </div>
                           )}
+                          
+                          {/* Video-Auswahl Dropdown unter dem Video */}
+                          <div className="mt-3">
+                            <label className="block text-xs text-gray-400 mb-1">Video austauschen:</label>
+                            <select 
+                              className="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1 text-sm"
+                              onChange={(e) => handleManualVideoSelect(index, e.target.value)}
+                              value={match.video.id}
+                            >
+                              <option value={match.video.id}>{match.source === 'manual' ? 'Manuell ausgewählt' : 'Auto-Match'}</option>
+                              <option disabled>──────────</option>
+                              {availableVideos.map(video => (
+                                <option key={video.id} value={video.id} disabled={video.id === match.video.id}>
+                                  {video.name} {video.tags.length > 0 ? `(Tags: ${video.tags.join(', ')})` : ''}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
                         </div>
                       ) : (
                         <div className="p-3 bg-gray-800/70 border border-gray-700 rounded-md">
