@@ -33,7 +33,7 @@ export async function POST(request: Request) {
     // Verwende die übergebene Stimme oder die Standard-Stimme
     const selectedVoiceId = voiceId || DEFAULT_VOICE_ID;
     
-    console.log(`Using voice ID: ${selectedVoiceId} ${isTest ? '(test mode)' : ''}`);
+    console.log(`Using voice ID for generation: ${selectedVoiceId} ${isTest ? '(test mode)' : ''}`);
 
     if (!script) {
       console.error('Voiceover generation error: Script is required');
@@ -43,12 +43,15 @@ export async function POST(request: Request) {
       )
     }
 
-    console.log(`Generating voiceover with ElevenLabs API. Script length: ${script.length} characters`);
+    console.log(`Generating voiceover with ElevenLabs API. Script length: ${script.length} characters. Voice ID: ${selectedVoiceId}`);
     
     // Voiceover mit ElevenLabs API generieren
     try {
+      const apiUrl = `https://api.elevenlabs.io/v1/text-to-speech/${selectedVoiceId}`;
+      console.log(`Calling ElevenLabs API at: ${apiUrl}`);
+      
       const response = await fetch(
-        `https://api.elevenlabs.io/v1/text-to-speech/${selectedVoiceId}`,
+        apiUrl,
         {
           method: 'POST',
           headers: {
@@ -73,13 +76,13 @@ export async function POST(request: Request) {
         throw new Error(errorData.message || `ElevenLabs API error: ${response.status} - ${response.statusText}`);
       }
 
-      console.log('Voiceover generated successfully from ElevenLabs');
+      console.log(`Voiceover generated successfully from ElevenLabs with voice ID: ${selectedVoiceId}`);
       
       // Audiodaten als Buffer speichern
       const audioBuffer = await response.arrayBuffer()
       const buffer = Buffer.from(audioBuffer)
       
-      console.log(`Audio data received. Size: ${buffer.length} bytes`);
+      console.log(`Audio data received. Size: ${buffer.length} bytes. Using voice ID: ${selectedVoiceId}`);
       
       // Für temporäre Kompatibilität mit dem Frontend auch base64 zurückgeben
       const audioBase64 = buffer.toString('base64')
@@ -87,7 +90,7 @@ export async function POST(request: Request) {
       
       // Für Stimmentests sofort die Daten zurückgeben ohne S3-Upload oder DB-Eintrag
       if (isTest) {
-        console.log('Test mode - returning data URL only');
+        console.log(`Test mode - returning data URL only. Voice ID: ${selectedVoiceId}`);
         return NextResponse.json({
           success: true,
           dataUrl,
@@ -104,7 +107,7 @@ export async function POST(request: Request) {
       
       // Use the MongoDB ID as the filename
       const fileName = `${voiceoverId.toString()}.mp3`;
-      console.log(`Using MongoDB ID as filename: ${fileName}`);
+      console.log(`Using MongoDB ID as filename: ${fileName} for voice ID: ${selectedVoiceId}`);
       
       // Upload to S3 with the MongoDB ID as the filename
       console.log(`Uploading voiceover to S3 with filename: ${fileName}`);

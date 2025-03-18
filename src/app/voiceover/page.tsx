@@ -148,6 +148,7 @@ export default function VoiceoverPage() {
     const audioUrl = voiceoverData.dataUrl;
 
     if (!audioElement) {
+      console.log('Creating new audio element with URL:', audioUrl);
       const audio = new Audio(audioUrl)
       audio.addEventListener('ended', () => setIsPlaying(false))
       setAudioElement(audio)
@@ -267,6 +268,13 @@ export default function VoiceoverPage() {
         voiceoverId: data.voiceoverId || 'local',
         fileName: data.fileName || 'voiceover.mp3'
       };
+      
+      // Bestehenden Audioplayer zurücksetzen
+      if (audioElement) {
+        audioElement.pause();
+        setAudioElement(null);
+        setIsPlaying(false);
+      }
       
       setVoiceoverData(newVoiceoverData);
       
