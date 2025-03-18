@@ -148,10 +148,9 @@ export default function EditorPage() {
                   setSelectedVideos(videoIds);
                   setFromScriptMatcher(true);
                   
-                  // Wenn wir direkt vom Script-Matcher kommen, automatisch generieren
+                  // Setze automatisch den Status
                   if (data.project.workflowStep === 'editing') {
-                    setShouldAutoGenerate(true);
-                    setWorkflowStatusMessage('Videos wurden aus dem Script-Matcher geladen. Die Werbung wird automatisch generiert.');
+                    setWorkflowStatusMessage('Videos wurden aus dem Script-Matcher geladen und sind bereit zur Generierung.');
                   }
                 }
                 
@@ -713,534 +712,273 @@ export default function EditorPage() {
 
   // ------------------- CONDITIONAL RENDERING -------------------
   
-  if (isLoading || status === 'loading' || isLoadingProject) {
+  if (isLoading || isLoadingProject || status === 'loading') {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-900">
-        <div className="w-16 h-16 border-4 border-purple-600 border-t-transparent rounded-full animate-spin mb-4"></div>
-        <p className="text-white">
-          {isLoadingProject ? 'Lade Projektdaten...' : 'Lade...'}
-        </p>
+      <div className="min-h-screen flex items-center justify-center bg-gray-900">
+        <div className="w-16 h-16 border-4 border-purple-600 border-t-transparent rounded-full animate-spin"></div>
       </div>
     )
   }
 
-  if (!session) {
-    return null // This should not render since we redirect
-  }
-
-  // Check if we have all required components
-  const hasVoiceover = !!voiceoverUrl
-  const hasVideos = uploadedVideos.length > 0
-
-  // ------------------- RENDER -------------------
   return (
-    <div className="min-h-screen bg-base-100">
-      {/* Header */}
-      <div className="bg-gradient-to-r from-primary to-secondary text-white p-6">
-        <div className="max-w-7xl mx-auto">
-          <h1 className="text-3xl font-bold">Video Editor</h1>
-          <p className="mt-2 opacity-80">Combine your videos and add a voiceover</p>
+    <main className="min-h-screen pb-32">
+      <div className="container mx-auto px-4 py-12 sm:px-6 lg:px-8">
+        <div className="max-w-5xl mx-auto">
+          <h1 className="text-3xl font-bold mb-6">Video-Generator</h1>
           
+          {/* Status-Anzeige */}
           {workflowStatusMessage && (
-            <div className="mb-6 p-4 bg-green-900/30 border border-green-500/30 rounded-lg text-green-400 mt-4">
-              <p className="flex items-center">
-                <CheckCircleIcon className="h-5 w-5 mr-2" />
-                {workflowStatusMessage}
-              </p>
+            <div className="mb-6 p-4 bg-blue-900/30 border border-blue-600/30 rounded-md text-blue-400">
+              <div className="flex items-start">
+                <CheckCircleIcon className="h-5 w-5 mr-2 mt-0.5" />
+                <div>{workflowStatusMessage}</div>
+              </div>
             </div>
           )}
           
+          {/* Projektinformationen */}
           {projectId && (
-            <div className="mt-4 text-sm opacity-70">
-              Projekt-ID: {projectId}
-              {workflowStep && (
-                <span className="ml-2">• Workflow-Schritt: {workflowStep}</span>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-      
-      {/* Main content */}
-      <div className="max-w-7xl mx-auto p-4 mt-4">
-        {/* Workflow Status Section */}
-        {projectId && (
-          <div className="mb-8 bg-base-200 rounded-lg p-6">
-            <h2 className="text-xl font-semibold mb-4">Workflow Status</h2>
-            
-            <div className="flex flex-col sm:flex-row gap-4">
-              <div className={`flex-1 rounded-lg p-4 border ${workflowStep === 'voiceover' ? 'border-primary bg-primary/10' : 'border-white/10 bg-white/5'}`}>
-                <div className="flex items-center mb-2">
-                  <span className={`flex items-center justify-center w-6 h-6 rounded-full mr-2 text-xs ${workflowStep === 'voiceover' ? 'bg-primary text-white' : workflowStep && ['matching', 'editing', 'processing', 'completed'].includes(workflowStep) ? 'bg-green-500 text-white' : 'bg-white/20 text-white/60'}`}>
-                    {workflowStep && ['matching', 'editing', 'processing', 'completed'].includes(workflowStep) ? '✓' : '1'}
-                  </span>
-                  <span className="font-medium">Voiceover</span>
-                </div>
-                <p className="text-sm text-white/60 ml-8">
-                  {voiceoverScript ? 'Voiceover erstellt' : 'Voiceover erstellen'}
-                </p>
-              </div>
+            <div className="mb-8 bg-base-200 rounded-lg p-6">
+              <h2 className="text-xl font-semibold mb-4">Workflow Status</h2>
               
-              <div className={`flex-1 rounded-lg p-4 border ${workflowStep === 'matching' ? 'border-primary bg-primary/10' : 'border-white/10 bg-white/5'}`}>
-                <div className="flex items-center mb-2">
-                  <span className={`flex items-center justify-center w-6 h-6 rounded-full mr-2 text-xs ${workflowStep === 'matching' ? 'bg-primary text-white' : workflowStep && ['editing', 'processing', 'completed'].includes(workflowStep) ? 'bg-green-500 text-white' : 'bg-white/20 text-white/60'}`}>
-                    {workflowStep && ['editing', 'processing', 'completed'].includes(workflowStep) ? '✓' : '2'}
-                  </span>
-                  <span className="font-medium">Video Matching</span>
-                </div>
-                <p className="text-sm text-white/60 ml-8">
-                  {matchedVideos.length > 0 ? `${matchedVideos.length} Videos zugeordnet` : 'Videos zum Skript matchen'}
-                </p>
-              </div>
-              
-              <div className={`flex-1 rounded-lg p-4 border ${workflowStep === 'editing' ? 'border-primary bg-primary/10' : 'border-white/10 bg-white/5'}`}>
-                <div className="flex items-center mb-2">
-                  <span className={`flex items-center justify-center w-6 h-6 rounded-full mr-2 text-xs ${workflowStep === 'editing' ? 'bg-primary text-white' : workflowStep && ['processing', 'completed'].includes(workflowStep) ? 'bg-green-500 text-white' : 'bg-white/20 text-white/60'}`}>
-                    {workflowStep && ['processing', 'completed'].includes(workflowStep) ? '✓' : '3'}
-                  </span>
-                  <span className="font-medium">Anpassen & Generieren</span>
-                </div>
-                <p className="text-sm text-white/60 ml-8">
-                  {finalVideoUrl ? 'Video generiert' : isGenerating ? 'Video wird generiert...' : 'Werbevideo erstellen'}
-                </p>
-              </div>
-              
-              <div className={`flex-1 rounded-lg p-4 border ${workflowStep === 'completed' ? 'border-primary bg-primary/10' : 'border-white/10 bg-white/5'}`}>
-                <div className="flex items-center mb-2">
-                  <span className={`flex items-center justify-center w-6 h-6 rounded-full mr-2 text-xs ${workflowStep === 'completed' ? 'bg-primary text-white' : 'bg-white/20 text-white/60'}`}>
-                    {workflowStep === 'completed' ? '✓' : '4'}
-                  </span>
-                  <span className="font-medium">Fertig</span>
-                </div>
-                <p className="text-sm text-white/60 ml-8">
-                  {finalVideoUrl ? 'Video bereit zum Teilen' : 'Warte auf fertiges Video'}
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Warning about uploads matching */}
-        {uploadedVideos.length > 0 && availableUploads.length > 0 && (
-          <div className="mb-6">
-            <div className="alert alert-info shadow-lg">
-              <div>
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" className="stroke-current flex-shrink-0 w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                <div>
-                  <div className="font-bold mb-1">Verfügbare Videos auf dem Server:</div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 mt-2">
-                    {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                    {availableUploads.map((file: any) => (
-                      <div key={file.name} className="badge badge-success gap-1 p-3">
-                        <span className="truncate max-w-[200px]">{file.name}</span>
-                      </div>
-                    ))}
+              <div className="flex flex-col sm:flex-row gap-4">
+                <div className={`flex-1 rounded-lg p-4 border ${workflowStep === 'voiceover' ? 'border-primary bg-primary/10' : 'border-white/10 bg-white/5'}`}>
+                  <div className="flex items-center mb-2">
+                    <span className={`flex items-center justify-center w-6 h-6 rounded-full mr-2 text-xs ${workflowStep === 'voiceover' ? 'bg-primary text-white' : workflowStep && ['matching', 'editing', 'processing', 'completed'].includes(workflowStep) ? 'bg-green-500 text-white' : 'bg-white/20 text-white/60'}`}>
+                      {workflowStep && ['matching', 'editing', 'processing', 'completed'].includes(workflowStep) ? '✓' : '1'}
+                    </span>
+                    <span className="font-medium">Voiceover</span>
                   </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-        
-        {/* Main grid layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left Column - Upload Selection */}
-          <div>
-            <div className="card-gradient p-6 rounded-xl mb-6">
-              <div className="flex items-center mb-6">
-                <FilmIcon className="h-6 w-6 text-primary mr-2" />
-                <h2 className="text-xl font-semibold">Your Videos</h2>
-              </div>
-              
-              {uploadedVideos.length === 0 ? (
-                <div className="text-center py-8">
-                  <FilmIcon className="h-12 w-12 mx-auto text-white/40 mb-3" />
-                  <p className="text-white/60">No videos available</p>
-                  <Link href="/upload" className="btn btn-primary btn-sm mt-4">
-                    Upload Videos
-                  </Link>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {uploadedVideos.map(video => {
-                    const isSelected = selectedVideos.includes(video.id);
-                    const videoExists = availableUploads.some(
-                      file => 
-                        file.id === video.id || 
-                        file.name === video.name ||
-                        (video.filepath && file.path === video.filepath)
-                    );
-                    
-                    return (
-                      <div 
-                        key={video.id} 
-                        className={`border rounded-lg overflow-hidden relative ${
-                          isSelected 
-                            ? 'border-primary bg-primary/10' 
-                            : 'border-white/10 bg-white/5'
-                        } transition-all`}
-                      >
-                        <div className="flex items-start p-3">
-                          <div className="flex-shrink-0 w-24 h-16 bg-black rounded overflow-hidden mr-3">
-                            <video 
-                              src={video.url} 
-                              className="w-full h-full object-cover"
-                              preload="metadata"
-                            />
-                          </div>
-                          <div className="flex-grow">
-                            <div className="flex justify-between">
-                              <div>
-                                <h3 className="font-medium truncate">{video.name}</h3>
-                                <div className="flex items-center mt-1">
-                                  {!videoExists && (
-                                    <span className="text-xs text-yellow-400 flex items-center mr-2">
-                                      <ExclamationTriangleIcon className="w-3 h-3 mr-1" />
-                                      Nicht verfügbar
-                                    </span>
-                                  )}
-                                  <span className="text-xs text-white/60">
-                                    {formatFileSize(video.size)}
-                                  </span>
-                                </div>
-                              </div>
-                              <button 
-                                onClick={() => toggleVideoSelection(video.id)}
-                                className={`h-6 w-6 rounded-full border flex items-center justify-center ${
-                                  isSelected 
-                                    ? 'bg-primary border-primary text-white' 
-                                    : 'border-white/30 text-white/30'
-                                }`}
-                              >
-                                {isSelected && <CheckCircleIcon className="h-5 w-5" />}
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                        
-                        {video.tags && video.tags.length > 0 && (
-                          <div className="px-3 pb-3 flex flex-wrap gap-1">
-                            {video.tags.map((tag, idx) => (
-                              <span key={idx} className="badge badge-xs badge-secondary">{tag}</span>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })}
-                  
-                  <div className="mt-4">
-                    <Link href="/upload" className="btn btn-outline btn-sm btn-block">
-                      Upload More Videos
-                    </Link>
-                  </div>
-                </div>
-              )}
-            </div>
-            
-            {/* Voiceover Section */}
-            <div className="card-gradient p-6 rounded-xl">
-              <div className="flex items-center mb-6">
-                <SpeakerWaveIcon className="h-6 w-6 text-primary mr-2" />
-                <h2 className="text-xl font-semibold">Voiceover</h2>
-              </div>
-              
-              <div className="mb-4">
-                <textarea 
-                  value={voiceoverScript}
-                  onChange={(e) => setVoiceoverScript(e.target.value)}
-                  placeholder="Enter your voiceover script here..."
-                  className="textarea textarea-bordered w-full h-32 bg-white/5 border-white/10 focus:border-primary"
-                />
-              </div>
-              
-              <button 
-                onClick={handleGenerateVideo}
-                disabled={!voiceoverScript.trim() || isGenerating}
-                className="btn btn-primary btn-block"
-              >
-                {isGenerating ? (
-                  <>
-                    <ArrowPathIcon className="h-5 w-5 mr-2 animate-spin" />
-                    Generating...
-                  </>
-                ) : voiceoverUrl ? (
-                  <>
-                    <ArrowPathIcon className="h-5 w-5 mr-2" />
-                    Regenerate Voiceover
-                  </>
-                ) : (
-                  <>
-                    <SpeakerWaveIcon className="h-5 w-5 mr-2" />
-                    Generate Voiceover
-                  </>
-                )}
-              </button>
-              
-              {voiceoverUrl && (
-                <div className="mt-4 p-3 bg-white/5 rounded-lg">
-                  <div className="flex items-center">
-                    <audio 
-                      ref={audioRef}
-                      src={voiceoverUrl} 
-                      controls 
-                      className="w-full audio-player" 
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-          
-          {/* Right Column: Output Video */}
-          <div className="col-span-2">
-            {/* Video Generation */}
-            <div className="mb-8 card-gradient p-6 rounded-xl">
-              <div className="flex justify-between items-center mb-6">
-                <div className="flex items-center">
-                  <SparklesIcon className="h-6 w-6 text-primary mr-2" />
-                  <h2 className="text-xl font-semibold">Generate Your Ad</h2>
-                </div>
-              </div>
-              
-              {/* Warnung, wenn keine Videos ausgewählt sind */}
-              {uploadedVideos.length > 0 && selectedVideos.length === 0 && (
-                <div className="alert alert-warning mb-6">
-                  <div className="flex">
-                    <ExclamationTriangleIcon className="h-6 w-6 flex-shrink-0" />
-                    <div className="ml-3">
-                      <p>Bitte wählen Sie mindestens ein Video aus, um eine Werbung zu generieren.</p>
-                    </div>
-                  </div>
-                </div>
-              )}
-              
-              {/* Final Video Preview */}
-              {finalVideoUrl && (
-                <div className="bg-black/50 rounded-lg overflow-hidden border border-white/10">
-                  <div className="aspect-video relative flex items-center justify-center bg-black">
-                    {finalVideoUrl === 'generated' ? (
-                      <>
-                        <canvas 
-                          ref={canvasRef} 
-                          className="max-w-full max-h-full object-contain"
-                          onClick={togglePlay}
-                        />
-                        <div 
-                          className="absolute inset-0 flex items-center justify-center cursor-pointer"
-                          onClick={togglePlay}
-                        >
-                          {!isPlaying && (
-                            <button className="bg-primary/30 backdrop-blur-sm p-5 rounded-full transform transition-all duration-300 hover:scale-110 hover:bg-primary/50">
-                              <PlayIcon className="h-10 w-10 text-white" />
-                            </button>
-                          )}
-                        </div>
-                      </>
-                    ) : (
-                      <video 
-                        id="finalVideo"
-                        ref={videoRef}
-                        src={signedVideoUrl || finalVideoUrl} 
-                        controls
-                        className="w-full h-full object-contain" 
-                        playsInline
-                      />
-                    )}
-                  </div>
-                  
-                  {/* Video Controls and Download Button */}
-                  {finalVideoUrl && finalVideoUrl !== 'generated' && (
-                    <div className="p-3 bg-black/30 flex justify-between items-center">
-                      <div className="text-sm text-white/70">
-                        {videoDuration > 0 ? `Dauer: ${Math.floor(videoDuration / 60)}:${String(Math.floor(videoDuration % 60)).padStart(2, '0')}` : 'Video bereit'}
-                      </div>
-                      <a 
-                        href={signedVideoUrl || finalVideoUrl} 
-                        download="generated-ad.mp4"
-                        className="btn btn-sm btn-primary"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        <ArrowDownTrayIcon className="h-4 w-4 mr-1" />
-                        Download Video
-                      </a>
-                    </div>
-                  )}
-                </div>
-              )}
-              
-              {/* Generate Button */}
-              <div className="mt-6">
-                <button 
-                  onClick={handleGenerateVideo}
-                  disabled={isGenerating || selectedVideos.length === 0}
-                  className="btn btn-primary btn-block btn-lg"
-                >
-                  {isGenerating ? (
-                    <div className="flex items-center">
-                      <ArrowPathIcon className="h-5 w-5 mr-2 animate-spin" />
-                      <span>Generating Video ({generationProgress}%)</span>
-                    </div>
-                  ) : finalVideoUrl ? (
-                    <div className="flex items-center">
-                      <CheckCircleIcon className="h-5 w-5 mr-2 text-green-400" />
-                      <span>Video Ready</span>
-                    </div>
-                  ) : (
-                    <div className="flex items-center">
-                      <SparklesIcon className="h-5 w-5 mr-2" />
-                      <span>Generate Ad</span>
-                    </div>
-                  )}
-                </button>
-                
-                {/* Progress Bar */}
-                {isGenerating && (
-                  <div className="mt-3">
-                    <div className="w-full bg-white/10 rounded-full h-2.5">
-                      <div 
-                        className="bg-primary h-2.5 rounded-full transition-all duration-300" 
-                        style={{ width: `${generationProgress}%` }}
-                      ></div>
-                    </div>
-                    <div className="mt-1 text-xs text-white/50 text-center">
-                      {generationProgress < 100 ? 'Generating your video...' : 'Finalizing...'}
-                    </div>
-                  </div>
-                )}
-                
-                {projectId && !isGenerating && (
-                  <div className="mt-2 flex justify-center text-white/40 text-sm">
-                    {finalVideoUrl ? (
-                      <div className="flex items-center">
-                        <CheckCircleIcon className="h-4 w-4 mr-1 text-green-400" />
-                        <span>Video successfully generated</span>
-                      </div>
-                    ) : (
-                      <div className="flex items-center">
-                        <ClockIcon className="h-4 w-4 mr-1" />
-                        <span>Project ID: {projectId.substring(0, 8)}</span>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-              
-              {/* Error Display */}
-              {error && (
-                <div className="mt-4 p-4 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400">
-                  <div className="flex items-start">
-                    <ExclamationTriangleIcon className="h-5 w-5 flex-shrink-0 mt-0.5 mr-2" />
-                    <div>
-                      <p>{error}</p>
-                      {errorDetails && (
-                        <div className="mt-2 text-sm">
-                          <p className="font-medium">Details:</p>
-                          {errorDetails.jobDetails ? (
-                            <>
-                              <div className="mt-2">
-                                <h4 className="font-medium">Job Details:</h4>
-                                <pre className="mt-1 bg-red-500/5 p-2 rounded overflow-auto text-xs">
-                                  {JSON.stringify(errorDetails.jobDetails, null, 2)}
-                                </pre>
-                              </div>
-                              {errorDetails.logs && (
-                                <div className="mt-2">
-                                  <h4 className="font-medium">Logs:</h4>
-                                  <pre className="mt-1 bg-red-500/5 p-2 rounded overflow-auto text-xs max-h-40">
-                                    {errorDetails.logs}
-                                  </pre>
-                                </div>
-                              )}
-                            </>
-                          ) : (
-                            <pre className="mt-1 bg-red-500/5 p-2 rounded overflow-auto text-xs">
-                              {JSON.stringify(errorDetails, null, 2)}
-                            </pre>
-                          )}
-                        </div>
-                      )}
-                      
-                      {/* Job-Details-Button */}
-                      {jobId && (
-                        <div className="mt-3">
-                          <button 
-                            onClick={async () => {
-                              try {
-                                const response = await fetch(`/api/aws-batch-logs/${jobId}`);
-                                if (!response.ok) {
-                                  throw new Error('Failed to fetch job logs');
-                                }
-                                const data = await response.json();
-                                setErrorDetails({
-                                  error: 'AWS Batch Job Details',
-                                  jobDetails: data.job,
-                                  logs: data.logs.map((log: any) => log.message).join('\n')
-                                });
-                              } catch (error) {
-                                console.error('Error fetching job logs:', error);
-                              }
-                            }}
-                            className="btn btn-xs btn-outline"
-                          >
-                            Show Job Details
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-            
-            {/* Final Video Section */}
-            <div className="card-gradient p-6 rounded-xl">
-              <div className="flex items-center mb-6">
-                <FilmIcon className="h-6 w-6 text-primary mr-2" />
-                <h2 className="text-xl font-semibold">Final Video</h2>
-              </div>
-              
-              {isGenerating && !finalVideoUrl && (
-                <div className="p-8 text-center">
-                  <div className="inline-block rounded-full bg-primary/20 p-6 mb-4">
-                    <ArrowPathIcon className="h-8 w-8 text-primary animate-spin" />
-                  </div>
-                  <p className="text-lg font-medium">Generating your ad video...</p>
-                  <p className="text-white/60 mt-2">This may take a few minutes</p>
-                  <div className="mt-6 w-full bg-white/10 h-3 rounded-full overflow-hidden">
-                    <div 
-                      className="h-full bg-gradient-to-r from-primary to-secondary rounded-full transition-all duration-500"
-                      style={{ width: `${generationProgress}%` }}
-                    />
-                  </div>
-                </div>
-              )}
-              
-              {finalVideoUrl && (
-                <div className="p-8 text-center">
-                  <div className="inline-block rounded-full bg-green-500/20 p-6 mb-4">
-                    <CheckCircleIcon className="h-8 w-8 text-green-500" />
-                  </div>
-                  <p className="text-lg font-medium">Your ad video is ready!</p>
-                  <p className="text-white/60 mt-2">You can view and download it above</p>
-                </div>
-              )}
-              
-              {!isGenerating && !finalVideoUrl && (
-                <div className="text-center py-12">
-                  <FilmIcon className="h-12 w-12 mx-auto text-white/30 mb-3" />
-                  <p className="text-white/60">No final video generated yet</p>
-                  <p className="text-white/40 text-sm mt-2">
-                    Select videos and generate your ad to see the result here
+                  <p className="text-sm text-white/60 ml-8">
+                    {voiceoverScript ? 'Voiceover erstellt' : 'Voiceover erstellen'}
                   </p>
                 </div>
-              )}
+                
+                <div className={`flex-1 rounded-lg p-4 border ${workflowStep === 'matching' ? 'border-primary bg-primary/10' : 'border-white/10 bg-white/5'}`}>
+                  <div className="flex items-center mb-2">
+                    <span className={`flex items-center justify-center w-6 h-6 rounded-full mr-2 text-xs ${workflowStep === 'matching' ? 'bg-primary text-white' : workflowStep && ['editing', 'processing', 'completed'].includes(workflowStep) ? 'bg-green-500 text-white' : 'bg-white/20 text-white/60'}`}>
+                      {workflowStep && ['editing', 'processing', 'completed'].includes(workflowStep) ? '✓' : '2'}
+                    </span>
+                    <span className="font-medium">Video Matching</span>
+                  </div>
+                  <p className="text-sm text-white/60 ml-8">
+                    {matchedVideos.length > 0 ? `${matchedVideos.length} Videos zugeordnet` : 'Noch keine Videos zugeordnet'}
+                  </p>
+                </div>
+                
+                <div className={`flex-1 rounded-lg p-4 border ${workflowStep === 'editing' || workflowStep === 'processing' ? 'border-primary bg-primary/10' : 'border-white/10 bg-white/5'}`}>
+                  <div className="flex items-center mb-2">
+                    <span className={`flex items-center justify-center w-6 h-6 rounded-full mr-2 text-xs ${workflowStep === 'editing' || workflowStep === 'processing' ? 'bg-primary text-white' : workflowStep && ['completed'].includes(workflowStep) ? 'bg-green-500 text-white' : 'bg-white/20 text-white/60'}`}>
+                      {workflowStep && ['completed'].includes(workflowStep) ? '✓' : '3'}
+                    </span>
+                    <span className="font-medium">Video generieren</span>
+                  </div>
+                  <p className="text-sm text-white/60 ml-8">
+                    {workflowStep === 'completed' ? 'Video generiert' : workflowStep === 'processing' ? 'Video wird generiert...' : 'Video generieren'}
+                  </p>
+                </div>
+                
+                <div className={`flex-1 rounded-lg p-4 border ${workflowStep === 'completed' ? 'border-primary bg-primary/10' : 'border-white/10 bg-white/5'}`}>
+                  <div className="flex items-center mb-2">
+                    <span className={`flex items-center justify-center w-6 h-6 rounded-full mr-2 text-xs ${workflowStep === 'completed' ? 'bg-primary text-white' : 'bg-white/20 text-white/60'}`}>
+                      {workflowStep === 'completed' ? '✓' : '4'}
+                    </span>
+                    <span className="font-medium">Fertig</span>
+                  </div>
+                  <p className="text-sm text-white/60 ml-8">
+                    {workflowStep === 'completed' ? 'Video fertiggestellt' : 'Warte auf Fertigstellung'}
+                  </p>
+                </div>
+              </div>
             </div>
+          )}
+          
+          {/* Error-Anzeige */}
+          {error && (
+            <div className="mb-6 p-4 bg-red-900/30 border border-red-600/30 rounded-md text-red-400">
+              <div className="flex items-start">
+                <ExclamationTriangleIcon className="h-5 w-5 mr-2 mt-0.5" />
+                <div>
+                  <h3 className="font-medium">{error}</h3>
+                  {errorDetails && (
+                    <div className="mt-2">
+                      <p>{errorDetails.error}</p>
+                      {errorDetails.details && (
+                        <pre className="mt-2 p-2 bg-black/30 rounded text-xs overflow-auto">{JSON.stringify(errorDetails.details, null, 2)}</pre>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {/* Video Preview */}
+          {finalVideoUrl && finalVideoUrl !== 'generated' ? (
+            <div className="mb-8">
+              <h2 className="text-xl font-semibold mb-4">Deine Werbung</h2>
+              <div className="bg-black rounded-xl overflow-hidden shadow-xl">
+                {/* Video Player */}
+                <video 
+                  id="finalVideo"
+                  className="w-full aspect-video"
+                  src={signedVideoUrl || finalVideoUrl}
+                  controls
+                  poster="/video-poster.jpg"
+                />
+                
+                {/* Video Controls */}
+                <div className="p-4 bg-gray-900 flex justify-between items-center">
+                  <div className="flex-1">
+                    <div className="text-sm text-gray-400">
+                      Dauer: {videoDuration.toFixed(1)} Sekunden
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <a
+                      href={signedVideoUrl || finalVideoUrl}
+                      download="meine-werbung.mp4"
+                      className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-purple-600 rounded-lg hover:bg-purple-700 transition-colors"
+                    >
+                      <ArrowDownTrayIcon className="h-4 w-4 mr-2" />
+                      Herunterladen
+                    </a>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            // Wenn noch kein fertiges Video vorhanden ist
+            <div className="mb-8">
+              <h2 className="text-xl font-semibold mb-4">Video-Generierung</h2>
+              
+              {/* Matched Videos Info */}
+              {fromScriptMatcher && matchedVideos.length > 0 && (
+                <div className="mb-6 bg-gray-800/60 border border-gray-700 rounded-lg p-5">
+                  <h3 className="font-medium mb-3 flex items-center">
+                    <CheckCircleIcon className="h-5 w-5 text-green-500 mr-2" />
+                    Ausgewählte Videos ({matchedVideos.length})
+                  </h3>
+                  
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {matchedVideos.map((match, idx) => {
+                      const video = uploadedVideos.find(v => v.id === match.videoId);
+                      return (
+                        <div key={idx} className="bg-gray-900/60 border border-gray-800 rounded overflow-hidden">
+                          <div className="aspect-video bg-gray-900 relative overflow-hidden">
+                            {video?.url ? (
+                              <div 
+                                className="absolute inset-0 bg-center bg-cover" 
+                                style={{ backgroundImage: `url(${video.url}#t=0.5)` }}
+                              />
+                            ) : (
+                              <div className="absolute inset-0 flex items-center justify-center">
+                                <FilmIcon className="h-8 w-8 text-gray-700" />
+                              </div>
+                            )}
+                            <div className="absolute bottom-1 right-1 bg-black/60 text-white text-xs px-1.5 py-0.5 rounded">
+                              {match.duration}s
+                            </div>
+                          </div>
+                          <div className="p-2">
+                            <div className="text-xs font-medium truncate">{video?.name || `Video ${idx + 1}`}</div>
+                            <div className="text-xs text-gray-500 mt-0.5">Match: {Math.round(match.score * 100)}%</div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+              
+              {/* Video Generation Options */}
+              <div className="bg-gray-800/60 border border-gray-700 rounded-lg p-5">
+                <h3 className="font-medium mb-4">Video-Optionen</h3>
+                
+                {/* Generating state */}
+                {isGenerating ? (
+                  <div className="text-center py-8">
+                    <div className="inline-block">
+                      <div className="w-16 h-16 border-4 border-purple-600 border-t-transparent rounded-full animate-spin mb-4"></div>
+                      <div className="text-lg font-medium text-white/80">Video wird generiert...</div>
+                      <div className="text-sm text-white/60 mt-1">{generationProgress.toFixed(0)}% abgeschlossen</div>
+                      <div className="w-full h-3 bg-gray-700 rounded-full mt-3">
+                        <div 
+                          className="h-full bg-purple-600 rounded-full transition-all duration-300"
+                          style={{ width: `${generationProgress}%` }}
+                        ></div>
+                      </div>
+                      <div className="mt-4 text-sm text-white/60">
+                        Dieser Vorgang kann einige Minuten dauern. Bitte warte, bis das Video fertig ist.
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    {/* Video Generation Form */}
+                    <div className="space-y-5">
+                      {/* Caption Option */}
+                      <div className="flex items-center">
+                        <input
+                          type="checkbox"
+                          id="addCaptions"
+                          className="w-4 h-4 bg-gray-700 border-gray-600 rounded focus:ring-blue-600 ring-offset-gray-800 focus:ring-2"
+                        />
+                        <label htmlFor="addCaptions" className="ml-2 text-sm font-medium">
+                          Untertitel hinzufügen (automatisch generiert)
+                        </label>
+                      </div>
+                      
+                      {/* Generate Video Button */}
+                      <button
+                        onClick={handleGenerateVideo}
+                        disabled={isGenerating || selectedVideos.length === 0 || !voiceoverUrl}
+                        className="w-full py-3 px-4 bg-gradient-to-r from-purple-600 to-purple-500 text-white rounded-md hover:from-purple-500 hover:to-purple-400 disabled:opacity-50 font-medium flex items-center justify-center"
+                      >
+                        <SparklesIcon className="h-5 w-5 mr-2" />
+                        Video generieren
+                      </button>
+                      
+                      {(!selectedVideos.length || !voiceoverUrl) && (
+                        <div className="text-yellow-500 text-sm mt-2">
+                          <ExclamationTriangleIcon className="h-4 w-4 inline-block mr-1" />
+                          {!selectedVideos.length ? 'Keine Videos ausgewählt. ' : ''}
+                          {!voiceoverUrl ? 'Kein Voiceover gefunden. ' : ''}
+                          {!selectedVideos.length || !voiceoverUrl ? 'Bitte gehe zurück zum Script-Matcher.' : ''}
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* Back to Script Matcher Button */}
+                    {(!fromScriptMatcher || selectedVideos.length === 0) && (
+                      <div className="mt-6 text-center">
+                        <Link
+                          href="/script-matcher"
+                          className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700"
+                        >
+                          <ArrowLeftIcon className="h-4 w-4 mr-2" />
+                          Zurück zum Script-Matcher
+                        </Link>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+          
+          {/* Project Information */}
+          <div className="mt-12 text-center text-sm text-gray-500">
+            {projectId && (
+              <div>Projekt-ID: {projectId}</div>
+            )}
+            {jobId && (
+              <div className="mt-1">Job-ID: {jobId}</div>
+            )}
           </div>
         </div>
       </div>
-    </div>
+    </main>
   )
 }
 
