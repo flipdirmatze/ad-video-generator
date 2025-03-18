@@ -22,6 +22,7 @@ type WorkflowRequest = {
   title: string;
   description?: string;
   voiceoverId?: string;
+  voiceoverText?: string;
   videos: {
     id: string;
     key: string;
@@ -34,6 +35,14 @@ type WorkflowRequest = {
     addWatermark?: boolean;
     watermarkText?: string;
     outputFormat?: string;
+    subtitleOptions?: {
+      fontName: string;
+      fontSize: number;
+      primaryColor: string;
+      backgroundColor: string;
+      borderStyle: number;
+      position: string;
+    };
   };
 };
 
@@ -286,10 +295,27 @@ export async function POST(request: NextRequest) {
     
     // Füge optionale Parameter hinzu
     if (data.voiceoverId) jobParams.VOICEOVER_ID = data.voiceoverId;
+    if (data.voiceoverText) jobParams.SUBTITLE_TEXT = data.voiceoverText;
     if (data.options) {
       if (data.options.resolution) jobParams.RESOLUTION = data.options.resolution;
       if (data.options.aspectRatio) jobParams.ASPECT_RATIO = data.options.aspectRatio;
-      if (data.options.addSubtitles) jobParams.ADD_SUBTITLES = 'true';
+      if (data.options.addSubtitles) {
+        jobParams.ADD_SUBTITLES = 'true';
+        // Voiceover-Text für Untertitel weitergeben, falls vorhanden
+        if (data.voiceoverText) {
+          jobParams.SUBTITLE_TEXT = data.voiceoverText;
+        }
+        
+        // Untertitel-Styling-Optionen weitergeben
+        if (data.options.subtitleOptions) {
+          jobParams.SUBTITLE_FONT_NAME = data.options.subtitleOptions.fontName;
+          jobParams.SUBTITLE_FONT_SIZE = data.options.subtitleOptions.fontSize.toString();
+          jobParams.SUBTITLE_PRIMARY_COLOR = data.options.subtitleOptions.primaryColor;
+          jobParams.SUBTITLE_BACKGROUND_COLOR = data.options.subtitleOptions.backgroundColor;
+          jobParams.SUBTITLE_BORDER_STYLE = data.options.subtitleOptions.borderStyle.toString();
+          jobParams.SUBTITLE_POSITION = data.options.subtitleOptions.position;
+        }
+      }
       if (data.options.addWatermark) {
         jobParams.ADD_WATERMARK = 'true';
         if (data.options.watermarkText) jobParams.WATERMARK_TEXT = data.options.watermarkText;
@@ -310,11 +336,20 @@ export async function POST(request: NextRequest) {
       const inputVideoUrl = getS3Url(segments[0].videoKey);
       console.log(`Converting S3 key to full URL: ${segments[0].videoKey} -> ${inputVideoUrl}`);
       
-      // Bereite die Template-Daten vor - vereinfachte Version
+      // Bereite die Template-Daten vor
       const templateData: {
         segments: { url: string; startTime: number; duration: number; position: number; }[];
         options: Record<string, unknown>;
         voiceoverId?: string;
+        voiceoverText?: string;
+        subtitleOptions?: {
+          fontName: string;
+          fontSize: number;
+          primaryColor: string;
+          backgroundColor: string;
+          borderStyle: number;
+          position: string;
+        };
       } = {
         segments: segments.map(segment => ({
           url: getS3Url(segment.videoKey),
@@ -325,16 +360,18 @@ export async function POST(request: NextRequest) {
         options: {}
       };
       
-      // Füge Voiceover-ID hinzu, wenn vorhanden und gültig
+      // Voiceover- und Untertitelinformationen hinzufügen
       if (data.voiceoverId) {
-        console.log(`Including voiceover ID in job: ${data.voiceoverId}`);
-        // Prüfe, ob die voiceoverId ein gültiges Format hat
-        if (typeof data.voiceoverId === 'string' && data.voiceoverId.length > 0) {
-          templateData.voiceoverId = data.voiceoverId;
-          console.log(`Voiceover ID validated and added to template data: ${data.voiceoverId}`);
-        } else {
-          console.warn(`Invalid voiceover ID format: ${data.voiceoverId}, skipping voiceover`);
-        }
+        templateData.voiceoverId = data.voiceoverId;
+      }
+      
+      if (data.voiceoverText) {
+        templateData.voiceoverText = data.voiceoverText;
+      }
+      
+      // Untertitel-Optionen hinzufügen, falls vorhanden
+      if (data.options?.addSubtitles && data.options?.subtitleOptions) {
+        templateData.subtitleOptions = data.options.subtitleOptions;
       }
       
       // Bereite die zusätzlichen Parameter vor - ohne TEMPLATE_DATA als JSON-String

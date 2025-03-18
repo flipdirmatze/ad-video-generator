@@ -31,6 +31,18 @@ const OUTPUT_DIR = `${TEMP_DIR}/output`;
 // Aktiviere Debug-Modus
 const DEBUG = process.env.DEBUG === 'true';
 
+// Hilfsvariablen aus Environment-Variablen
+const ADD_SUBTITLES = process.env.ADD_SUBTITLES === 'true';
+const SUBTITLE_TEXT = process.env.SUBTITLE_TEXT || '';
+
+// Untertitel-Styling-Optionen aus Umgebungsvariablen
+const SUBTITLE_FONT_NAME = process.env.SUBTITLE_FONT_NAME || 'Arial';
+const SUBTITLE_FONT_SIZE = process.env.SUBTITLE_FONT_SIZE || '24';
+const SUBTITLE_PRIMARY_COLOR = process.env.SUBTITLE_PRIMARY_COLOR || '#FFFFFF';
+const SUBTITLE_BACKGROUND_COLOR = process.env.SUBTITLE_BACKGROUND_COLOR || '#80000000';
+const SUBTITLE_BORDER_STYLE = process.env.SUBTITLE_BORDER_STYLE || '4';
+const SUBTITLE_POSITION = process.env.SUBTITLE_POSITION || 'bottom';
+
 // Logge alle Umgebungsvariablen für Debugging (ohne sensible Daten)
 console.log('Environment variables:');
 Object.keys(process.env).forEach(key => {
@@ -461,6 +473,130 @@ async function generateFinalVideo() {
           throw new Error(`Final file with voiceover is empty or does not exist: ${finalFile}`);
         }
         
+        // 7. Wenn Untertitel erwünscht sind und ein Text vorhanden ist, füge sie hinzu
+        if (ADD_SUBTITLES && (SUBTITLE_TEXT || TEMPLATE_DATA.voiceoverText)) {
+          console.log('Adding subtitles to video...');
+          
+          // Nutze entweder den übergebenen Text oder den aus TEMPLATE_DATA
+          const subtitleText = SUBTITLE_TEXT || TEMPLATE_DATA.voiceoverText;
+          
+          if (!subtitleText) {
+            console.warn('No subtitle text available, skipping subtitles');
+            return finalFile;
+          }
+          
+          // Hole die Untertitel-Styling-Optionen
+          let fontName = SUBTITLE_FONT_NAME;
+          let fontSize = SUBTITLE_FONT_SIZE;
+          let primaryColor = SUBTITLE_PRIMARY_COLOR;
+          let backgroundColor = SUBTITLE_BACKGROUND_COLOR;
+          let borderStyle = parseInt(SUBTITLE_BORDER_STYLE);
+          let position = SUBTITLE_POSITION;
+          
+          // Verwende Optionen aus TEMPLATE_DATA, wenn verfügbar
+          if (TEMPLATE_DATA.subtitleOptions) {
+            console.log('Using custom subtitle options from TEMPLATE_DATA');
+            fontName = TEMPLATE_DATA.subtitleOptions.fontName || fontName;
+            fontSize = TEMPLATE_DATA.subtitleOptions.fontSize || fontSize;
+            primaryColor = TEMPLATE_DATA.subtitleOptions.primaryColor || primaryColor;
+            backgroundColor = TEMPLATE_DATA.subtitleOptions.backgroundColor || backgroundColor;
+            borderStyle = TEMPLATE_DATA.subtitleOptions.borderStyle || borderStyle;
+            position = TEMPLATE_DATA.subtitleOptions.position || position;
+          }
+          
+          // Konvertiere primäre Farbe in FFmpeg-Format (entferne #)
+          const primaryColorFFmpeg = primaryColor.replace('#', '&H00');
+          
+          // Konvertiere Hintergrundfarbe in FFmpeg-Format (entferne #)
+          const backgroundColorFFmpeg = backgroundColor.replace('#', '&H');
+          
+          console.log(`Using subtitle styling - Font: ${fontName}, Size: ${fontSize}, Color: ${primaryColorFFmpeg}, 
+            BG: ${backgroundColorFFmpeg}, Border: ${borderStyle}, Position: ${position}`);
+          
+          // Erstelle temporäre SRT-Datei
+          const srtFile = path.join(TEMP_DIR, 'subtitles.srt');
+          
+          try {
+            // Generiere einfachen SRT-Inhalt aus dem Text
+            // Wir splitten den Text in Sätze und erzeugen für jeden Satz einen Untertitel
+            const sentences = subtitleText.match(/[^\.!\?]+[\.!\?]+/g) || [subtitleText];
+            
+            let srtContent = '';
+            let index = 1;
+            let startTime = 0;
+            
+            // Durschnittliche Anzahl von Wörtern, die pro Sekunde gesprochen werden (anpassbar)
+            const wordsPerSecond = 3; 
+            
+            for (const sentence of sentences) {
+              // Entferne Whitespace und zähle Wörter
+              const trimmedSentence = sentence.trim();
+              if (!trimmedSentence) continue;
+              
+              const wordCount = trimmedSentence.split(/\s+/).length;
+              const duration = Math.max(1, wordCount / wordsPerSecond); // Mindestens 1 Sekunde
+              
+              // Format: [Stunden]:[Minuten]:[Sekunden],[Millisekunden]
+              const formatTime = (timeInSeconds) => {
+                const hours = Math.floor(timeInSeconds / 3600);
+                const minutes = Math.floor((timeInSeconds % 3600) / 60);
+                const seconds = Math.floor(timeInSeconds % 60);
+                const milliseconds = Math.floor((timeInSeconds % 1) * 1000);
+                
+                return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')},${milliseconds.toString().padStart(3, '0')}`;
+              };
+              
+              const startTimeFormatted = formatTime(startTime);
+              const endTimeFormatted = formatTime(startTime + duration);
+              
+              srtContent += `${index}\n${startTimeFormatted} --> ${endTimeFormatted}\n${trimmedSentence}\n\n`;
+              
+              startTime += duration;
+              index++;
+            }
+            
+            // Schreibe SRT-Datei
+            fs.writeFileSync(srtFile, srtContent);
+            console.log(`Created SRT file with ${index-1} subtitle entries`);
+            
+            // Setze Positionsparameter je nach gewählter Position
+            let positionParam = '';
+            if (position === 'top') {
+              positionParam = ',MarginV=60';
+            } else if (position === 'middle') {
+              positionParam = ',MarginV=30';
+            }
+            
+            // Erstelle neues Video mit Untertiteln
+            const subtitledFile = path.join(OUTPUT_DIR, 'final_with_subtitles.mp4');
+            
+            const forceStyleParam = `subtitles=${srtFile.replace(/\\/g, '/')}:force_style='FontName=${fontName},FontSize=${fontSize},PrimaryColour=${primaryColorFFmpeg},BackColour=${backgroundColorFFmpeg},BorderStyle=${borderStyle}${positionParam}'`;
+            
+            console.log(`Using FFmpeg subtitle filter: ${forceStyleParam}`);
+            
+            await runFFmpeg([
+              '-i', finalFile,
+              '-vf', forceStyleParam,
+              '-c:a', 'copy',
+              '-y',
+              subtitledFile
+            ]);
+            
+            console.log('Successfully added subtitles to video');
+            
+            // Verify the subtitled file exists and has content
+            if (!fs.existsSync(subtitledFile) || fs.statSync(subtitledFile).size === 0) {
+              throw new Error(`Final file with subtitles is empty or does not exist: ${subtitledFile}`);
+            }
+            
+            return subtitledFile;
+          } catch (subtitleError) {
+            console.error(`Error adding subtitles: ${subtitleError.message}`);
+            console.log('Continuing with video without subtitles');
+            return finalFile;
+          }
+        }
+        
         return finalFile;
       } catch (error) {
         console.error(`Error adding voiceover to video: ${error.message}`);
@@ -470,6 +606,130 @@ async function generateFinalVideo() {
     } catch (voiceoverError) {
       console.error(`Error processing voiceover: ${voiceoverError.message}`);
       console.log('Continuing without voiceover due to error');
+      return concatenatedFile;
+    }
+  }
+  
+  // 7. Wenn Untertitel erwünscht sind, aber kein Voiceover vorhanden ist
+  if (ADD_SUBTITLES && (SUBTITLE_TEXT || TEMPLATE_DATA.voiceoverText)) {
+    console.log('Adding subtitles to concatenated video (no voiceover)...');
+    
+    // Nutze entweder den übergebenen Text oder den aus TEMPLATE_DATA
+    const subtitleText = SUBTITLE_TEXT || TEMPLATE_DATA.voiceoverText;
+    
+    if (!subtitleText) {
+      console.warn('No subtitle text available, skipping subtitles');
+      return concatenatedFile;
+    }
+    
+    // Hole die Untertitel-Styling-Optionen
+    let fontName = SUBTITLE_FONT_NAME;
+    let fontSize = SUBTITLE_FONT_SIZE;
+    let primaryColor = SUBTITLE_PRIMARY_COLOR;
+    let backgroundColor = SUBTITLE_BACKGROUND_COLOR;
+    let borderStyle = parseInt(SUBTITLE_BORDER_STYLE);
+    let position = SUBTITLE_POSITION;
+    
+    // Verwende Optionen aus TEMPLATE_DATA, wenn verfügbar
+    if (TEMPLATE_DATA.subtitleOptions) {
+      console.log('Using custom subtitle options from TEMPLATE_DATA');
+      fontName = TEMPLATE_DATA.subtitleOptions.fontName || fontName;
+      fontSize = TEMPLATE_DATA.subtitleOptions.fontSize || fontSize;
+      primaryColor = TEMPLATE_DATA.subtitleOptions.primaryColor || primaryColor;
+      backgroundColor = TEMPLATE_DATA.subtitleOptions.backgroundColor || backgroundColor;
+      borderStyle = TEMPLATE_DATA.subtitleOptions.borderStyle || borderStyle;
+      position = TEMPLATE_DATA.subtitleOptions.position || position;
+    }
+    
+    // Konvertiere primäre Farbe in FFmpeg-Format (entferne #)
+    const primaryColorFFmpeg = primaryColor.replace('#', '&H00');
+    
+    // Konvertiere Hintergrundfarbe in FFmpeg-Format (entferne #)
+    const backgroundColorFFmpeg = backgroundColor.replace('#', '&H');
+    
+    console.log(`Using subtitle styling - Font: ${fontName}, Size: ${fontSize}, Color: ${primaryColorFFmpeg}, 
+      BG: ${backgroundColorFFmpeg}, Border: ${borderStyle}, Position: ${position}`);
+    
+    // Erstelle temporäre SRT-Datei
+    const srtFile = path.join(TEMP_DIR, 'subtitles.srt');
+    
+    try {
+      // Generiere einfachen SRT-Inhalt aus dem Text
+      // Wir splitten den Text in Sätze und erzeugen für jeden Satz einen Untertitel
+      const sentences = subtitleText.match(/[^\.!\?]+[\.!\?]+/g) || [subtitleText];
+      
+      let srtContent = '';
+      let index = 1;
+      let startTime = 0;
+      
+      // Durschnittliche Anzahl von Wörtern, die pro Sekunde gesprochen werden (anpassbar)
+      const wordsPerSecond = 3; 
+      
+      for (const sentence of sentences) {
+        // Entferne Whitespace und zähle Wörter
+        const trimmedSentence = sentence.trim();
+        if (!trimmedSentence) continue;
+        
+        const wordCount = trimmedSentence.split(/\s+/).length;
+        const duration = Math.max(1, wordCount / wordsPerSecond); // Mindestens 1 Sekunde
+        
+        // Format: [Stunden]:[Minuten]:[Sekunden],[Millisekunden]
+        const formatTime = (timeInSeconds) => {
+          const hours = Math.floor(timeInSeconds / 3600);
+          const minutes = Math.floor((timeInSeconds % 3600) / 60);
+          const seconds = Math.floor(timeInSeconds % 60);
+          const milliseconds = Math.floor((timeInSeconds % 1) * 1000);
+          
+          return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')},${milliseconds.toString().padStart(3, '0')}`;
+        };
+        
+        const startTimeFormatted = formatTime(startTime);
+        const endTimeFormatted = formatTime(startTime + duration);
+        
+        srtContent += `${index}\n${startTimeFormatted} --> ${endTimeFormatted}\n${trimmedSentence}\n\n`;
+        
+        startTime += duration;
+        index++;
+      }
+      
+      // Schreibe SRT-Datei
+      fs.writeFileSync(srtFile, srtContent);
+      console.log(`Created SRT file with ${index-1} subtitle entries`);
+      
+      // Setze Positionsparameter je nach gewählter Position
+      let positionParam = '';
+      if (position === 'top') {
+        positionParam = ',MarginV=60';
+      } else if (position === 'middle') {
+        positionParam = ',MarginV=30';
+      }
+      
+      // Erstelle neues Video mit Untertiteln
+      const subtitledFile = path.join(OUTPUT_DIR, 'final_with_subtitles.mp4');
+      
+      const forceStyleParam = `subtitles=${srtFile.replace(/\\/g, '/')}:force_style='FontName=${fontName},FontSize=${fontSize},PrimaryColour=${primaryColorFFmpeg},BackColour=${backgroundColorFFmpeg},BorderStyle=${borderStyle}${positionParam}'`;
+      
+      console.log(`Using FFmpeg subtitle filter: ${forceStyleParam}`);
+      
+      await runFFmpeg([
+        '-i', concatenatedFile,
+        '-vf', forceStyleParam,
+        '-c:a', 'copy',
+        '-y',
+        subtitledFile
+      ]);
+      
+      console.log('Successfully added subtitles to video');
+      
+      // Verify the subtitled file exists and has content
+      if (!fs.existsSync(subtitledFile) || fs.statSync(subtitledFile).size === 0) {
+        throw new Error(`Final file with subtitles is empty or does not exist: ${subtitledFile}`);
+      }
+      
+      return subtitledFile;
+    } catch (subtitleError) {
+      console.error(`Error adding subtitles: ${subtitleError.message}`);
+      console.log('Continuing with video without subtitles');
       return concatenatedFile;
     }
   }
