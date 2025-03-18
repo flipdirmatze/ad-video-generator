@@ -33,6 +33,8 @@ export default function ScriptVideoMatcher() {
   const [availableVideos, setAvailableVideos] = useState<{id: string, name: string, url: string, tags: string[]}[]>([])
   const [playingVideoId, setPlayingVideoId] = useState<string | null>(null)
   const videoRefs = useRef<{[key: string]: HTMLVideoElement}>({})
+  const [loadingVideoIds, setLoadingVideoIds] = useState<Set<string>>(new Set())
+  const [errorVideoIds, setErrorVideoIds] = useState<Set<string>>(new Set())
 
   // Gespeicherte Projekt- und Voiceover-Daten laden
   useEffect(() => {
@@ -124,13 +126,18 @@ export default function ScriptVideoMatcher() {
         if (response.ok) {
           const data = await response.json()
           if (data.files?.length > 0) {
+            console.log('Loaded videos:', data.files.length);
             setAvailableVideos(data.files.map((file: any) => ({
               id: file.id,
               name: file.name,
               url: file.url,
               tags: file.tags || [],
             })))
+          } else {
+            console.log('No videos found in response');
           }
+        } else {
+          console.error('Error fetching videos:', response.status, response.statusText);
         }
       } catch (error) {
         console.error('Error loading videos:', error)
@@ -139,6 +146,28 @@ export default function ScriptVideoMatcher() {
     
     fetchVideos()
   }, [])
+
+  // Ensure video elements are properly initialized when video URLs change
+  useEffect(() => {
+    if (availableVideos.length > 0) {
+      console.log(`${availableVideos.length} videos loaded, initializing video elements`);
+      
+      // Update video sources if needed
+      Object.keys(videoRefs.current).forEach(videoId => {
+        const videoElement = videoRefs.current[videoId];
+        const videoData = availableVideos.find(v => v.id === videoId);
+        
+        if (videoElement && videoData && videoData.url) {
+          // Only update if source is different or empty
+          if (!videoElement.src || !videoElement.src.includes(videoData.url)) {
+            console.log(`Updating source for video ${videoId}`);
+            videoElement.src = videoData.url;
+            videoElement.load();
+          }
+        }
+      });
+    }
+  }, [availableVideos]);
 
   // Audio-Wiedergabe steuern
   const togglePlay = useCallback(() => {
@@ -343,37 +372,166 @@ export default function ScriptVideoMatcher() {
     });
   };
 
+  // Funktion zum Aktualisieren des Ladestatus eines Videos
+  const updateVideoLoadingState = (videoId: string, isLoading: boolean) => {
+    setLoadingVideoIds(prev => {
+      const newSet = new Set(prev)
+      if (isLoading) {
+        newSet.add(videoId)
+      } else {
+        newSet.delete(videoId)
+      }
+      return newSet
+    })
+  }
+
+  // Funktion zum Aktualisieren des Fehlerstatus eines Videos
+  const updateVideoErrorState = (videoId: string, hasError: boolean) => {
+    setErrorVideoIds(prev => {
+      const newSet = new Set(prev)
+      if (hasError) {
+        newSet.add(videoId)
+      } else {
+        newSet.delete(videoId)
+      }
+      return newSet
+    })
+  }
+
   // Funktion zum Abspielen eines Videos
   const playVideo = (videoId: string) => {
+    console.log(`Attempting to play video with ID: ${videoId}`)
+    
+    // Setze Ladestatus für dieses Video
+    updateVideoLoadingState(videoId, true)
+    // Lösche eventuelle Fehlerstatus
+    updateVideoErrorState(videoId, false)
+    
     // Stoppe alle anderen Videos
     Object.values(videoRefs.current).forEach(videoEl => {
       if (videoEl) {
-        videoEl.pause();
-        videoEl.currentTime = 0;
+        videoEl.pause()
+        videoEl.currentTime = 0
       }
-    });
+    })
+    
+    // Get the video data
+    const videoData = availableVideos.find(v => v.id === videoId)
     
     // Spiele das ausgewählte Video ab
-    const videoElement = videoRefs.current[videoId];
+    const videoElement = videoRefs.current[videoId]
     if (videoElement) {
+      console.log(`Video element found for ID ${videoId}`, {
+        src: videoElement.src,
+        readyState: videoElement.readyState,
+        paused: videoElement.paused
+      })
+      
+      // Check if video URL is valid
+      if (!videoElement.src && videoData?.url) {
+        console.log(`Video has no source, setting URL: ${videoData.url}`)
+        videoElement.src = videoData.url
+        videoElement.load()
+      }
+      
+      // Check if video URL is still valid by testing it
+      if (videoData?.url && videoElement.src) {
+        const checkVideoSource = async () => {
+          try {
+            // Try to fetch the URL to see if it's accessible
+            const response = await fetch(videoData.url, { method: 'HEAD' })
+            if (!response.ok) {
+              console.warn(`Video URL might be invalid (status ${response.status}), trying to get fresh URL`)
+              // Try to get a fresh URL from the server
+              const freshUrlResponse = await fetch(`/api/media/${videoId}`)
+              if (freshUrlResponse.ok) {
+                const freshData = await freshUrlResponse.json()
+                if (freshData.url) {
+                  console.log(`Got fresh URL for video ${videoId}:`, freshData.url)
+                  videoElement.src = freshData.url
+                  videoElement.load()
+                }
+              }
+            }
+          } catch (error) {
+            console.error('Error checking video URL:', error)
+          }
+        }
+        
+        // Only check if there's an issue with the video
+        if (videoElement.readyState === 0) {
+          checkVideoSource().catch(console.error)
+        }
+      }
+      
       if (playingVideoId === videoId) {
         // Wenn das Video bereits abspielt, pause es
+        console.log(`Pausing video ${videoId}`);
         videoElement.pause();
         setPlayingVideoId(null);
       } else {
         // Sonst spiele es ab
+        console.log(`Playing video ${videoId}`);
+        
+        // Ensure video is loaded before playing
+        if (videoElement.readyState === 0) {
+          console.log(`Video not loaded yet, loading...`);
+          videoElement.load();
+        }
+        
         videoElement.play().catch(error => {
-          console.error('Error playing video:', error);
+          console.error('Error playing video:', error)
+          // Fehlerstatus setzen
+          updateVideoErrorState(videoId, true)
+          // If the video has no source, try to reload it
+          if (error.name === 'NotSupportedError' || videoElement.src === '') {
+            console.log('Video source may be invalid, attempting to reload...');
+            // Find the video data
+            const videoData = availableVideos.find(v => v.id === videoId);
+            if (videoData && videoData.url) {
+              console.log(`Reloading video with URL: ${videoData.url}`);
+              videoElement.src = videoData.url;
+              videoElement.load();
+              videoElement.play().catch(err => 
+                console.error('Still unable to play video after reload:', err)
+              );
+            }
+          }
+        }).finally(() => {
+          // Loading-Status beenden
+          updateVideoLoadingState(videoId, false)
         });
         setPlayingVideoId(videoId);
       }
+    } else {
+      console.error(`Video element not found for ID: ${videoId}`);
     }
   };
   
   // Funktion, um eine Referenz zu einem Video-Element zu speichern
   const setVideoRef = (id: string, element: HTMLVideoElement | null) => {
     if (element) {
+      // Check if we need to assign or update the source
+      const existingElement = videoRefs.current[id];
+      const isNewElement = !existingElement || existingElement !== element;
+      
       videoRefs.current[id] = element;
+      
+      // If this is a new video element, initialize it
+      if (isNewElement) {
+        console.log(`Setting up new video element for ID: ${id}`);
+        
+        // Find the corresponding video data
+        const videoData = availableVideos.find(v => v.id === id);
+        if (videoData && videoData.url && (!element.src || element.src === '')) {
+          console.log(`Setting source for video ${id}: ${videoData.url}`);
+          element.src = videoData.url;
+          element.load();
+        }
+        
+        // Set CORS attributes
+        element.crossOrigin = "anonymous";
+      }
     }
   };
 
@@ -629,7 +787,16 @@ export default function ScriptVideoMatcher() {
                                   className="absolute inset-0 w-full h-full object-cover"
                                   muted
                                   playsInline
+                                  preload="metadata"
+                                  crossOrigin="anonymous"
+                                  onLoadStart={() => updateVideoLoadingState(match.video.id, true)}
+                                  onCanPlay={() => updateVideoLoadingState(match.video.id, false)}
                                   onEnded={() => setPlayingVideoId(null)}
+                                  onError={(e) => {
+                                    console.error(`Video error for ${match.video.id}:`, e)
+                                    updateVideoErrorState(match.video.id, true)
+                                    updateVideoLoadingState(match.video.id, false)
+                                  }}
                                 />
                                 
                                 {/* Play-Button und Overlay */}
@@ -637,7 +804,11 @@ export default function ScriptVideoMatcher() {
                                   className="absolute inset-0 bg-black/40 flex items-center justify-center cursor-pointer"
                                   onClick={() => playVideo(match.video.id)}
                                 >
-                                  {playingVideoId === match.video.id ? (
+                                  {loadingVideoIds.has(match.video.id) ? (
+                                    <ArrowPathIcon className="h-8 w-8 text-white/80 animate-spin" />
+                                  ) : errorVideoIds.has(match.video.id) ? (
+                                    <ExclamationTriangleIcon className="h-8 w-8 text-red-500" />
+                                  ) : playingVideoId === match.video.id ? (
                                     <PauseIcon className="h-8 w-8 text-white/80" />
                                   ) : (
                                     <PlayIcon className="h-8 w-8 text-white/80" />
