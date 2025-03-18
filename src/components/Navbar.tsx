@@ -12,6 +12,14 @@ export default function Navbar() {
 
   const isActive = (path: string) => pathname === path;
 
+  // Workflow-Schritte definieren
+  const workflowSteps = [
+    { number: 1, name: 'Voiceover', path: '/voiceover' },
+    { number: 2, name: 'Upload', path: '/upload' },
+    { number: 3, name: 'KI-Matching', path: '/script-matcher' },
+    { number: 4, name: 'Video-Editor', path: '/editor' },
+  ];
+
   return (
     <nav className="bg-gray-900 border-b border-gray-800">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -22,72 +30,59 @@ export default function Navbar() {
                 AI Ad Generator
               </Link>
             </div>
-            <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
-              <Link
-                href="/"
-                className={`${
-                  isActive('/') 
-                    ? 'border-purple-500 text-white' 
-                    : 'border-transparent text-gray-300 hover:border-gray-300 hover:text-white'
-                } inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium`}
-              >
-                Home
-              </Link>
-              {status === 'authenticated' && (
-                <>
-                  <Link
-                    href="/editor"
-                    className={`${
-                      isActive('/editor') 
-                        ? 'border-purple-500 text-white' 
-                        : 'border-transparent text-gray-300 hover:border-gray-300 hover:text-white'
-                    } inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium`}
-                  >
-                    Video Editor
-                  </Link>
-                  <Link
-                    href="/upload"
-                    className={`${
-                      isActive('/upload') 
-                        ? 'border-purple-500 text-white' 
-                        : 'border-transparent text-gray-300 hover:border-gray-300 hover:text-white'
-                    } inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium`}
-                  >
-                    Upload
-                  </Link>
-                  <Link
-                    href="/voiceover"
-                    className={`${
-                      isActive('/voiceover') 
-                        ? 'border-purple-500 text-white' 
-                        : 'border-transparent text-gray-300 hover:border-gray-300 hover:text-white'
-                    } inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium`}
-                  >
-                    Voiceover
-                  </Link>
-                  <Link
-                    href="/my-videos"
-                    className={`${
-                      isActive('/my-videos') 
-                        ? 'border-purple-500 text-white' 
-                        : 'border-transparent text-gray-300 hover:border-gray-300 hover:text-white'
-                    } inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium`}
-                  >
-                    Meine Videos
-                  </Link>
-                  <Link
-                    href="/script-matcher"
-                    className={`${
-                      isActive('/script-matcher') 
-                        ? 'border-purple-500 text-white' 
-                        : 'border-transparent text-gray-300 hover:border-gray-300 hover:text-white'
-                    } inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium`}
-                  >
-                    KI-Matching
-                  </Link>
-                </>
-              )}
-            </div>
+            
+            {/* Desktop Workflow Navigation */}
+            {status === 'authenticated' && (
+              <div className="hidden sm:ml-6 sm:flex">
+                <div className="flex items-center">
+                  {workflowSteps.map((step, index) => (
+                    <div key={step.path} className="flex items-center">
+                      <Link
+                        href={step.path}
+                        className={`group flex items-center relative`}
+                      >
+                        <div className={`
+                          flex items-center justify-center h-8 w-8 rounded-full mr-2
+                          ${isActive(step.path) 
+                            ? 'bg-primary text-white'
+                            : 'bg-gray-700 text-gray-300 group-hover:bg-gray-600'
+                          }
+                          transition-colors duration-200
+                        `}>
+                          {step.number}
+                        </div>
+                        <span className={`
+                          text-sm font-medium 
+                          ${isActive(step.path) 
+                            ? 'text-white border-b-2 border-primary'
+                            : 'text-gray-300 group-hover:text-white'
+                          }
+                        `}>
+                          {step.name}
+                        </span>
+                      </Link>
+                      
+                      {/* Arrow between steps - show for all except last item */}
+                      {index < workflowSteps.length - 1 && (
+                        <svg 
+                          className="h-5 w-5 mx-2 text-gray-500" 
+                          fill="none" 
+                          viewBox="0 0 24 24" 
+                          stroke="currentColor"
+                        >
+                          <path 
+                            strokeLinecap="round" 
+                            strokeLinejoin="round" 
+                            strokeWidth={2} 
+                            d="M9 5l7 7-7 7" 
+                          />
+                        </svg>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="hidden sm:ml-6 sm:flex sm:items-center">
@@ -120,6 +115,13 @@ export default function Navbar() {
                       <p className="font-medium">{session?.user?.name}</p>
                       <p className="text-gray-400 truncate">{session?.user?.email}</p>
                     </div>
+                    <Link
+                      href="/my-videos"
+                      className="block px-4 py-2 text-sm text-gray-300 hover:bg-gray-700"
+                      onClick={() => setIsMenuOpen(false)}
+                    >
+                      Meine Videos
+                    </Link>
                     <Link
                       href="/profile"
                       className="block px-4 py-2 text-sm text-gray-300 hover:bg-gray-700"
@@ -196,52 +198,31 @@ export default function Navbar() {
       {isMenuOpen && (
         <div className="sm:hidden">
           <div className="pt-2 pb-3 space-y-1">
-            <Link
-              href="/"
-              className={`${
-                isActive('/') 
-                  ? 'bg-gray-800 text-white' 
-                  : 'text-gray-300 hover:bg-gray-700 hover:text-white'
-              } block px-3 py-2 rounded-md text-base font-medium`}
-              onClick={() => setIsMenuOpen(false)}
-            >
-              Home
-            </Link>
             {status === 'authenticated' && (
               <>
-                <Link
-                  href="/editor"
-                  className={`${
-                    isActive('/editor') 
-                      ? 'bg-gray-800 text-white' 
-                      : 'text-gray-300 hover:bg-gray-700 hover:text-white'
-                  } block px-3 py-2 rounded-md text-base font-medium`}
-                  onClick={() => setIsMenuOpen(false)}
-                >
-                  Video Editor
-                </Link>
-                <Link
-                  href="/upload"
-                  className={`${
-                    isActive('/upload') 
-                      ? 'bg-gray-800 text-white' 
-                      : 'text-gray-300 hover:bg-gray-700 hover:text-white'
-                  } block px-3 py-2 rounded-md text-base font-medium`}
-                  onClick={() => setIsMenuOpen(false)}
-                >
-                  Upload
-                </Link>
-                <Link
-                  href="/voiceover"
-                  className={`${
-                    isActive('/voiceover') 
-                      ? 'bg-gray-800 text-white' 
-                      : 'text-gray-300 hover:bg-gray-700 hover:text-white'
-                  } block px-3 py-2 rounded-md text-base font-medium`}
-                  onClick={() => setIsMenuOpen(false)}
-                >
-                  Voiceover
-                </Link>
+                {workflowSteps.map((step) => (
+                  <Link
+                    key={step.path}
+                    href={step.path}
+                    className={`${
+                      isActive(step.path) 
+                        ? 'bg-gray-800 text-white border-l-4 border-primary pl-2' 
+                        : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+                    } flex items-center px-3 py-2 rounded-md text-base font-medium`}
+                    onClick={() => setIsMenuOpen(false)}
+                  >
+                    <div className={`
+                      flex items-center justify-center h-6 w-6 rounded-full mr-2 text-sm
+                      ${isActive(step.path) 
+                        ? 'bg-primary text-white'
+                        : 'bg-gray-700 text-gray-300'
+                      }
+                    `}>
+                      {step.number}
+                    </div>
+                    {step.name}
+                  </Link>
+                ))}
                 <Link
                   href="/my-videos"
                   className={`${
@@ -252,17 +233,6 @@ export default function Navbar() {
                   onClick={() => setIsMenuOpen(false)}
                 >
                   Meine Videos
-                </Link>
-                <Link
-                  href="/script-matcher"
-                  className={`${
-                    isActive('/script-matcher') 
-                      ? 'bg-gray-800 text-white' 
-                      : 'text-gray-300 hover:bg-gray-700 hover:text-white'
-                  } block px-3 py-2 rounded-md text-base font-medium`}
-                  onClick={() => setIsMenuOpen(false)}
-                >
-                  KI-Matching
                 </Link>
               </>
             )}
