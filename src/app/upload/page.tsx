@@ -330,7 +330,7 @@ export default function UploadPage() {
     <main className="container py-12 md:py-20">
       <div className="max-w-6xl mx-auto">
         <h1 className="text-3xl font-bold tracking-tight sm:text-4xl bg-gradient-to-r from-white to-white/80 bg-clip-text text-transparent">
-          Upload Your Videos
+          Upload Video Clips
         </h1>
         <p className="mt-4 text-lg text-white/60">
           Upload video clips to use in your ad.
@@ -339,11 +339,7 @@ export default function UploadPage() {
         <div className="container mx-auto py-12 px-4 sm:px-6 lg:px-8">
           <div className="max-w-4xl mx-auto space-y-8">
             <div>
-              <h1 className="text-3xl font-bold tracking-tight text-white sm:text-4xl">
-                Upload Video Clips
-              </h1>
-              
-              <div className="mt-4 p-4 rounded-lg bg-blue-900/20 border border-blue-700/20 text-blue-400">
+              <div className="p-4 rounded-lg bg-blue-900/20 border border-blue-700/20 text-blue-400">
                 <h3 className="font-medium">Workflow-Tipp</h3>
                 <p className="mt-1">
                   Nachdem du Videos hochgeladen und getaggt hast, nutze das <strong>Script Matching</strong>, um passende Videos für dein Voiceover zu finden.
