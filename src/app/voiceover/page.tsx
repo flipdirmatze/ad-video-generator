@@ -9,7 +9,7 @@ import { toast } from 'react-hot-toast'
 
 // ElevenLabs Stimmen Konfiguration - Deutsche Stimmen
 const ELEVENLABS_VOICES = [
-  { id: 'pNInz6obpgDQGcFmaJgB', name: 'Adam', description: 'Warme männliche Stimme' },
+  { id: 'yuDdr3w2HUqhAD3wqxRt', name: 'Samer', description: 'Schnelle männliche Stimme' },
   { id: 'piTKgcLEGmPE4e6mEKli', name: 'Nicole', description: 'Freundliche weibliche Stimme' },
   { id: 'onwK4e9ZLuTAKqWW03F9', name: 'Daniel', description: 'Sachliche männliche Stimme' },
   { id: '29vD33N1CtxCmqQRPOHJ', name: 'Sarah', description: 'Professionelle weibliche Stimme' },
