@@ -819,76 +819,19 @@ export default function EditorPage() {
 
   return (
     <main className="min-h-screen pb-32">
-      <div className="container mx-auto px-4 py-12 sm:px-6 lg:px-8">
-        <div className="max-w-5xl mx-auto">
-          <h1 className="text-3xl font-bold mb-6">Video-Generator</h1>
-          
-          {/* Status-Anzeige */}
-          {workflowStatusMessage && (
-            <div className="mb-6 p-4 bg-blue-900/30 border border-blue-600/30 rounded-md text-blue-400">
-              <div className="flex items-start">
-                <CheckCircleIcon className="h-5 w-5 mr-2 mt-0.5" />
-                <div>{workflowStatusMessage}</div>
-              </div>
-            </div>
-          )}
-          
-          {/* Projektinformationen */}
-          {projectId && (
-            <div className="mb-8 bg-base-200 rounded-lg p-6">
-              <h2 className="text-xl font-semibold mb-4">Workflow Status</h2>
-              
-              <div className="flex flex-col sm:flex-row gap-4">
-                <div className={`flex-1 rounded-lg p-4 border ${workflowStep === 'voiceover' ? 'border-primary bg-primary/10' : 'border-white/10 bg-white/5'}`}>
-                  <div className="flex items-center mb-2">
-                    <span className={`flex items-center justify-center w-6 h-6 rounded-full mr-2 text-xs ${workflowStep === 'voiceover' ? 'bg-primary text-white' : workflowStep && ['matching', 'editing', 'processing', 'completed'].includes(workflowStep) ? 'bg-green-500 text-white' : 'bg-white/20 text-white/60'}`}>
-                      {workflowStep && ['matching', 'editing', 'processing', 'completed'].includes(workflowStep) ? '✓' : '1'}
-                    </span>
-                    <span className="font-medium">Voiceover</span>
-                  </div>
-                  <p className="text-sm text-white/60 ml-8">
-                    {voiceoverScript ? 'Voiceover erstellt' : 'Voiceover erstellen'}
-                  </p>
-                </div>
-                
-                <div className={`flex-1 rounded-lg p-4 border ${workflowStep === 'matching' ? 'border-primary bg-primary/10' : 'border-white/10 bg-white/5'}`}>
-                  <div className="flex items-center mb-2">
-                    <span className={`flex items-center justify-center w-6 h-6 rounded-full mr-2 text-xs ${workflowStep === 'matching' ? 'bg-primary text-white' : workflowStep && ['editing', 'processing', 'completed'].includes(workflowStep) ? 'bg-green-500 text-white' : 'bg-white/20 text-white/60'}`}>
-                      {workflowStep && ['editing', 'processing', 'completed'].includes(workflowStep) ? '✓' : '2'}
-                    </span>
-                    <span className="font-medium">Video Matching</span>
-                  </div>
-                  <p className="text-sm text-white/60 ml-8">
-                    {matchedVideos.length > 0 ? `${matchedVideos.length} Videos zugeordnet` : 'Noch keine Videos zugeordnet'}
-                  </p>
-                </div>
-                
-                <div className={`flex-1 rounded-lg p-4 border ${workflowStep === 'editing' || workflowStep === 'processing' ? 'border-primary bg-primary/10' : 'border-white/10 bg-white/5'}`}>
-                  <div className="flex items-center mb-2">
-                    <span className={`flex items-center justify-center w-6 h-6 rounded-full mr-2 text-xs ${workflowStep === 'editing' || workflowStep === 'processing' ? 'bg-primary text-white' : workflowStep && ['completed'].includes(workflowStep) ? 'bg-green-500 text-white' : 'bg-white/20 text-white/60'}`}>
-                      {workflowStep && ['completed'].includes(workflowStep) ? '✓' : '3'}
-                    </span>
-                    <span className="font-medium">Video generieren</span>
-                  </div>
-                  <p className="text-sm text-white/60 ml-8">
-                    {workflowStep === 'completed' ? 'Video generiert' : workflowStep === 'processing' ? 'Video wird generiert...' : 'Video generieren'}
-                  </p>
-                </div>
-                
-                <div className={`flex-1 rounded-lg p-4 border ${workflowStep === 'completed' ? 'border-primary bg-primary/10' : 'border-white/10 bg-white/5'}`}>
-                  <div className="flex items-center mb-2">
-                    <span className={`flex items-center justify-center w-6 h-6 rounded-full mr-2 text-xs ${workflowStep === 'completed' ? 'bg-primary text-white' : 'bg-white/20 text-white/60'}`}>
-                      {workflowStep === 'completed' ? '✓' : '4'}
-                    </span>
-                    <span className="font-medium">Fertig</span>
-                  </div>
-                  <p className="text-sm text-white/60 ml-8">
-                    {workflowStep === 'completed' ? 'Video fertiggestellt' : 'Warte auf Fertigstellung'}
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
+      <div className="container mx-auto py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-4xl mx-auto">
+          <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
+            Video-Editor
+          </h1>
+
+          {/* Workflow-Tipp statt Workflow Status */}
+          <div className="mt-6 p-4 rounded-lg bg-blue-900/20 border border-blue-700/20 text-blue-400">
+            <h3 className="font-medium">Workflow-Tipp</h3>
+            <p className="mt-1">
+              Hier kannst du dein Video generieren. Die ausgewählten Videoclips werden automatisch mit deinem Voiceover synchronisiert.
+            </p>
+          </div>
           
           {/* Error-Anzeige */}
           {error && (
@@ -947,7 +890,6 @@ export default function EditorPage() {
           ) : (
             // Wenn noch kein fertiges Video vorhanden ist
             <div className="mb-8">
-              <h2 className="text-xl font-semibold mb-4">Video-Generierung</h2>
               
               {/* Matched Videos Info */}
               {fromScriptMatcher && matchedVideos.length > 0 && (

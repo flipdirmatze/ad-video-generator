@@ -639,12 +639,8 @@ export default function ScriptVideoMatcher() {
       </div>
 
       <div className="mt-8">
-        <h2 className="text-xl font-semibold">Voiceover-Skript</h2>
-        <p className="text-sm text-gray-400 mt-1">Skript für die Analyse</p>
+        <h2 className="text-xl font-semibold">Dein Voiceover-Skript</h2>
         <div className="space-y-2">
-          <label htmlFor="script" className="block text-sm font-medium">
-            Skript für die Analyse
-          </label>
           <textarea
             id="script"
             className="w-full min-h-[100px] bg-gray-800 border border-gray-700 rounded-md p-2 text-white"
@@ -657,7 +653,7 @@ export default function ScriptVideoMatcher() {
         
         {/* Voiceover-Player */}
         {voiceoverData && (
-          <div className="p-4 mt-4 bg-gray-800 border border-gray-700 rounded-md">
+          <div className="p-4 mt-4 mb-6 bg-gray-800 border border-gray-700 rounded-md max-w-md">
             <div className="flex items-center justify-between">
               <div className="font-medium">Dein Voiceover</div>
               <button
@@ -703,7 +699,13 @@ export default function ScriptVideoMatcher() {
             Analysiere Skript...
           </>
         ) : (
-          'Passende Videos finden'
+          <>
+            <svg className="inline-block w-5 h-5 mr-2" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M11.0489 1.92705C11.3483 0.826738 12.6517 0.826741 12.9511 1.92705L14.0206 6.52295C14.1545 7.0999 14.7018 7.48751 15.2945 7.44986L19.9947 7.13864C21.1346 7.06851 21.6408 8.29853 20.7229 8.91631L16.8888 11.6195C16.3968 11.9631 16.1773 12.5913 16.3489 13.1563L17.8345 17.6377C18.1892 18.7155 17.1255 19.5934 16.1829 19.0172L12.1527 16.6619C11.6354 16.3332 10.9946 16.3547 10.5003 16.7181L6.62081 19.8878C5.76041 20.5929 4.6082 19.8214 4.88892 18.7459L5.91194 14.1354C6.03657 13.5468 5.77431 12.9458 5.25895 12.6468L1.25946 10.3119C0.280989 9.80513 0.494767 8.42331 1.61338 8.27552L6.23479 7.58215C6.81873 7.49702 7.29585 7.06069 7.3694 6.47571L8.02533 1.82335C8.19688 0.70809 9.4493 0.340437 10.1353 1.20932L13.0458 5.03929C13.3664 5.45534 13.9352 5.60845 14.4201 5.41614L18.8476 3.80642C19.9122 3.43222 20.6909 4.57165 20.053 5.50171L17.698 9.29488C17.3589 9.80721 17.443 10.4886 17.907 10.8929L21.6344 14.0051C22.5449 14.7584 22.0487 16.1606 20.9362 16.237L16.4503 16.5275C15.8723 16.563 15.4016 17.0057 15.2897 17.5743L14.6315 22.0089C14.4679 23.1288 13.1222 23.4401 12.5023 22.5056L9.80967 18.5022C9.51414 18.0597 8.9374 17.9068 8.45158 18.1303L4.09599 20.0308C3.05406 20.4539 2.20051 19.3661 2.78945 18.414L4.93132 14.5273C5.23898 13.9852 5.10751 13.3182 4.61289 12.9307L0.803083 9.97473C-0.139491 9.27431 0.287843 7.80451 1.42395 7.66468L5.59492 7.13586C6.1773 7.06558 6.64587 6.5895 6.75432 6.01303L7.77252 1.48042C7.98063 0.370698 9.30736 0.0932136 9.93606 1.05224L12.6213 5.05172C12.9263 5.49987 13.5146 5.6433 13.9919 5.41798L18.3669 3.50446" 
+                stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            Passende Videos zu deinem Skript finden
+          </>
         )}
       </button>
 
