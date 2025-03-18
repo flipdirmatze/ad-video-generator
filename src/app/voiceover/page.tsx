@@ -5,6 +5,7 @@ import { SpeakerWaveIcon, PlayIcon, PauseIcon, ArrowRightIcon, TrashIcon, ArrowD
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
+import { toast } from 'react-hot-toast'
 
 // ElevenLabs Stimmen Konfiguration - Deutsche Stimmen
 const ELEVENLABS_VOICES = [
@@ -14,6 +15,9 @@ const ELEVENLABS_VOICES = [
   { id: '29vD33N1CtxCmqQRPOHJ', name: 'Sarah', description: 'Professionelle weibliche Stimme' },
   { id: 'XrExE9yKIg1WjnnlVkGX', name: 'Thomas', description: 'Tiefe männliche Stimme' }
 ];
+
+// Beispielsatz für den Stimmentest
+const TEST_SENTENCE = "Hallo, so klingt meine Stimme. Ich kann dein Voiceover generieren.";
 
 type VoiceoverData = {
   dataUrl: string; // Base64-URL für Browser-Vorschau
@@ -36,6 +40,8 @@ export default function VoiceoverPage() {
   const [projectId, setProjectId] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
   const [selectedVoice, setSelectedVoice] = useState(ELEVENLABS_VOICES[0].id)
+  const [isTestingVoice, setIsTestingVoice] = useState(false)
+  const [testAudio, setTestAudio] = useState<HTMLAudioElement | null>(null)
 
   // Authentifizierungsprüfung
   useEffect(() => {
@@ -172,6 +178,49 @@ export default function VoiceoverPage() {
     const voiceId = e.target.value;
     setSelectedVoice(voiceId);
     localStorage.setItem('selectedVoiceId', voiceId);
+  };
+
+  // Testen der ausgewählten Stimme
+  const handleTestVoice = async () => {
+    try {
+      setIsTestingVoice(true);
+      
+      // API-Aufruf zum Testen der Stimme mit einem Testsatz
+      const response = await fetch('/api/generate-voiceover', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          script: TEST_SENTENCE,
+          voiceId: selectedVoice,
+          isTest: true, // Markiere dies als Test, damit die API keine DB-Einträge oder S3-Uploads erstellt
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to test voice');
+      }
+
+      const data = await response.json();
+      
+      // Wenn wir bereits ein Audio-Element haben, stoppen und entfernen wir es
+      if (testAudio) {
+        testAudio.pause();
+        testAudio.remove();
+      }
+
+      // Erstelle ein neues Audio-Element und spiele den Testsatz ab
+      const audio = new Audio(data.dataUrl);
+      setTestAudio(audio);
+      audio.play();
+
+    } catch (error) {
+      console.error('Error testing voice:', error);
+      toast.error('Failed to test voice. Please try again.');
+    } finally {
+      setIsTestingVoice(false);
+    }
   };
 
   // Voiceover-Generierung
@@ -321,11 +370,11 @@ export default function VoiceoverPage() {
               <label htmlFor="voice" className="block text-sm font-medium text-white/80">
                 Stimme auswählen
               </label>
-              <div className="mt-1">
+              <div className="flex mt-1 gap-2">
                 <select
                   id="voice"
                   name="voice"
-                  className="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-700 bg-gray-800 text-white rounded-md p-2.5"
+                  className="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 flex-grow sm:text-sm border-gray-700 bg-gray-800 text-white rounded-md p-2.5"
                   value={selectedVoice}
                   onChange={handleVoiceChange}
                 >
@@ -335,6 +384,22 @@ export default function VoiceoverPage() {
                     </option>
                   ))}
                 </select>
+                
+                {/* Test Voice Button */}
+                <button
+                  onClick={handleTestVoice}
+                  disabled={isTestingVoice}
+                  className="shadow-sm inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
+                >
+                  {isTestingVoice ? (
+                    <SpeakerWaveIcon className="h-4 w-4 animate-pulse" />
+                  ) : (
+                    <>
+                      <SpeakerWaveIcon className="h-4 w-4 mr-1" />
+                      Testen
+                    </>
+                  )}
+                </button>
               </div>
             </div>
 
@@ -344,69 +409,74 @@ export default function VoiceoverPage() {
               </div>
             )}
 
-            {!voiceoverData ? (
-              <button
-                onClick={handleGenerateVoiceover}
-                disabled={isGenerating || !script.trim()}
-                className="mt-4 inline-flex items-center justify-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isGenerating ? (
-                  <>
-                    <SpeakerWaveIcon className="h-5 w-5 mr-2 animate-pulse" />
-                    Generating...
-                  </>
-                ) : (
-                  <>
-                    <SpeakerWaveIcon className="h-5 w-5 mr-2" />
-                    Generate Voiceover
-                  </>
-                )}
-              </button>
-            ) : (
-              <div className="mt-6 space-y-4">
-                <div className="bg-gray-800 p-4 rounded-md">
-                  <div className="flex justify-between items-center">
-                    <h2 className="text-lg font-medium">Dein Voiceover</h2>
-                    <div className="flex space-x-2">
-                      <button
-                        onClick={togglePlay}
-                        className="inline-flex items-center justify-center p-2 border border-transparent rounded-full text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                      >
-                        {isPlaying ? (
-                          <PauseIcon className="h-5 w-5" />
-                        ) : (
-                          <PlayIcon className="h-5 w-5" />
-                        )}
-                      </button>
-                      <button
-                        onClick={handleDownload}
-                        className="inline-flex items-center justify-center p-2 border border-transparent rounded-full text-white bg-gray-600 hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
-                      >
-                        <ArrowDownTrayIcon className="h-5 w-5" />
-                      </button>
-                      <button
-                        onClick={handleReset}
-                        className="inline-flex items-center justify-center p-2 border border-transparent rounded-full text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
-                      >
-                        <TrashIcon className="h-5 w-5" />
-                      </button>
+            {/* Generate Button section */}
+            <div className="mt-6">
+              {!voiceoverData && (
+                <button
+                  onClick={handleGenerateVoiceover}
+                  disabled={isGenerating || !script.trim()}
+                  className="w-full inline-flex items-center justify-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isGenerating ? (
+                    <>
+                      <SpeakerWaveIcon className="h-5 w-5 mr-2 animate-pulse" />
+                      Generating...
+                    </>
+                  ) : (
+                    <>
+                      <SpeakerWaveIcon className="h-5 w-5 mr-2" />
+                      Generate Voiceover
+                    </>
+                  )}
+                </button>
+              )}
+
+              {voiceoverData && (
+                <div className="space-y-4">
+                  <div className="bg-gray-800 p-4 rounded-md">
+                    <div className="flex justify-between items-center">
+                      <h2 className="text-lg font-medium">Dein Voiceover</h2>
+                      <div className="flex space-x-2">
+                        <button
+                          onClick={togglePlay}
+                          className="inline-flex items-center justify-center p-2 border border-transparent rounded-full text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                        >
+                          {isPlaying ? (
+                            <PauseIcon className="h-5 w-5" />
+                          ) : (
+                            <PlayIcon className="h-5 w-5" />
+                          )}
+                        </button>
+                        <button
+                          onClick={handleDownload}
+                          className="inline-flex items-center justify-center p-2 border border-transparent rounded-full text-white bg-gray-600 hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
+                        >
+                          <ArrowDownTrayIcon className="h-5 w-5" />
+                        </button>
+                        <button
+                          onClick={handleReset}
+                          className="inline-flex items-center justify-center p-2 border border-transparent rounded-full text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                        >
+                          <TrashIcon className="h-5 w-5" />
+                        </button>
+                      </div>
+                    </div>
+                    {/* Zeige die Name der ausgewählten Stimme an */}
+                    <div className="mt-2 text-sm text-gray-400">
+                      Stimme: {ELEVENLABS_VOICES.find(v => v.id === selectedVoice)?.name || 'Standard'}
                     </div>
                   </div>
-                  {/* Zeige die Name der ausgewählten Stimme an */}
-                  <div className="mt-2 text-sm text-gray-400">
-                    Stimme: {ELEVENLABS_VOICES.find(v => v.id === selectedVoice)?.name || 'Standard'}
-                  </div>
-                </div>
 
-                <button
-                  onClick={handleContinue}
-                  className="w-full inline-flex items-center justify-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
-                >
-                  Weiter zum nächsten Schritt
-                  <ArrowRightIcon className="ml-2 h-5 w-5" />
-                </button>
-              </div>
-            )}
+                  <button
+                    onClick={handleContinue}
+                    className="w-full inline-flex items-center justify-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+                  >
+                    Weiter zum nächsten Schritt
+                    <ArrowRightIcon className="ml-2 h-5 w-5" />
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>

@@ -28,12 +28,12 @@ export async function POST(request: Request) {
       )
     }
 
-    const { script, voiceId } = await request.json()
+    const { script, voiceId, isTest } = await request.json()
 
     // Verwende die übergebene Stimme oder die Standard-Stimme
     const selectedVoiceId = voiceId || DEFAULT_VOICE_ID;
     
-    console.log(`Using voice ID: ${selectedVoiceId}`);
+    console.log(`Using voice ID: ${selectedVoiceId} ${isTest ? '(test mode)' : ''}`);
 
     if (!script) {
       console.error('Voiceover generation error: Script is required');
@@ -84,6 +84,16 @@ export async function POST(request: Request) {
       // Für temporäre Kompatibilität mit dem Frontend auch base64 zurückgeben
       const audioBase64 = buffer.toString('base64')
       const dataUrl = `data:audio/mpeg;base64,${audioBase64}`
+      
+      // Für Stimmentests sofort die Daten zurückgeben ohne S3-Upload oder DB-Eintrag
+      if (isTest) {
+        console.log('Test mode - returning data URL only');
+        return NextResponse.json({
+          success: true,
+          dataUrl,
+          voiceId: selectedVoiceId
+        });
+      }
       
       // Connect to database first to generate MongoDB ID
       console.log('Connecting to MongoDB to prepare voiceover document');
