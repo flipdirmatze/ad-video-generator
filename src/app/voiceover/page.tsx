@@ -179,6 +179,7 @@ export default function VoiceoverPage() {
   // Handle voice selection change
   const handleVoiceChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const voiceId = e.target.value;
+    console.log('Voice changed to:', voiceId);
     setSelectedVoice(voiceId);
     localStorage.setItem('selectedVoiceId', voiceId);
   };
@@ -233,16 +234,22 @@ export default function VoiceoverPage() {
     setIsGenerating(true)
     setError(null)
     
-    console.log('Generating voiceover with voice ID:', selectedVoice);
+    // Sicherstellen, dass die aktuelle Stimme verwendet wird
+    const currentVoiceId = selectedVoice;
+    console.log('Generating voiceover with voice ID (current selection):', currentVoiceId);
     
     try {
+      const requestBody = {
+        script, 
+        voiceId: currentVoiceId // Verwende die aktuell ausgewählte Stimme
+      };
+      
+      console.log('Request body for API call:', JSON.stringify(requestBody));
+      
       const response = await fetch('/api/generate-voiceover', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          script, 
-          voiceId: selectedVoice 
-        })
+        body: JSON.stringify(requestBody)
       })
       
       const data = await response.json()
@@ -263,18 +270,20 @@ export default function VoiceoverPage() {
       
       setVoiceoverData(newVoiceoverData);
       
+      // Bei jeder Generierung die aktuelle Stimmen-ID speichern
+      localStorage.setItem('selectedVoiceId', currentVoiceId);
+      
       // Als JSON in localStorage speichern mit Stimmen-ID
       const voiceoverDataWithVoice = {
         ...newVoiceoverData,
-        voiceId: selectedVoice
+        voiceId: currentVoiceId
       };
       localStorage.setItem('voiceoverData', JSON.stringify(voiceoverDataWithVoice));
       // Auch das Script speichern
       localStorage.setItem('voiceoverScript', script);
-      localStorage.setItem('selectedVoiceId', selectedVoice);
       
-      // Workflow-Status speichern
-      await saveWorkflowState(data.voiceoverId, script);
+      // Workflow-Status speichern mit der aktuellen Stimmen-ID
+      await saveWorkflowState(data.voiceoverId, script, currentVoiceId);
     } catch (error) {
       console.error('Failed to generate voiceover:', error)
       setError(error instanceof Error ? error.message : 'Failed to generate voiceover')
@@ -284,7 +293,7 @@ export default function VoiceoverPage() {
   }
   
   // Workflow-Status speichern
-  const saveWorkflowState = async (voiceoverId: string, voiceoverScript: string) => {
+  const saveWorkflowState = async (voiceoverId: string, voiceoverScript: string, voiceId = selectedVoice) => {
     setIsSaving(true);
     
     try {
@@ -296,7 +305,7 @@ export default function VoiceoverPage() {
           workflowStep: 'voiceover',
           voiceoverId: voiceoverId,
           voiceoverScript: voiceoverScript,
-          voiceId: selectedVoice,
+          voiceId: voiceId,
           title: 'Mein Video-Projekt'
         })
       });
@@ -468,9 +477,9 @@ export default function VoiceoverPage() {
                         </button>
                       </div>
                     </div>
-                    {/* Zeige die Name der ausgewählten Stimme an */}
+                    {/* Zeige die Name der aktuell ausgewählten Stimme an */}
                     <div className="mt-2 text-sm text-gray-400">
-                      Stimme: {ELEVENLABS_VOICES.find(v => v.id === selectedVoice)?.name || 'Standard'}
+                      Aktuelle Stimme: {ELEVENLABS_VOICES.find(v => v.id === selectedVoice)?.name || 'Standard'}
                     </div>
                   </div>
 
