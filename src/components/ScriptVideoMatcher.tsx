@@ -722,63 +722,46 @@ export default function ScriptVideoMatcher() {
           <div className="mt-8 space-y-8">
             <h4 className="text-lg font-medium">Vorschau der Videozuordnung</h4>
             
-            <div className="relative">
-              {/* Zeitachse */}
-              <div className="absolute left-0 right-0 top-12 h-1 bg-gray-700"></div>
-              
-              {/* Segmente und Videos */}
-              <div className="grid gap-4 mb-8" style={{ 
-                gridTemplateColumns: `repeat(${segments.length}, 1fr)`,
-              }}>
-                {segments.map((segment, index) => {
-                  const match = matches.find(m => m.segment.text === segment.text);
-                  
-                  return (
-                    <div 
-                      key={index} 
-                      className="relative border-l border-gray-700"
-                    >
-                      {/* Zeitmarke */}
-                      <div className="absolute -left-1 top-12 w-2 h-2 bg-white rounded-full"></div>
-                      
-                      {/* Dauer */}
-                      <div className="absolute left-2 top-16 text-xs text-gray-400">
-                        {index === 0 ? '0s' : ''}
+            {/* Segmente und Videos */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-8">
+              {segments.map((segment, index) => {
+                const match = matches.find(m => m.segment.text === segment.text);
+                
+                return (
+                  <div 
+                    key={index} 
+                    className="bg-gray-800/50 border border-gray-700 rounded-md overflow-hidden"
+                  >
+                    {/* Segment-Box */}
+                    <div className="p-4 border-b border-gray-700">
+                      <div className="flex justify-between items-start mb-2">
+                        <span className="text-sm font-medium text-white/90">Segment {index + 1}</span>
+                        <span className="text-xs bg-gray-700/80 rounded px-2 py-0.5">
+                          {segment.duration}s
+                        </span>
                       </div>
-                      <div className="absolute right-0 top-16 text-xs text-gray-400">
-                        {segment.duration}s
-                      </div>
-                      
-                      {/* Segment-Box */}
-                      <div className="mb-10 p-3 bg-gray-800/70 border border-gray-700 rounded-md">
-                        <div className="flex justify-between items-start mb-2">
-                          <span className="text-sm font-medium text-white/80">Segment {index + 1}</span>
-                          <span className="text-xs text-gray-400 bg-gray-700/60 rounded px-2 py-0.5">
-                            {segment.duration}s
+                      <p className="text-sm mb-2 line-clamp-2">{segment.text}</p>
+                      <div className="flex flex-wrap gap-1">
+                        {segment.keywords.map((keyword, kIdx) => (
+                          <span 
+                            key={kIdx} 
+                            className="text-xs bg-purple-900/30 border border-purple-700/30 text-purple-400 rounded px-1.5 py-0.5"
+                          >
+                            {keyword}
                           </span>
-                        </div>
-                        <p className="text-sm mb-2 line-clamp-2">{segment.text}</p>
-                        <div className="flex flex-wrap gap-1">
-                          {segment.keywords.map((keyword, kIdx) => (
-                            <span 
-                              key={kIdx} 
-                              className="text-xs bg-purple-900/30 border border-purple-700/30 text-purple-400 rounded px-1.5 py-0.5"
-                            >
-                              {keyword}
-                            </span>
-                          ))}
-                        </div>
+                        ))}
                       </div>
-                      
-                      {/* Video-Thumbnail und Info */}
+                    </div>
+                    
+                    {/* Video-Thumbnail und Info */}
+                    <div className="p-3">
                       {match ? (
-                        <div className="p-3 bg-gray-800/70 border border-gray-700 rounded-md">
+                        <div>
                           <div className="mb-2 flex justify-between items-center">
                             <div className="text-sm font-medium flex items-center">
                               <span className={`px-1.5 py-0.5 text-xs rounded mr-2 ${match.source === 'manual' ? 'bg-purple-500/30 text-purple-300' : 'bg-green-500/30 text-green-300'}`}>
                                 {match.source === 'manual' ? 'Manuell' : `${Math.round(match.score * 100)}% Match`}
                               </span>
-                              <span className="truncate">{match.video.name}</span>
                             </div>
                           </div>
                           
@@ -859,8 +842,8 @@ export default function ScriptVideoMatcher() {
                           </div>
                         </div>
                       ) : (
-                        <div className="p-3 bg-gray-800/70 border border-gray-700 rounded-md">
-                          <div className="flex items-center justify-center text-yellow-400 py-2">
+                        <div>
+                          <div className="flex items-center justify-center text-yellow-400 py-3 mb-2">
                             <ExclamationTriangleIcon className="h-5 w-5 mr-2" />
                             Kein passendes Video gefunden
                           </div>
@@ -884,9 +867,9 @@ export default function ScriptVideoMatcher() {
                         </div>
                       )}
                     </div>
-                  );
-                })}
-              </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
           
