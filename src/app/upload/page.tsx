@@ -342,9 +342,6 @@ export default function UploadPage() {
               <h1 className="text-3xl font-bold tracking-tight text-white sm:text-4xl">
                 Upload Video Clips
               </h1>
-              <p className="mt-4 text-lg text-white/60">
-                Upload video clips to use in your ad.
-              </p>
               
               <div className="mt-4 p-4 rounded-lg bg-blue-900/20 border border-blue-700/20 text-blue-400">
                 <h3 className="font-medium">Workflow-Tipp</h3>
