@@ -727,16 +727,16 @@ export default function ScriptVideoMatcher() {
               <div className="absolute left-0 right-0 top-12 h-1 bg-gray-700"></div>
               
               {/* Segmente und Videos */}
-              <div className="flex mb-8">
+              <div className="grid gap-4 mb-8" style={{ 
+                gridTemplateColumns: `repeat(${segments.length}, 1fr)`,
+              }}>
                 {segments.map((segment, index) => {
                   const match = matches.find(m => m.segment.text === segment.text);
-                  const segmentWidth = `${Math.max(15, segment.duration * 5)}%`;
                   
                   return (
                     <div 
                       key={index} 
-                      className="relative first:ml-0 border-l border-gray-700"
-                      style={{ width: segmentWidth }}
+                      className="relative border-l border-gray-700"
                     >
                       {/* Zeitmarke */}
                       <div className="absolute -left-1 top-12 w-2 h-2 bg-white rounded-full"></div>
