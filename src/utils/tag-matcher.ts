@@ -17,6 +17,7 @@ export interface VideoMatch {
   score: number;
   startTime?: number;
   endTime?: number;
+  source?: 'auto' | 'manual'; // Ursprung des Matches: automatisch oder manuell zugeordnet
 }
 
 /**
@@ -68,17 +69,15 @@ export function findBestMatchingVideo(
   segment: ScriptSegment,
   videos: TaggedVideo[]
 ): VideoMatch | null {
-  if (!videos.length) {
+  if (!segment || !segment.keywords || !videos || !videos.length) {
     return null;
   }
 
   let bestMatch: VideoMatch | null = null;
   let highestScore = 0;
-  
+
   for (const video of videos) {
-    if (!video.tags || !video.tags.length) {
-      continue;
-    }
+    if (!video.tags || !video.tags.length) continue;
     
     const score = calculateSimilarity(segment.keywords, video.tags);
     
@@ -88,14 +87,13 @@ export function findBestMatchingVideo(
         segment,
         video,
         score,
-        // Wenn das Video länger ist als das Segment, kürzen wir es
-        startTime: 0,
-        endTime: segment.duration
+        source: 'auto' // Markiere dies als automatische Zuordnung
       };
     }
   }
-  
-  return bestMatch;
+
+  // Nur zurückgeben, wenn der Score über einem Mindestwert liegt
+  return highestScore > 0.1 ? bestMatch : null;
 }
 
 /**

@@ -341,31 +341,34 @@ export default function ScriptVideoMatcher() {
 
   // Funktion zum manuellen Zuordnen eines Videos zu einem Segment
   const handleManualVideoSelect = (segmentIndex: number, videoId: string) => {
-    // Finde das ausgewählte Video
-    const selectedVideo = availableVideos.find(v => v.id === videoId);
-    if (!selectedVideo) return;
+    if (!videoId) return;
     
-    // Finde das entsprechende Segment
+    console.log(`Manuelles Video ausgewählt: ${videoId} für Segment ${segmentIndex}`);
+    
+    // Video-Daten finden
+    const videoData = availableVideos.find(v => v.id === videoId);
+    if (!videoData) {
+      console.error(`Video mit ID ${videoId} nicht gefunden`);
+      return;
+    }
+    
+    // Segment aus zugeordneten Segmenten finden
     const segment = segments[segmentIndex];
-    if (!segment) return;
+    if (!segment) {
+      console.error(`Segment mit Index ${segmentIndex} nicht gefunden`);
+      return;
+    }
     
-    // Erstelle einen neuen Match
+    // Neuen Match erstellen oder vorhandenen ersetzen
     const newMatch: VideoMatch = {
       segment,
-      video: {
-        id: selectedVideo.id,
-        name: selectedVideo.name,
-        url: selectedVideo.url,
-        tags: selectedVideo.tags,
-        // Fallback Dauer, kann später angepasst werden
-        duration: segment.duration * 1.5
-      },
-      score: 0.5 // Mittlere Score für manuelle Auswahl
+      video: videoData,
+      score: 0,  // Manuell ausgewählt, daher keine automatische Bewertung
+      source: 'manual'  // Hier markieren wir, dass es manuell ausgewählt wurde
     };
     
-    // Aktualisiere die Matches Liste
     setMatches(prevMatches => {
-      // Filtere eventuell vorhandenen Match für dieses Segment heraus
+      // Filtern, um vorhandene Matches für dieses Segment zu entfernen
       const filteredMatches = prevMatches.filter(m => m.segment.text !== segment.text);
       // Füge neuen Match hinzu
       return [...filteredMatches, newMatch];
@@ -770,11 +773,30 @@ export default function ScriptVideoMatcher() {
                       {/* Video-Thumbnail und Info */}
                       {match ? (
                         <div className="p-3 bg-gray-800/70 border border-gray-700 rounded-md">
-                          <div className="flex justify-between items-start mb-2">
-                            <span className="text-sm font-medium text-white/80">Video</span>
-                            <span className="text-xs font-medium text-emerald-400 bg-emerald-900/30 border border-emerald-700/30 rounded px-2 py-0.5">
-                              {Math.round(match.score * 100)}% Match
-                            </span>
+                          <div className="mb-2 flex justify-between items-center">
+                            <div className="text-sm font-medium flex items-center">
+                              <span className={`px-1.5 py-0.5 text-xs rounded mr-2 ${match.source === 'manual' ? 'bg-purple-500/30 text-purple-300' : 'bg-green-500/30 text-green-300'}`}>
+                                {match.source === 'manual' ? 'Manuell' : `${Math.round(match.score * 100)}% Match`}
+                              </span>
+                              <span className="truncate">{match.video.name}</span>
+                            </div>
+                            
+                            {/* Video-Auswahl Dropdown für zugeordnete Videos */}
+                            <div className="relative">
+                              <select 
+                                className="bg-gray-700 border border-gray-600 rounded text-xs px-2 py-1"
+                                onChange={(e) => handleManualVideoSelect(index, e.target.value)}
+                                value={match.video.id}
+                              >
+                                <option value={match.video.id}>{match.source === 'manual' ? 'Manuell ausgewählt' : 'Auto-Match'}</option>
+                                <option disabled>──────────</option>
+                                {availableVideos.map(video => (
+                                  <option key={video.id} value={video.id} disabled={video.id === match.video.id}>
+                                    {video.name} {video.tags.length > 0 ? `(Tags: ${video.tags.join(', ')})` : ''}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
                           </div>
                           
                           <div className="relative aspect-video bg-gray-900/50 rounded overflow-hidden mb-2">
@@ -792,11 +814,7 @@ export default function ScriptVideoMatcher() {
                                   onLoadStart={() => updateVideoLoadingState(match.video.id, true)}
                                   onCanPlay={() => updateVideoLoadingState(match.video.id, false)}
                                   onEnded={() => setPlayingVideoId(null)}
-                                  onError={(e) => {
-                                    console.error(`Video error for ${match.video.id}:`, e)
-                                    updateVideoErrorState(match.video.id, true)
-                                    updateVideoLoadingState(match.video.id, false)
-                                  }}
+                                  onError={(e) => console.error(`Video error for ${match.video.id}:`, e)}
                                 />
                                 
                                 {/* Play-Button und Overlay */}
