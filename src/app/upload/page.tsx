@@ -1,9 +1,10 @@
 'use client'
 
 import React, { useEffect, useRef, useState } from 'react'
-import { ArrowUpTrayIcon, ArrowRightIcon, CheckCircleIcon, FilmIcon, TagIcon, XMarkIcon } from '@heroicons/react/24/outline'
+import { ArrowUpTrayIcon, ArrowRightIcon, CheckCircleIcon, FilmIcon, TagIcon, XMarkIcon, DocumentMagnifyingGlassIcon } from '@heroicons/react/24/outline'
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
+import { useRouter } from 'next/navigation'
 
 // Vereinfachter Video-Typ
 type UploadedVideo = {
@@ -18,6 +19,7 @@ type UploadedVideo = {
 
 export default function UploadPage() {
   const { data: session, status } = useSession()
+  const router = useRouter()
   const [isLoading, setIsLoading] = useState(true)
   const [dragActive, setDragActive] = useState(false)
   const [uploadedVideos, setUploadedVideos] = useState<UploadedVideo[]>([])
@@ -29,6 +31,8 @@ export default function UploadPage() {
   // Tag-related state
   const [currentTag, setCurrentTag] = useState('')
   const [selectedVideoId, setSelectedVideoId] = useState<string | null>(null)
+  const [projectId, setProjectId] = useState<string | null>(null)
+  const [workflowStep, setWorkflowStep] = useState<string | null>(null)
 
   // Vereinfachte Authentifizierungs-Prüfung
   useEffect(() => {
@@ -73,7 +77,30 @@ export default function UploadPage() {
     }
     
     loadVideos()
-  }, [session])
+    
+    // Check for existing project
+    const savedProjectId = localStorage.getItem('currentProjectId');
+    if (savedProjectId) {
+      fetch(`/api/workflow-state?projectId=${savedProjectId}`)
+        .then(response => {
+          if (response.ok) {
+            return response.json();
+          }
+          throw new Error('Project not found');
+        })
+        .then(data => {
+          if (data.success && data.project) {
+            setProjectId(data.project.id);
+            setWorkflowStep(data.project.workflowStep);
+          }
+        })
+        .catch(error => {
+          console.error('Error loading project:', error);
+          // Clear invalid project ID
+          localStorage.removeItem('currentProjectId');
+        });
+    }
+  }, [session]);
 
   // Vereinfachtes Drag & Drop
   function handleDrag(e: React.DragEvent) {
@@ -289,6 +316,26 @@ export default function UploadPage() {
           Upload video clips to use in your ad.
         </p>
 
+        <div className="container mx-auto py-12 px-4 sm:px-6 lg:px-8">
+          <div className="max-w-4xl mx-auto space-y-8">
+            <div>
+              <h1 className="text-3xl font-bold tracking-tight text-white sm:text-4xl">
+                Upload Video Clips
+              </h1>
+              <p className="mt-4 text-lg text-white/60">
+                Upload video clips to use in your ad.
+              </p>
+              
+              <div className="mt-4 p-4 rounded-lg bg-blue-900/20 border border-blue-700/20 text-blue-400">
+                <h3 className="font-medium">Workflow-Tipp</h3>
+                <p className="mt-1">
+                  Nachdem du Videos hochgeladen und getaggt hast, nutze das <strong>Script Matching</strong>, um passende Videos für dein Voiceover zu finden.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Upload Area */}
         <div 
           className={`mt-8 border-2 border-dashed rounded-lg p-8 text-center ${
@@ -466,14 +513,64 @@ export default function UploadPage() {
         
         {/* Continue Button */}
         {allVideos.length > 0 && (
-          <div className="mt-8 flex justify-end">
-            <Link
-              href="/editor"
-              className="flex items-center bg-purple-600 hover:bg-purple-500 text-white py-2 px-4 rounded-lg"
-            >
-              Continue to Editor
-              <ArrowRightIcon className="h-5 w-5 ml-2" />
-            </Link>
+          <div className="mt-8 space-y-4">
+            {projectId && (
+              <div className="p-4 bg-blue-900/30 border border-blue-700/30 rounded-lg text-blue-400">
+                <h3 className="font-semibold">Laufendes Projekt</h3>
+                <p className="mt-1">
+                  Du hast ein aktives Projekt im Schritt "{workflowStep}". 
+                  Möchtest du es fortsetzen oder mit der Script-Zuordnung beginnen?
+                </p>
+                <div className="mt-4 flex flex-wrap gap-3">
+                  {workflowStep === 'voiceover' && (
+                    <button
+                      onClick={() => router.push('/script-matcher')}
+                      className="flex items-center bg-gradient-to-r from-blue-600 to-blue-500 text-white py-2 px-4 rounded-lg hover:from-blue-500 hover:to-blue-400"
+                    >
+                      Script Matching starten
+                      <DocumentMagnifyingGlassIcon className="h-5 w-5 ml-2" />
+                    </button>
+                  )}
+                  
+                  {workflowStep === 'matching' && (
+                    <button
+                      onClick={() => router.push('/script-matcher')}
+                      className="flex items-center bg-gradient-to-r from-blue-600 to-blue-500 text-white py-2 px-4 rounded-lg hover:from-blue-500 hover:to-blue-400"
+                    >
+                      Script Matching fortsetzen
+                      <DocumentMagnifyingGlassIcon className="h-5 w-5 ml-2" />
+                    </button>
+                  )}
+                  
+                  {workflowStep === 'editing' || workflowStep === 'processing' || workflowStep === 'completed' && (
+                    <button
+                      onClick={() => router.push('/editor')}
+                      className="flex items-center bg-gradient-to-r from-purple-600 to-purple-500 text-white py-2 px-4 rounded-lg hover:from-purple-500 hover:to-purple-400"
+                    >
+                      Zum Video-Editor
+                      <ArrowRightIcon className="h-5 w-5 ml-2" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+            
+            <div className="flex flex-wrap justify-end gap-4">
+              <Link
+                href="/script-matcher"
+                className="flex items-center bg-blue-600 hover:bg-blue-500 text-white py-2 px-4 rounded-lg"
+              >
+                Script Matching
+                <DocumentMagnifyingGlassIcon className="h-5 w-5 ml-2" />
+              </Link>
+              <Link
+                href="/editor"
+                className="flex items-center bg-purple-600 hover:bg-purple-500 text-white py-2 px-4 rounded-lg"
+              >
+                Direkt zum Editor
+                <ArrowRightIcon className="h-5 w-5 ml-2" />
+              </Link>
+            </div>
           </div>
         )}
       </div>

@@ -3,8 +3,9 @@
 import { useState, useEffect, useCallback } from 'react'
 import { ScriptSegment } from '@/lib/openai'
 import { VideoMatch } from '@/utils/tag-matcher'
-import { PlayIcon, PauseIcon, ArrowRightIcon, ArrowPathIcon } from '@heroicons/react/24/outline'
+import { PlayIcon, PauseIcon, ArrowRightIcon, ArrowPathIcon, CheckCircleIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 
 type VoiceoverData = {
   dataUrl: string; // Base64-URL für Browser-Vorschau
@@ -27,15 +28,19 @@ export default function ScriptVideoMatcher() {
   const [isLoading, setIsLoading] = useState(true)
   const [projectId, setProjectId] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
+  const [workflowStep, setWorkflowStep] = useState<string | null>(null)
+  const [isLoadingProject, setIsLoadingProject] = useState(false)
 
   // Gespeicherte Projekt- und Voiceover-Daten laden
   useEffect(() => {
     const loadProjectData = async () => {
-      // Projekt-ID aus localStorage laden
-      const savedProjectId = localStorage.getItem('currentProjectId');
+      setIsLoadingProject(true);
       
-      if (savedProjectId) {
-        try {
+      try {
+        // Projekt-ID aus localStorage laden
+        const savedProjectId = localStorage.getItem('currentProjectId');
+        
+        if (savedProjectId) {
           // Projekt-Daten vom Server laden
           const response = await fetch(`/api/workflow-state?projectId=${savedProjectId}`);
           
@@ -44,6 +49,7 @@ export default function ScriptVideoMatcher() {
             
             if (data.success && data.project) {
               setProjectId(data.project.id);
+              setWorkflowStep(data.project.workflowStep);
               
               // Wenn das Projekt ein Voiceover-Script hat, lade es
               if (data.project.voiceoverScript) {
@@ -65,41 +71,43 @@ export default function ScriptVideoMatcher() {
             // Wenn das Projekt nicht gefunden wurde, entferne die ID aus dem localStorage
             localStorage.removeItem('currentProjectId');
           }
-        } catch (error) {
-          console.error('Error loading project data:', error);
         }
-      }
-      
-      // Voiceover-Daten aus localStorage laden
-      const savedVoiceoverData = localStorage.getItem('voiceoverData');
-      if (savedVoiceoverData) {
-        try {
-          setVoiceoverData(JSON.parse(savedVoiceoverData));
-        } catch (e) {
-          console.error('Error parsing saved voiceover data:', e);
+        
+        // Voiceover-Daten aus localStorage laden
+        const savedVoiceoverData = localStorage.getItem('voiceoverData');
+        if (savedVoiceoverData) {
+          try {
+            setVoiceoverData(JSON.parse(savedVoiceoverData));
+          } catch (e) {
+            console.error('Error parsing saved voiceover data:', e);
+          }
+        } else {
+          // Fallback für ältere Version
+          const savedVoiceover = localStorage.getItem('voiceoverUrl');
+          if (savedVoiceover) {
+            setVoiceoverData({
+              dataUrl: savedVoiceover,
+              url: savedVoiceover, // Legacy: dataUrl und url sind identisch
+              voiceoverId: 'legacy',
+              fileName: 'voiceover.mp3'
+            });
+          }
         }
-      } else {
-        // Fallback für ältere Version
-        const savedVoiceover = localStorage.getItem('voiceoverUrl');
-        if (savedVoiceover) {
-          setVoiceoverData({
-            dataUrl: savedVoiceover,
-            url: savedVoiceover, // Legacy: dataUrl und url sind identisch
-            voiceoverId: 'legacy',
-            fileName: 'voiceover.mp3'
-          });
-        }
-      }
 
-      // Gespeichertes Skript laden, falls noch nicht gesetzt
-      if (!script) {
-        const savedScript = localStorage.getItem('voiceoverScript');
-        if (savedScript) {
-          setScript(savedScript);
+        // Gespeichertes Skript laden, falls noch nicht gesetzt
+        if (!script) {
+          const savedScript = localStorage.getItem('voiceoverScript');
+          if (savedScript) {
+            setScript(savedScript);
+          }
         }
+      } catch (error) {
+        console.error('Error loading project data:', error);
+        setError('Fehler beim Laden der Projektdaten');
+      } finally {
+        setIsLoadingProject(false);
+        setIsLoading(false);
       }
-      
-      setIsLoading(false);
     };
     
     loadProjectData();
@@ -275,7 +283,7 @@ export default function ScriptVideoMatcher() {
     return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
   };
 
-  if (isLoading) {
+  if (isLoading || isLoadingProject) {
     return (
       <div className="flex justify-center items-center h-64">
         <div className="w-12 h-12 border-4 border-purple-600 border-t-transparent rounded-full animate-spin"></div>
@@ -292,64 +300,127 @@ export default function ScriptVideoMatcher() {
           <p className="mt-2">
             Du musst zuerst ein Voiceover erstellen, bevor du Videos matchen kannst.
           </p>
-          <button
-            onClick={() => router.push('/voiceover')}
-            className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+          <Link
+            href="/voiceover"
+            className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 inline-block"
           >
             Zum Voiceover-Generator
-          </button>
+          </Link>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      {/* Voiceover-Player */}
-      <div className="p-4 bg-gray-800 border border-gray-700 rounded-md">
-        <div className="flex items-center justify-between">
-          <div className="font-medium">Dein Voiceover</div>
-          <button
-            onClick={togglePlay}
-            className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            {isPlaying ? (
-              <>
-                <PauseIcon className="h-4 w-4 mr-2" />
-                Pause
-              </>
-            ) : (
-              <>
-                <PlayIcon className="h-4 w-4 mr-2" />
-                Play
-              </>
-            )}
-          </button>
+    <div className="max-w-6xl mx-auto mt-10 p-4">
+      <h1 className="text-2xl font-bold mb-6">Script-Video Matcher</h1>
+      
+      {/* Workflow Status */}
+      {projectId && (
+        <div className="mb-8 bg-base-200 rounded-lg p-6">
+          <h2 className="text-xl font-semibold mb-4">Workflow Status</h2>
+          
+          <div className="flex flex-col sm:flex-row gap-4">
+            <div className={`flex-1 rounded-lg p-4 border ${workflowStep === 'voiceover' ? 'border-primary bg-primary/10' : 'border-white/10 bg-white/5'}`}>
+              <div className="flex items-center mb-2">
+                <span className={`flex items-center justify-center w-6 h-6 rounded-full mr-2 text-xs ${workflowStep === 'voiceover' ? 'bg-primary text-white' : workflowStep && ['matching', 'editing', 'processing', 'completed'].includes(workflowStep) ? 'bg-green-500 text-white' : 'bg-white/20 text-white/60'}`}>
+                  {workflowStep && ['matching', 'editing', 'processing', 'completed'].includes(workflowStep) ? '✓' : '1'}
+                </span>
+                <span className="font-medium">Voiceover</span>
+              </div>
+              <p className="text-sm text-white/60 ml-8">
+                {script ? 'Voiceover erstellt' : 'Voiceover erstellen'}
+              </p>
+            </div>
+            
+            <div className={`flex-1 rounded-lg p-4 border ${workflowStep === 'matching' ? 'border-primary bg-primary/10' : 'border-white/10 bg-white/5'}`}>
+              <div className="flex items-center mb-2">
+                <span className={`flex items-center justify-center w-6 h-6 rounded-full mr-2 text-xs ${workflowStep === 'matching' ? 'bg-primary text-white' : workflowStep && ['editing', 'processing', 'completed'].includes(workflowStep) ? 'bg-green-500 text-white' : 'bg-white/20 text-white/60'}`}>
+                  {workflowStep && ['editing', 'processing', 'completed'].includes(workflowStep) ? '✓' : '2'}
+                </span>
+                <span className="font-medium">Video Matching</span>
+              </div>
+              <p className="text-sm text-white/60 ml-8">
+                {segments.length > 0 ? `${segments.length} Segmente analysiert` : 'Skript in Segmente aufteilen'}
+              </p>
+            </div>
+            
+            <div className={`flex-1 rounded-lg p-4 border ${workflowStep === 'editing' ? 'border-primary bg-primary/10' : 'border-white/10 bg-white/5'}`}>
+              <div className="flex items-center mb-2">
+                <span className={`flex items-center justify-center w-6 h-6 rounded-full mr-2 text-xs ${workflowStep === 'editing' ? 'bg-primary text-white' : workflowStep && ['processing', 'completed'].includes(workflowStep) ? 'bg-green-500 text-white' : 'bg-white/20 text-white/60'}`}>
+                  {workflowStep && ['processing', 'completed'].includes(workflowStep) ? '✓' : '3'}
+                </span>
+                <span className="font-medium">Anpassen & Generieren</span>
+              </div>
+              <p className="text-sm text-white/60 ml-8">
+                {matches.length > 0 ? 'Videos zugeordnet' : 'Noch keine Videos zugeordnet'}
+              </p>
+            </div>
+            
+            <div className={`flex-1 rounded-lg p-4 border ${workflowStep === 'completed' ? 'border-primary bg-primary/10' : 'border-white/10 bg-white/5'}`}>
+              <div className="flex items-center mb-2">
+                <span className={`flex items-center justify-center w-6 h-6 rounded-full mr-2 text-xs ${workflowStep === 'completed' ? 'bg-primary text-white' : 'bg-white/20 text-white/60'}`}>
+                  {workflowStep === 'completed' ? '✓' : '4'}
+                </span>
+                <span className="font-medium">Fertig</span>
+              </div>
+              <p className="text-sm text-white/60 ml-8">
+                Video generieren
+              </p>
+            </div>
+          </div>
         </div>
-        {projectId && (
-          <div className="mt-2 text-xs text-gray-500">
-            Projekt-ID: {projectId}
+      )}
+      
+      <div className="mb-6">
+        <h2 className="text-xl font-semibold mb-4">Voiceover-Skript</h2>
+        <div className="space-y-2">
+          <label htmlFor="script" className="block text-sm font-medium">
+            Skript für die Analyse
+          </label>
+          <textarea
+            id="script"
+            className="w-full min-h-[100px] bg-gray-800 border border-gray-700 rounded-md p-2 text-white"
+            placeholder="Gib das Skript ein, für das du passende Videos finden möchtest..."
+            value={script}
+            onChange={(e) => setScript(e.target.value)}
+            readOnly
+          />
+        </div>
+        
+        {/* Voiceover-Player */}
+        {voiceoverData && (
+          <div className="p-4 mt-4 bg-gray-800 border border-gray-700 rounded-md">
+            <div className="flex items-center justify-between">
+              <div className="font-medium">Dein Voiceover</div>
+              <button
+                onClick={togglePlay}
+                className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                {isPlaying ? (
+                  <>
+                    <PauseIcon className="h-4 w-4 mr-2" />
+                    Pause
+                  </>
+                ) : (
+                  <>
+                    <PlayIcon className="h-4 w-4 mr-2" />
+                    Play
+                  </>
+                )}
+              </button>
+            </div>
+            {projectId && (
+              <div className="mt-2 text-xs text-gray-500">
+                Projekt-ID: {projectId}
+              </div>
+            )}
           </div>
         )}
       </div>
 
-      <div className="space-y-2">
-        <label htmlFor="script" className="block text-sm font-medium">
-          Skript
-        </label>
-        <textarea
-          id="script"
-          placeholder="Dein Skript wird hier angezeigt..."
-          value={script}
-          onChange={(e) => setScript(e.target.value)}
-          rows={8}
-          className="w-full p-2 border border-gray-700 bg-gray-800 rounded-md text-white"
-          readOnly
-        />
-      </div>
-
       {error && (
-        <div className="bg-red-900/30 border border-red-500/30 text-red-400 px-4 py-3 rounded">
+        <div className="bg-red-900/30 border border-red-500/30 text-red-400 px-4 py-3 rounded mb-6">
           {error}
         </div>
       )}
@@ -357,7 +428,7 @@ export default function ScriptVideoMatcher() {
       <button 
         onClick={handleAnalyzeScript} 
         disabled={isAnalyzing || !script.trim()}
-        className="w-full py-2 px-4 bg-blue-600 text-white rounded-md disabled:bg-blue-300 disabled:opacity-50"
+        className="w-full py-2 px-4 bg-blue-600 text-white rounded-md disabled:bg-blue-300 disabled:opacity-50 mb-6"
       >
         {isAnalyzing ? (
           <>
@@ -383,12 +454,12 @@ export default function ScriptVideoMatcher() {
               <p className="mt-2">
                 Um Videos automatisch zuzuordnen, musst du zuerst Videos hochladen und mit Tags versehen.
               </p>
-              <button
-                onClick={() => router.push('/upload')}
-                className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+              <Link
+                href="/upload"
+                className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 inline-block"
               >
                 Zur Upload-Seite
-              </button>
+              </Link>
             </div>
           )}
           

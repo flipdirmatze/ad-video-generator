@@ -329,7 +329,7 @@ export default function VoiceoverPage() {
                       href="/upload"
                       className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-primary to-primary-light rounded-lg hover:opacity-90 transition-opacity"
                     >
-                      Continue to Upload
+                      Weiter zum Video-Upload
                       <ArrowRightIcon className="ml-2 h-4 w-4" />
                     </Link>
                   </div>

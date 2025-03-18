@@ -61,6 +61,8 @@ export default function EditorPage() {
   const [videoDuration, setVideoDuration] = useState(0)
   const [currentTime, setCurrentTime] = useState(0)
   const [fromScriptMatcher, setFromScriptMatcher] = useState(false)
+  const [workflowStatusMessage, setWorkflowStatusMessage] = useState('')
+  const [shouldAutoGenerate, setShouldAutoGenerate] = useState(false)
   
   // Content states
   const [voiceoverUrl, setVoiceoverUrl] = useState<string | null>(null)
@@ -145,11 +147,18 @@ export default function EditorPage() {
                   const videoIds = data.project.matchedVideos.map((match: MatchedVideo) => match.videoId);
                   setSelectedVideos(videoIds);
                   setFromScriptMatcher(true);
+                  
+                  // Wenn wir direkt vom Script-Matcher kommen, automatisch generieren
+                  if (data.project.workflowStep === 'editing') {
+                    setShouldAutoGenerate(true);
+                    setWorkflowStatusMessage('Videos wurden aus dem Script-Matcher geladen. Die Werbung wird automatisch generiert.');
+                  }
                 }
                 
                 // Wenn das Projekt bereits ein fertiges Video hat, lade es
                 if (data.project.outputUrl) {
                   setFinalVideoUrl(data.project.outputUrl);
+                  setWorkflowStatusMessage('Deine Werbung wurde erfolgreich generiert!');
                 }
               }
             } else {
@@ -299,74 +308,78 @@ export default function EditorPage() {
         }
         
         const data = await response.json();
-        console.log('Project status:', data);
         
-        // Aktualisiere den Fortschritt
-        if (data.project && typeof data.project.progress === 'number') {
-          setGenerationProgress(data.project.progress);
-        } else if (typeof data.progress === 'number') {
-          setGenerationProgress(data.progress);
-        }
-        
-        // Wenn das Projekt abgeschlossen ist, lade das Video
-        if (data.status === 'completed' && data.outputUrl) {
+        if (data.status === 'completed') {
+          // Video ist fertig! Setze final video URL
           setFinalVideoUrl(data.outputUrl);
-          // Verwende die signierte URL, wenn verfügbar
-          if (data.signedUrl) {
-            setSignedVideoUrl(data.signedUrl);
-          }
+          setSignedVideoUrl(data.signedUrl || data.outputUrl);
           setIsGenerating(false);
+          setGenerationProgress(100);
           
-          // Speichere die URL im localStorage
-          localStorage.setItem('finalVideoUrl', data.outputUrl);
+          // Update workflow status to completed
+          await saveWorkflowState('completed');
           
-          // Stoppe die Statusabfrage
+          setWorkflowStatusMessage('Deine Werbung wurde erfolgreich generiert!');
+          
+          // Keine weiteren Status-Checks notwendig
           return true;
-        }
-        
-        // Wenn das Projekt fehlgeschlagen ist, zeige einen Fehler an
-        if (data.status === 'failed') {
-          const errorMessage = data.error || 'Unbekannter Fehler bei der Videogenerierung';
-          console.error('Video generation failed:', errorMessage);
-          
-          setError(`Fehler bei der Videogenerierung: ${errorMessage}`);
+        } else if (data.status === 'failed') {
+          // Fehler bei der Generierung
+          setError('Video generation failed');
+          setErrorDetails(data.error || null);
           setIsGenerating(false);
-          
-          // Setze den Fortschritt zurück
           setGenerationProgress(0);
           
+          // Update workflow status to failed
+          await saveWorkflowState('failed');
+          
+          // Keine weiteren Status-Checks notwendig
           return true;
+        } else if (data.status === 'processing') {
+          // Update progress if available
+          if (data.progress) {
+            setGenerationProgress(Math.min(20 + data.progress * 0.8, 99)); // Scale 0-100 to 20-99
+          }
         }
         
-        // Wenn das Projekt noch in Bearbeitung ist, fahre mit der Statusabfrage fort
+        // Weiter prüfen, wenn der Status noch "processing" ist
         return false;
       } catch (error) {
         console.error('Error checking project status:', error);
-        
-        // Bei einem Fehler setzen wir den Status zurück und zeigen eine Fehlermeldung an
-        setError(`Fehler beim Abrufen des Projektstatus: ${error instanceof Error ? error.message : 'Unbekannter Fehler'}`);
-        setIsGenerating(false);
-        
-        return true;
+        return false;
       }
     };
     
-    // Initialer Check
+    // Initialer Status-Check
     checkProjectStatus();
     
-    // Regelmäßiger Check alle 5 Sekunden
+    // Status-Check alle 3 Sekunden
     const intervalId = setInterval(async () => {
-      const isDone = await checkProjectStatus();
-      if (isDone) {
+      const shouldStop = await checkProjectStatus();
+      if (shouldStop) {
         clearInterval(intervalId);
       }
-    }, 5000);
+    }, 3000);
     
     // Cleanup
     return () => {
       clearInterval(intervalId);
     };
   }, [projectId, jobId, isGenerating]);
+
+  // HOOK: Auto-generate video when appropriate
+  useEffect(() => {
+    // Nur ausführen, wenn alle Bedingungen erfüllt sind
+    if (shouldAutoGenerate && selectedVideos.length > 0 && voiceoverUrl && !isGenerating && !finalVideoUrl) {
+      // Kurze Verzögerung, damit der Benutzer sehen kann, was passiert
+      const timer = setTimeout(() => {
+        handleGenerateVideo();
+        setShouldAutoGenerate(false);
+      }, 2000);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [shouldAutoGenerate, selectedVideos, voiceoverUrl, isGenerating, finalVideoUrl]);
 
   // ------------------- FUNCTIONS -------------------
   
@@ -528,74 +541,57 @@ export default function EditorPage() {
     })
   }, []);
 
-  // Generate final video with AWS Batch
+  // Generate video function
   const handleGenerateVideo = async () => {
-    if (selectedVideos.length === 0) {
-      setError('Bitte wählen Sie mindestens ein Video aus');
+    if (!voiceoverUrl || !voiceoverScript.trim() || selectedVideos.length === 0) {
+      setError('Bitte wählen Sie ein Voiceover und mindestens ein Video aus');
       return;
     }
     
     setIsGenerating(true);
-    setGenerationProgress(10);
     setError(null);
+    setErrorDetails(null);
     
     try {
-      // Für jedes ausgewählte Video den S3-Key ermitteln
-      const segmentsWithKeys = selectedVideos.map((videoId, index) => {
-        const video = uploadedVideos.find(v => v.id === videoId);
-        if (!video) return null;
-        
-        const videoKey = video.key || `uploads/${video.id}.${video.type.split('/')[1]}`;
-        
-        // Wenn wir gematchte Videos haben, verwende deren Daten
-        const matchedVideo = matchedVideos.find(m => m.videoId === videoId);
-        
-        return {
-          videoId: video.id,
-          videoKey,
-          startTime: matchedVideo?.startTime || 0, // Start am Anfang des Videos
-          duration: matchedVideo?.duration || 10, // Verwende die Dauer aus dem Match oder Standard
-          position: matchedVideo?.position || index // Position basierend auf dem Match oder der Reihenfolge
-        };
-      }).filter(Boolean);
+      // Finde die Voiceover-ID, falls vorhanden
+      let voiceoverId = 'local';
       
-      // Voiceover ID aus localStorage holen
-      let voiceoverId = null;
+      // Versuche, die Voiceover-ID aus dem localStorage zu laden
       const savedVoiceoverData = localStorage.getItem('voiceoverData');
       if (savedVoiceoverData) {
         try {
-          const voiceoverData = JSON.parse(savedVoiceoverData);
-          if (voiceoverData.voiceoverId && voiceoverData.voiceoverId !== 'legacy' && voiceoverData.voiceoverId !== 'local') {
-            voiceoverId = voiceoverData.voiceoverId;
+          const parsedData = JSON.parse(savedVoiceoverData);
+          if (parsedData.voiceoverId && parsedData.voiceoverId !== 'legacy') {
+            voiceoverId = parsedData.voiceoverId;
           }
         } catch (e) {
           console.error('Error parsing saved voiceover data:', e);
         }
       }
       
-      // Aktualisiere den Workflow-Status auf 'processing'
-      if (projectId) {
-        try {
-          await fetch('/api/workflow-state', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              projectId,
-              workflowStep: 'processing'
-            })
-          });
-        } catch (error) {
-          console.error('Error updating workflow state:', error);
-          // Kein Fehler anzeigen, da dies ein Hintergrundprozess ist
-        }
-      }
+      // Erstelle Segmente für jedes ausgewählte Video
+      const segmentsWithKeys = selectedVideos.map((videoId, index) => {
+        // Finde das originale Video
+        const video = uploadedVideos.find(v => v.id === videoId);
+        
+        // Finde das gematchte Video, falls vorhanden
+        const matchedVideo = matchedVideos.find(m => m.videoId === videoId);
+        
+        return {
+          videoId,
+          filepath: video?.filepath || video?.key || '',
+          startTime: matchedVideo?.startTime || 0,
+          duration: matchedVideo?.duration || 5, // Fallback auf 5 Sekunden
+          position: matchedVideo?.position || index
+        };
+      });
       
-      // Die neue API für die Videogenerierung aufrufen
+      // API-Request zum Generieren des Videos
       const response = await fetch('/api/generate-video', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json'
+        },
         body: JSON.stringify({
           segments: segmentsWithKeys,
           voiceoverId,
@@ -617,6 +613,9 @@ export default function EditorPage() {
       setProjectId(responseData.projectId);
       setJobId(responseData.jobId);
       
+      // Update workflow status
+      await saveWorkflowState('processing');
+      
       // Setze den Fortschritt auf 20%, da der Job jetzt gestartet wurde
       setGenerationProgress(20);
       
@@ -625,6 +624,36 @@ export default function EditorPage() {
     } catch (error) {
       setError(`Fehler: ${error instanceof Error ? error.message : 'Unbekannter Fehler'}`);
       setIsGenerating(false);
+    }
+  };
+
+  // Save workflow state
+  const saveWorkflowState = async (newWorkflowStep: string) => {
+    if (!projectId) return;
+    
+    try {
+      const response = await fetch('/api/workflow-state', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          projectId,
+          workflowStep: newWorkflowStep
+        })
+      });
+      
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to update workflow state');
+      }
+      
+      // Update local state
+      setWorkflowStep(newWorkflowStep);
+      
+      console.log(`Workflow state updated to ${newWorkflowStep}`);
+    } catch (error) {
+      console.error('Error updating workflow state:', error);
     }
   };
 
@@ -712,11 +741,11 @@ export default function EditorPage() {
           <h1 className="text-3xl font-bold">Video Editor</h1>
           <p className="mt-2 opacity-80">Combine your videos and add a voiceover</p>
           
-          {fromScriptMatcher && (
-            <div className="mb-6 p-4 bg-green-900/30 border border-green-500/30 rounded-lg text-green-400">
+          {workflowStatusMessage && (
+            <div className="mb-6 p-4 bg-green-900/30 border border-green-500/30 rounded-lg text-green-400 mt-4">
               <p className="flex items-center">
                 <CheckCircleIcon className="h-5 w-5 mr-2" />
-                Videos wurden automatisch aus dem KI-Matching geladen.
+                {workflowStatusMessage}
               </p>
             </div>
           )}
@@ -734,6 +763,63 @@ export default function EditorPage() {
       
       {/* Main content */}
       <div className="max-w-7xl mx-auto p-4 mt-4">
+        {/* Workflow Status Section */}
+        {projectId && (
+          <div className="mb-8 bg-base-200 rounded-lg p-6">
+            <h2 className="text-xl font-semibold mb-4">Workflow Status</h2>
+            
+            <div className="flex flex-col sm:flex-row gap-4">
+              <div className={`flex-1 rounded-lg p-4 border ${workflowStep === 'voiceover' ? 'border-primary bg-primary/10' : 'border-white/10 bg-white/5'}`}>
+                <div className="flex items-center mb-2">
+                  <span className={`flex items-center justify-center w-6 h-6 rounded-full mr-2 text-xs ${workflowStep === 'voiceover' ? 'bg-primary text-white' : workflowStep && ['matching', 'editing', 'processing', 'completed'].includes(workflowStep) ? 'bg-green-500 text-white' : 'bg-white/20 text-white/60'}`}>
+                    {workflowStep && ['matching', 'editing', 'processing', 'completed'].includes(workflowStep) ? '✓' : '1'}
+                  </span>
+                  <span className="font-medium">Voiceover</span>
+                </div>
+                <p className="text-sm text-white/60 ml-8">
+                  {voiceoverScript ? 'Voiceover erstellt' : 'Voiceover erstellen'}
+                </p>
+              </div>
+              
+              <div className={`flex-1 rounded-lg p-4 border ${workflowStep === 'matching' ? 'border-primary bg-primary/10' : 'border-white/10 bg-white/5'}`}>
+                <div className="flex items-center mb-2">
+                  <span className={`flex items-center justify-center w-6 h-6 rounded-full mr-2 text-xs ${workflowStep === 'matching' ? 'bg-primary text-white' : workflowStep && ['editing', 'processing', 'completed'].includes(workflowStep) ? 'bg-green-500 text-white' : 'bg-white/20 text-white/60'}`}>
+                    {workflowStep && ['editing', 'processing', 'completed'].includes(workflowStep) ? '✓' : '2'}
+                  </span>
+                  <span className="font-medium">Video Matching</span>
+                </div>
+                <p className="text-sm text-white/60 ml-8">
+                  {matchedVideos.length > 0 ? `${matchedVideos.length} Videos zugeordnet` : 'Videos zum Skript matchen'}
+                </p>
+              </div>
+              
+              <div className={`flex-1 rounded-lg p-4 border ${workflowStep === 'editing' ? 'border-primary bg-primary/10' : 'border-white/10 bg-white/5'}`}>
+                <div className="flex items-center mb-2">
+                  <span className={`flex items-center justify-center w-6 h-6 rounded-full mr-2 text-xs ${workflowStep === 'editing' ? 'bg-primary text-white' : workflowStep && ['processing', 'completed'].includes(workflowStep) ? 'bg-green-500 text-white' : 'bg-white/20 text-white/60'}`}>
+                    {workflowStep && ['processing', 'completed'].includes(workflowStep) ? '✓' : '3'}
+                  </span>
+                  <span className="font-medium">Anpassen & Generieren</span>
+                </div>
+                <p className="text-sm text-white/60 ml-8">
+                  {finalVideoUrl ? 'Video generiert' : isGenerating ? 'Video wird generiert...' : 'Werbevideo erstellen'}
+                </p>
+              </div>
+              
+              <div className={`flex-1 rounded-lg p-4 border ${workflowStep === 'completed' ? 'border-primary bg-primary/10' : 'border-white/10 bg-white/5'}`}>
+                <div className="flex items-center mb-2">
+                  <span className={`flex items-center justify-center w-6 h-6 rounded-full mr-2 text-xs ${workflowStep === 'completed' ? 'bg-primary text-white' : 'bg-white/20 text-white/60'}`}>
+                    {workflowStep === 'completed' ? '✓' : '4'}
+                  </span>
+                  <span className="font-medium">Fertig</span>
+                </div>
+                <p className="text-sm text-white/60 ml-8">
+                  {finalVideoUrl ? 'Video bereit zum Teilen' : 'Warte auf fertiges Video'}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Warning about uploads matching */}
         {uploadedVideos.length > 0 && availableUploads.length > 0 && (
           <div className="mb-6">

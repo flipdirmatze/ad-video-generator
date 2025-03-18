@@ -75,6 +75,16 @@ export default function Navbar() {
                   >
                     Meine Videos
                   </Link>
+                  <Link
+                    href="/script-matcher"
+                    className={`${
+                      isActive('/script-matcher') 
+                        ? 'border-purple-500 text-white' 
+                        : 'border-transparent text-gray-300 hover:border-gray-300 hover:text-white'
+                    } inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium`}
+                  >
+                    KI-Matching
+                  </Link>
                 </>
               )}
             </div>
@@ -242,6 +252,17 @@ export default function Navbar() {
                   onClick={() => setIsMenuOpen(false)}
                 >
                   Meine Videos
+                </Link>
+                <Link
+                  href="/script-matcher"
+                  className={`${
+                    isActive('/script-matcher') 
+                      ? 'bg-gray-800 text-white' 
+                      : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+                  } block px-3 py-2 rounded-md text-base font-medium`}
+                  onClick={() => setIsMenuOpen(false)}
+                >
+                  KI-Matching
                 </Link>
               </>
             )}
