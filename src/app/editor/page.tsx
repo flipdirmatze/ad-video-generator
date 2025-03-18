@@ -15,6 +15,7 @@ type UploadedVideo = {
   tags: string[];
   filepath?: string;
   key?: string; // S3-Key des Videos
+  thumbnailUrl?: string;
 }
 
 // Define error response type to match the backend
@@ -379,6 +380,96 @@ export default function EditorPage() {
       return () => clearTimeout(timer);
     }
   }, [shouldAutoGenerate, selectedVideos, voiceoverUrl, isGenerating, finalVideoUrl]);
+
+  // Load all video elements for the selected videos
+  useEffect(() => {
+    const fetchVideoThumbnails = async () => {
+      if (uploadedVideos.length === 0 || selectedVideos.length === 0) return;
+      
+      console.log('Generating thumbnails for selected videos...');
+      
+      // Create video elements for each selected video to generate thumbnails
+      for (const videoId of selectedVideos) {
+        const video = uploadedVideos.find(v => v.id === videoId);
+        if (video && !video.thumbnailUrl) {
+          try {
+            // Create a temporary video element
+            const videoElement = document.createElement('video');
+            videoElement.crossOrigin = "anonymous";
+            videoElement.src = video.url;
+            videoElement.muted = true;
+            videoElement.preload = 'metadata';
+            
+            // Verwende eine Promise, um auf die Ereignisse zu warten
+            await new Promise<void>((resolve, reject) => {
+              // Timeout für den Fall, dass das Video nicht geladen werden kann
+              const timeout = setTimeout(() => {
+                console.log(`Thumbnail generation for ${videoId} timed out, using fallback`);
+                reject(new Error('Timeout'));
+              }, 5000);
+              
+              // Fehlerbehandlung
+              videoElement.onerror = (e) => {
+                clearTimeout(timeout);
+                console.error(`Error loading video ${videoId} for thumbnail:`, e);
+                reject(e);
+              };
+              
+              // Wenn Metadaten geladen sind, zum gewünschten Zeitpunkt springen
+              videoElement.onloadedmetadata = () => {
+                // Seek to 1 second or 25% into the video for the thumbnail
+                const seekTime = Math.min(1, videoElement.duration * 0.25);
+                videoElement.currentTime = seekTime;
+              };
+              
+              // Wenn der Frame verfügbar ist nach dem Springen
+              videoElement.onseeked = () => {
+                clearTimeout(timeout);
+                try {
+                  // Create a canvas to capture the frame
+                  const canvas = document.createElement('canvas');
+                  canvas.width = videoElement.videoWidth || 320;
+                  canvas.height = videoElement.videoHeight || 180;
+                  
+                  // Draw the current frame to the canvas
+                  const ctx = canvas.getContext('2d');
+                  if (ctx) {
+                    ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+                    
+                    // Convert the canvas to a data URL
+                    const thumbnailUrl = canvas.toDataURL('image/jpeg', 0.7);
+                    
+                    // Store the thumbnail URL in the uploadedVideos array
+                    setUploadedVideos(prev => 
+                      prev.map(v => 
+                        v.id === videoId 
+                          ? {...v, thumbnailUrl} 
+                          : v
+                      )
+                    );
+                    
+                    console.log(`Thumbnail generated for video ${videoId}`);
+                    resolve();
+                  } else {
+                    reject(new Error('Could not get canvas context'));
+                  }
+                } catch (err) {
+                  console.error(`Error generating thumbnail for video ${videoId}:`, err);
+                  reject(err);
+                }
+              };
+            }).catch((err) => {
+              console.log(`Falling back to default thumbnail for video ${videoId} due to error:`, err);
+            });
+          } catch (err) {
+            console.error(`Error generating thumbnail for video ${videoId}:`, err);
+          }
+        }
+      }
+    };
+    
+    fetchVideoThumbnails();
+  }, [uploadedVideos, selectedVideos]);
 
   // ------------------- FUNCTIONS -------------------
   
@@ -873,10 +964,20 @@ export default function EditorPage() {
                         <div key={idx} className="bg-gray-900/60 border border-gray-800 rounded overflow-hidden">
                           <div className="aspect-video bg-gray-900 relative overflow-hidden">
                             {video?.url ? (
-                              <div 
-                                className="absolute inset-0 bg-center bg-cover" 
-                                style={{ backgroundImage: `url(${video.url}#t=0.5)` }}
-                              />
+                              video.thumbnailUrl ? (
+                                // Zeige das generierte Thumbnail, wenn verfügbar
+                                <div 
+                                  className="absolute inset-0 bg-center bg-cover" 
+                                  style={{ backgroundImage: `url(${video.thumbnailUrl})` }}
+                                />
+                              ) : (
+                                // Fallback: Zeige ein statisches SVG-Symbol anstelle eines kaputten Bildes
+                                <div className="absolute inset-0 flex items-center justify-center">
+                                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8 text-gray-700">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
+                                  </svg>
+                                </div>
+                              )
                             ) : (
                               <div className="absolute inset-0 flex items-center justify-center">
                                 <FilmIcon className="h-8 w-8 text-gray-700" />
