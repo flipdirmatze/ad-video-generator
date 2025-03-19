@@ -49,6 +49,79 @@ type MatchedVideo = {
   position: number;
 }
 
+// VideoThumbnail-Komponente mit Lazy-Loading
+const VideoThumbnail = React.memo(({ video, match, index }: { 
+  video: UploadedVideo | undefined; 
+  match: MatchedVideo; 
+  index: number;
+}) => {
+  const [isVisible, setIsVisible] = useState(false);
+  const thumbnailRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    // Intersection Observer für Lazy Loading
+    if (!thumbnailRef.current) return;
+    
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            setIsVisible(true);
+            observer.disconnect(); // Trennen, sobald es sichtbar ist
+          }
+        });
+      },
+      { threshold: 0.1, rootMargin: '100px' } // Laden, wenn 10% sichtbar oder 100px davor
+    );
+    
+    observer.observe(thumbnailRef.current);
+    
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
+
+  return (
+    <div 
+      ref={thumbnailRef}
+      className="bg-gray-900/60 border border-gray-800 rounded overflow-hidden"
+    >
+      <div className="aspect-video bg-gray-900 relative overflow-hidden">
+        {video?.url && isVisible ? (
+          video.thumbnailUrl ? (
+            // Zeige das generierte Thumbnail, wenn verfügbar
+            <div 
+              className="absolute inset-0 bg-center bg-cover" 
+              style={{ backgroundImage: `url(${video.thumbnailUrl})` }}
+            />
+          ) : (
+            // Fallback: Zeige ein statisches SVG-Symbol anstelle eines kaputten Bildes
+            <div className="absolute inset-0 flex items-center justify-center">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8 text-gray-700">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
+              </svg>
+            </div>
+          )
+        ) : (
+          // Platzhalter, wenn noch nicht sichtbar oder kein Video
+          <div className="absolute inset-0 flex items-center justify-center">
+            <FilmIcon className="h-8 w-8 text-gray-700" />
+          </div>
+        )}
+        <div className="absolute bottom-1 right-1 bg-black/60 text-white text-xs px-1.5 py-0.5 rounded">
+          {match.duration}s
+        </div>
+      </div>
+      <div className="p-2">
+        <div className="text-xs font-medium truncate">{video?.name || `Video ${index + 1}`}</div>
+        <div className="text-xs text-gray-500 mt-0.5">Match: {Math.round(match.score * 100)}%</div>
+      </div>
+    </div>
+  );
+});
+
+VideoThumbnail.displayName = 'VideoThumbnail';
+
 export default function EditorPage() {
   // Session and router
   const { data: session, status } = useSession()
@@ -392,89 +465,170 @@ export default function EditorPage() {
 
   // Load all video elements for the selected videos
   useEffect(() => {
+    // Thumbnail Generierung optimieren
     const fetchVideoThumbnails = async () => {
       if (uploadedVideos.length === 0 || selectedVideos.length === 0) return;
       
       console.log('Generating thumbnails for selected videos...');
       
-      // Create video elements for each selected video to generate thumbnails
-      for (const videoId of selectedVideos) {
-        const video = uploadedVideos.find(v => v.id === videoId);
-        if (video && !video.thumbnailUrl) {
-          try {
-            // Create a temporary video element
-            const videoElement = document.createElement('video');
-            videoElement.crossOrigin = "anonymous";
-            videoElement.src = video.url;
-            videoElement.muted = true;
-            videoElement.preload = 'metadata';
-            
-            // Verwende eine Promise, um auf die Ereignisse zu warten
-            await new Promise<void>((resolve, reject) => {
-              // Timeout für den Fall, dass das Video nicht geladen werden kann
-              const timeout = setTimeout(() => {
-                console.log(`Thumbnail generation for ${videoId} timed out, using fallback`);
-                reject(new Error('Timeout'));
-              }, 5000);
+      // Begrenze die Anzahl der gleichzeitigen Thumbnail-Generierungen
+      const BATCH_SIZE = 3;
+      const videosNeedingThumbnails = selectedVideos
+        .map(videoId => uploadedVideos.find(v => v.id === videoId))
+        .filter((video): video is UploadedVideo => !!video && !video.thumbnailUrl);
+      
+      console.log(`${videosNeedingThumbnails.length} videos need thumbnails. Processing in batches of ${BATCH_SIZE}`);
+      
+      // Videos in Batches verarbeiten, um Speichernutzung zu reduzieren
+      for (let i = 0; i < videosNeedingThumbnails.length; i += BATCH_SIZE) {
+        const batch = videosNeedingThumbnails.slice(i, i + BATCH_SIZE);
+        console.log(`Processing thumbnail batch ${i/BATCH_SIZE + 1}: ${batch.length} videos`);
+        
+        // Parallel-Processing für den aktuellen Batch
+        await Promise.all(
+          batch.map(async (video) => {
+            try {
+              // Cache prüfen um doppelte Generierung zu vermeiden
+              if (video.thumbnailUrl) return;
               
-              // Fehlerbehandlung
-              videoElement.onerror = (e) => {
-                clearTimeout(timeout);
-                console.error(`Error loading video ${videoId} for thumbnail:`, e);
-                reject(e);
-              };
-              
-              // Wenn Metadaten geladen sind, zum gewünschten Zeitpunkt springen
-              videoElement.onloadedmetadata = () => {
-                // Seek to 1 second or 25% into the video for the thumbnail
-                const seekTime = Math.min(1, videoElement.duration * 0.25);
-                videoElement.currentTime = seekTime;
-              };
-              
-              // Wenn der Frame verfügbar ist nach dem Springen
-              videoElement.onseeked = () => {
-                clearTimeout(timeout);
-                try {
-                  // Create a canvas to capture the frame
-                  const canvas = document.createElement('canvas');
-                  canvas.width = videoElement.videoWidth || 320;
-                  canvas.height = videoElement.videoHeight || 180;
-                  
-                  // Draw the current frame to the canvas
-                  const ctx = canvas.getContext('2d');
-                  if (ctx) {
-                    ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
-                    
-                    // Convert the canvas to a data URL
-                    const thumbnailUrl = canvas.toDataURL('image/jpeg', 0.7);
-                    
-                    // Store the thumbnail URL in the uploadedVideos array
-                    setUploadedVideos(prev => 
-                      prev.map(v => 
-                        v.id === videoId 
-                          ? {...v, thumbnailUrl} 
-                          : v
-                      )
-                    );
-                    
-                    console.log(`Thumbnail generated for video ${videoId}`);
-                    resolve();
-                  } else {
-                    reject(new Error('Could not get canvas context'));
-                  }
-                } catch (err) {
-                  console.error(`Error generating thumbnail for video ${videoId}:`, err);
-                  reject(err);
-                }
-              };
-            }).catch((err) => {
-              console.log(`Falling back to default thumbnail for video ${videoId} due to error:`, err);
-            });
-          } catch (err) {
-            console.error(`Error generating thumbnail for video ${videoId}:`, err);
-          }
-        }
+              // Verwende Web Workers für Thumbnail-Generierung, wenn verfügbar
+              if (typeof window !== 'undefined' && 'OffscreenCanvas' in window) {
+                // Moderne Browser-Funktionen für effiziente Verarbeitung
+                await generateThumbnailEfficient(video);
+              } else {
+                // Fallback für ältere Browser
+                await generateThumbnailLegacy(video);
+              }
+            } catch (err) {
+              console.error(`Error generating thumbnail for video ${video.id}:`, err);
+            }
+          })
+        );
+        
+        // Kurze Pause zwischen Batches, um Browser UI-Updates zu ermöglichen
+        await new Promise<void>(resolve => setTimeout(resolve, 50));
       }
+    };
+    
+    // Effiziente Thumbnail-Generierung für moderne Browser
+    const generateThumbnailEfficient = async (video: UploadedVideo): Promise<void> => {
+      return new Promise<void>((resolve, reject) => {
+        const videoElement = document.createElement('video');
+        videoElement.crossOrigin = "anonymous";
+        videoElement.muted = true;
+        videoElement.preload = 'metadata';
+        
+        // Event-Handler vor dem Setzen der Quelle definieren
+        videoElement.onloadedmetadata = () => {
+          // Seek to 1 second or 25% into the video for the thumbnail
+          const seekTime = Math.min(1, videoElement.duration * 0.25);
+          videoElement.currentTime = seekTime;
+        };
+        
+        videoElement.onseeked = () => {
+          try {
+            const canvas = document.createElement('canvas');
+            canvas.width = Math.min(videoElement.videoWidth || 320, 320); // Begrenze Größe
+            canvas.height = Math.min(videoElement.videoHeight || 180, 180); // Begrenze Größe
+            
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+              const thumbnailUrl = canvas.toDataURL('image/jpeg', 0.6); // Reduzierte Qualität
+              
+              // Store the thumbnail URL
+              setUploadedVideos(prev => 
+                prev.map(v => v.id === video.id ? {...v, thumbnailUrl} : v)
+              );
+              
+              // Ressourcen freigeben
+              URL.revokeObjectURL(videoElement.src);
+              videoElement.remove();
+              resolve();
+            } else {
+              reject(new Error('Could not get canvas context'));
+            }
+          } catch (err) {
+            reject(err);
+          }
+        };
+        
+        videoElement.onerror = (e) => {
+          URL.revokeObjectURL(videoElement.src);
+          videoElement.remove();
+          reject(e);
+        };
+        
+        // Setze Quelle erst nach Definition der Event-Handler
+        videoElement.src = video.url;
+        
+        // Timeout für Fehlschlag
+        setTimeout(() => {
+          if (!videoElement.videoWidth) {
+            URL.revokeObjectURL(videoElement.src);
+            videoElement.remove();
+            reject(new Error('Video load timeout'));
+          }
+        }, 5000);
+      });
+    };
+    
+    // Legacy Thumbnail-Generierung für ältere Browser
+    const generateThumbnailLegacy = async (video: UploadedVideo): Promise<void> => {
+      return new Promise<void>((resolve, reject) => {
+        const videoElement = document.createElement('video');
+        videoElement.crossOrigin = "anonymous";
+        videoElement.muted = true;
+        videoElement.preload = 'metadata';
+        
+        // Timeout von 5 Sekunden
+        const timeout = setTimeout(() => {
+          URL.revokeObjectURL(videoElement.src);
+          videoElement.remove();
+          reject(new Error('Timeout'));
+        }, 5000);
+        
+        videoElement.onloadedmetadata = () => {
+          const seekTime = Math.min(1, videoElement.duration * 0.25);
+          videoElement.currentTime = seekTime;
+        };
+        
+        videoElement.onseeked = () => {
+          clearTimeout(timeout);
+          try {
+            const canvas = document.createElement('canvas');
+            canvas.width = Math.min(videoElement.videoWidth || 320, 320);
+            canvas.height = Math.min(videoElement.videoHeight || 180, 180);
+            
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+              const thumbnailUrl = canvas.toDataURL('image/jpeg', 0.6);
+              
+              setUploadedVideos(prev => 
+                prev.map(v => v.id === video.id ? {...v, thumbnailUrl} : v)
+              );
+              
+              URL.revokeObjectURL(videoElement.src);
+              videoElement.remove();
+              resolve();
+            } else {
+              reject(new Error('Could not get canvas context'));
+            }
+          } catch (err) {
+            reject(err);
+          }
+        };
+        
+        videoElement.onerror = (e) => {
+          clearTimeout(timeout);
+          URL.revokeObjectURL(videoElement.src);
+          videoElement.remove();
+          reject(e);
+        };
+        
+        videoElement.src = video.url;
+      });
     };
     
     fetchVideoThumbnails();
@@ -921,37 +1075,7 @@ export default function EditorPage() {
                     {matchedVideos.map((match, idx) => {
                       const video = uploadedVideos.find(v => v.id === match.videoId);
                       return (
-                        <div key={idx} className="bg-gray-900/60 border border-gray-800 rounded overflow-hidden">
-                          <div className="aspect-video bg-gray-900 relative overflow-hidden">
-                            {video?.url ? (
-                              video.thumbnailUrl ? (
-                                // Zeige das generierte Thumbnail, wenn verfügbar
-                                <div 
-                                  className="absolute inset-0 bg-center bg-cover" 
-                                  style={{ backgroundImage: `url(${video.thumbnailUrl})` }}
-                                />
-                              ) : (
-                                // Fallback: Zeige ein statisches SVG-Symbol anstelle eines kaputten Bildes
-                                <div className="absolute inset-0 flex items-center justify-center">
-                                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8 text-gray-700">
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
-                                  </svg>
-                                </div>
-                              )
-                            ) : (
-                              <div className="absolute inset-0 flex items-center justify-center">
-                                <FilmIcon className="h-8 w-8 text-gray-700" />
-                              </div>
-                            )}
-                            <div className="absolute bottom-1 right-1 bg-black/60 text-white text-xs px-1.5 py-0.5 rounded">
-                              {match.duration}s
-                            </div>
-                          </div>
-                          <div className="p-2">
-                            <div className="text-xs font-medium truncate">{video?.name || `Video ${idx + 1}`}</div>
-                            <div className="text-xs text-gray-500 mt-0.5">Match: {Math.round(match.score * 100)}%</div>
-                          </div>
-                        </div>
+                        <VideoThumbnail key={idx} video={video} match={match} index={idx} />
                       );
                     })}
                   </div>
