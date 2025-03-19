@@ -9,6 +9,27 @@ import { Types } from 'mongoose'
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY
 const DEFAULT_VOICE_ID = 'pNInz6obpgDQGcFmaJgB' // Standard-Stimme als Fallback
 
+// Längeres Timeout für große Texte (2 Minuten)
+const FETCH_TIMEOUT_MS = 120000;
+
+// Hilfsfunktion für Fetch mit Timeout
+async function fetchWithTimeout(url: string, options: RequestInit, timeout: number) {
+  const controller = new AbortController();
+  const { signal } = controller;
+  
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
+  
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal
+    });
+    return response;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 export async function POST(request: Request) {
   try {
     console.log('Starting voiceover generation process');
@@ -43,14 +64,21 @@ export async function POST(request: Request) {
       )
     }
 
-    console.log(`Generating voiceover with ElevenLabs API. Script length: ${script.length} characters. Voice ID: ${selectedVoiceId}`);
+    const scriptLength = script.length;
+    console.log(`Generating voiceover with ElevenLabs API. Script length: ${scriptLength} characters. Voice ID: ${selectedVoiceId}`);
+    
+    // Warnung bei sehr langen Texten ausgeben
+    if (scriptLength > 5000) {
+      console.warn(`WARNING: Processing very long text (${scriptLength} characters). This might take a while.`);
+    }
     
     // Voiceover mit ElevenLabs API generieren
     try {
       const apiUrl = `https://api.elevenlabs.io/v1/text-to-speech/${selectedVoiceId}`;
       console.log(`Calling ElevenLabs API at: ${apiUrl}`);
       
-      const response = await fetch(
+      // Verwende die Timeout-Funktion mit erhöhtem Timeout für die API-Anfrage
+      const response = await fetchWithTimeout(
         apiUrl,
         {
           method: 'POST',
@@ -69,13 +97,30 @@ export async function POST(request: Request) {
               use_speaker_boost: true
             }
           })
-        }
-      )
+        },
+        FETCH_TIMEOUT_MS
+      );
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ message: 'Unknown ElevenLabs API error' }));
-        console.error('ElevenLabs API error:', errorData);
-        throw new Error(errorData.message || `ElevenLabs API error: ${response.status} - ${response.statusText}`);
+        let errorMessage = `ElevenLabs API error: ${response.status} - ${response.statusText}`;
+        
+        try {
+          // Versuche, den Fehler als JSON zu parsen
+          const errorData = await response.json();
+          errorMessage = errorData.message || errorData.detail || errorMessage;
+          console.error('ElevenLabs API error:', errorData);
+        } catch (parseError) {
+          // Wenn die Antwort kein JSON ist, versuche den Text zu lesen
+          try {
+            const errorText = await response.text();
+            errorMessage = errorText || errorMessage;
+            console.error('ElevenLabs API error (text):', errorText);
+          } catch (textError) {
+            console.error('Failed to parse ElevenLabs error response:', textError);
+          }
+        }
+        
+        throw new Error(errorMessage);
       }
 
       console.log(`Voiceover generated successfully from ElevenLabs with voice ID: ${selectedVoiceId}`);
@@ -177,7 +222,21 @@ export async function POST(request: Request) {
       }
     } catch (apiError) {
       console.error('ElevenLabs API request error:', apiError);
-      throw new Error(`Failed to generate voiceover with ElevenLabs: ${apiError instanceof Error ? apiError.message : String(apiError)}`);
+      
+      // Prüfe auf Timeout-Fehler
+      const errorMessage = apiError instanceof Error ? apiError.message : String(apiError);
+      if (errorMessage.includes('abort') || errorMessage.includes('timeout')) {
+        return NextResponse.json(
+          { 
+            error: 'Die Generierung des Voiceovers hat zu lange gedauert. Bitte versuche es mit einem kürzeren Text.',
+            details: 'API request timed out after ' + (FETCH_TIMEOUT_MS / 1000) + ' seconds',
+            timestamp: new Date().toISOString()
+          },
+          { status: 504 }
+        );
+      }
+      
+      throw new Error(`Failed to generate voiceover with ElevenLabs: ${errorMessage}`);
     }
   } catch (error) {
     console.error('Voiceover generation error:', error)
