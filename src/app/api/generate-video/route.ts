@@ -217,6 +217,7 @@ export async function POST(request: Request) {
         USER_ID: session.user.id,
         PROJECT_ID: project._id.toString(),
         SEGMENTS: JSON.stringify(videoSegments),
+        TEMPLATE_DATA: JSON.stringify({ segments: videoSegments }),
         TITLE: title,
         ADD_SUBTITLES: addSubtitles ? 'true' : 'false',
         SUBTITLE_OPTIONS: subtitleOptions ? JSON.stringify(subtitleOptions) : '',
