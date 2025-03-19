@@ -49,19 +49,22 @@ type MatchedVideo = {
   position: number;
 }
 
-// VideoThumbnail-Komponente mit Lazy-Loading
+// VideoThumbnail component with optimized rendering
 const VideoThumbnail = React.memo(({ video, match, index }: { 
   video: UploadedVideo | undefined; 
   match: MatchedVideo; 
   index: number;
 }) => {
   const [isVisible, setIsVisible] = useState(false);
+  const [imageLoaded, setImageLoaded] = useState(false);
+  const [imageError, setImageError] = useState(false);
   const thumbnailRef = useRef<HTMLDivElement>(null);
 
+  // Use a more efficient IntersectionObserver with no unnecessary re-renders
   useEffect(() => {
-    // Simplify intersection observer for better performance
     if (!thumbnailRef.current) return;
     
+    const currentElement = thumbnailRef.current;
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0].isIntersecting) {
@@ -69,14 +72,29 @@ const VideoThumbnail = React.memo(({ video, match, index }: {
           observer.disconnect();
         }
       },
-      { threshold: 0.1, rootMargin: '200px' }
+      { 
+        threshold: 0.1,   // Only need to see 10% to trigger
+        rootMargin: '300px' // Load earlier before scrolling to it
+      }
     );
     
-    observer.observe(thumbnailRef.current);
+    observer.observe(currentElement);
     
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+    };
   }, []);
 
+  // Handle image load/error events
+  const handleImageLoad = useCallback(() => {
+    setImageLoaded(true);
+  }, []);
+  
+  const handleImageError = useCallback(() => {
+    setImageError(true);
+  }, []);
+
+  // Simplified and optimized rendering
   return (
     <div 
       ref={thumbnailRef}
@@ -84,32 +102,46 @@ const VideoThumbnail = React.memo(({ video, match, index }: {
     >
       <div className="aspect-video bg-gray-900 relative overflow-hidden">
         {isVisible ? (
-          video?.thumbnailUrl ? (
-            // Use an img tag with explicit dimensions for better memory management
-            <img 
-              src={video.thumbnailUrl} 
-              alt={video.name || `Video ${index + 1}`}
-              className="absolute inset-0 w-full h-full object-cover"
-              loading="lazy"
-              width="160"
-              height="90"
-            />
+          video?.thumbnailUrl && !imageError ? (
+            <>
+              {/* Show loading state until image loads */}
+              {!imageLoaded && (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="w-full h-full bg-gray-800 animate-pulse"></div>
+                </div>
+              )}
+              {/* Optimized image with explicit dimensions and loading="lazy" */}
+              <img 
+                src={video.thumbnailUrl}
+                alt={video.name || `Video ${index + 1}`}
+                className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-200 ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
+                loading="lazy"
+                width="120"
+                height="67"
+                onLoad={handleImageLoad}
+                onError={handleImageError}
+              />
+            </>
           ) : (
-            // Fallback: Zeige ein statisches SVG-Symbol
+            // Fallback icon if no thumbnail or error loading
             <div className="absolute inset-0 flex items-center justify-center">
-              <FilmIcon className="h-8 w-8 text-gray-700" />
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8 text-gray-700">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3.375 19.5h17.25m-17.25 0a1.125 1.125 0 01-1.125-1.125M3.375 19.5h1.5C5.496 19.5 6 18.996 6 18.375m-3.75 0V5.625m0 12.75v-1.5c0-.621.504-1.125 1.125-1.125m18.375 2.625V5.625m0 12.75c0 .621-.504 1.125-1.125 1.125m1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125m0 0h-1.5m-15 0h-1.5m15 0h-1.5m-15 0H5.625m0 0h12.75m-12.75 0c-.621 0-1.125.504-1.125 1.125" />
+              </svg>
             </div>
           )
         ) : (
-          // Skeleton loader while not visible
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="w-full h-full bg-gray-800 animate-pulse"></div>
-          </div>
+          // Lightweight placeholder before becoming visible
+          <div className="absolute inset-0 bg-gray-800"></div>
         )}
+        
+        {/* Always show the duration */}
         <div className="absolute bottom-1 right-1 bg-black/60 text-white text-xs px-1.5 py-0.5 rounded">
           {match.duration}s
         </div>
       </div>
+      
+      {/* Video metadata section */}
       <div className="p-2">
         <div className="text-xs font-medium truncate">{video?.name || `Video ${index + 1}`}</div>
         <div className="text-xs text-gray-500 mt-0.5">Match: {Math.round(match.score * 100)}%</div>
@@ -465,132 +497,151 @@ export default function EditorPage() {
 
   // Load all video elements for the selected videos
   useEffect(() => {
-    // Only run this if we have videos to process
-    if (uploadedVideos.length === 0 || selectedVideos.length === 0) return;
+    // Only run when we have both uploaded videos and selected videos
+    if (!uploadedVideos.length || !selectedVideos.length) return;
     
-    // Safer thumbnailing approach
+    let isMounted = true; // For cleanup
+    
+    // Throttled thumbnail generation with better memory management
     const generateThumbnails = async () => {
-      // Identify videos that need thumbnails
-      const videosNeedingThumbnails = selectedVideos
-        .map(videoId => uploadedVideos.find(v => v.id === videoId))
-        .filter((video): video is UploadedVideo => !!video && !video.thumbnailUrl);
-      
-      // Don't do anything if all videos already have thumbnails
-      if (videosNeedingThumbnails.length === 0) return;
-      
-      console.log(`Generating thumbnails for ${videosNeedingThumbnails.length} videos`);
-      
-      // Process videos in sequential batches to avoid memory issues
-      const BATCH_SIZE = 2;
-      
-      for (let i = 0; i < videosNeedingThumbnails.length; i += BATCH_SIZE) {
-        const batch = videosNeedingThumbnails.slice(i, i + BATCH_SIZE);
+      try {
+        // Get videos that need thumbnails (avoid regenerating existing thumbnails)
+        const videosNeedingThumbnails = uploadedVideos.filter(video => 
+          selectedVideos.includes(video.id) && !video.thumbnailUrl
+        );
         
-        // Sequential processing within batch for stability
-        for (const video of batch) {
+        if (!videosNeedingThumbnails.length) return;
+        
+        console.log(`Generating thumbnails for ${videosNeedingThumbnails.length} videos`);
+        
+        // Process one video at a time with delay between each
+        for (let i = 0; i < videosNeedingThumbnails.length; i++) {
+          if (!isMounted) break; // Stop if component unmounted
+          
+          const video = videosNeedingThumbnails[i];
           try {
-            // Simple, more reliable thumbnail generation
-            await generateSingleThumbnail(video);
-            // Small delay between processing videos to prevent UI freezing
-            await new Promise(r => setTimeout(r, 100));
+            await generateThumbnailSafely(video);
+            // Add small delay between processes to avoid memory spikes
+            await new Promise(r => setTimeout(r, 200));
           } catch (err) {
             console.error(`Error generating thumbnail for video ${video.id}:`, err);
-            // Continue with other videos even if one fails
+            // Continue with next video even if one fails
           }
         }
+      } catch (err) {
+        console.error("Thumbnail generation process failed:", err);
       }
     };
     
-    // Simplified, robust thumbnail generator for a single video
-    const generateSingleThumbnail = (video: UploadedVideo): Promise<void> => {
-      return new Promise((resolve, reject) => {
+    // Simplified, error-resistant thumbnail generator
+    const generateThumbnailSafely = async (video: UploadedVideo): Promise<void> => {
+      return new Promise((resolve) => {
+        // Create video element
         const videoEl = document.createElement('video');
-        
-        // Set up video properties
         videoEl.muted = true;
         videoEl.crossOrigin = "anonymous";
         videoEl.preload = "metadata";
         
-        // Cleanup function to ensure resources are released
-        const cleanup = () => {
+        // Setup timeouts and cleanup
+        const timeoutId = setTimeout(() => {
+          cleanupResources();
+          console.warn(`Thumbnail generation timed out for ${video.name}`);
+          resolve(); // Always resolve, never reject
+        }, 5000);
+        
+        // Cleanup function to prevent memory leaks
+        const cleanupResources = () => {
           videoEl.onloadedmetadata = null;
           videoEl.onerror = null;
           videoEl.onseeked = null;
           videoEl.onloadeddata = null;
-          videoEl.pause();
+          videoEl.src = ''; // Important: Clear source
+          videoEl.load(); // Force garbage collection
           videoEl.remove();
-        };
-        
-        // Set up a timeout to avoid hanging
-        const timeoutId = setTimeout(() => {
-          cleanup();
-          // Don't reject, just resolve without thumbnail to avoid stopping the process
-          console.warn(`Thumbnail generation timed out for video ${video.id}`);
-          resolve();
-        }, 5000);
-        
-        // Error handler
-        videoEl.onerror = () => {
           clearTimeout(timeoutId);
-          cleanup();
-          resolve(); // Continue without thumbnail
         };
         
-        // Once metadata is loaded, seek to a good position for thumbnail
+        // Handle errors
+        videoEl.onerror = () => {
+          cleanupResources();
+          resolve();
+        };
+        
+        // Once metadata is loaded, seek to position for thumbnail
         videoEl.onloadedmetadata = () => {
-          // Try to seek to 10% of the video for thumbnail
-          const seekPosition = Math.min(videoEl.duration * 0.1, 1);
-          videoEl.currentTime = seekPosition;
-        };
-        
-        // After seeking, capture the frame
-        videoEl.onseeked = () => {
           try {
-            // Create a small canvas for the thumbnail
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
-            
-            // Set to small dimensions to save memory
-            canvas.width = 160;  // Smaller dimensions
-            canvas.height = 90;  // 16:9 ratio
-            
-            if (ctx && videoEl.videoWidth) {
-              // Draw the video frame
-              ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
-              
-              // Convert to JPEG with lower quality
-              const thumbnailUrl = canvas.toDataURL('image/jpeg', 0.5);
-              
-              // Update the videos array with the new thumbnail
-              setUploadedVideos(prev => 
-                prev.map(v => v.id === video.id ? {...v, thumbnailUrl} : v)
-              );
-              
-              // Cleanup resources
-              clearTimeout(timeoutId);
-              cleanup();
-              canvas.remove();
-              resolve();
-            } else {
-              clearTimeout(timeoutId);
-              cleanup();
-              resolve(); // Continue without thumbnail
-            }
+            // Seek to 10% of video or 1 second, whichever is less
+            videoEl.currentTime = Math.min(videoEl.duration * 0.1, 1);
           } catch (err) {
-            clearTimeout(timeoutId);
-            cleanup();
-            console.error('Error in thumbnail generation:', err);
-            resolve(); // Continue without thumbnail
+            console.error("Error seeking video:", err);
+            cleanupResources();
+            resolve();
           }
         };
         
-        // Set the source after setting up all handlers
-        videoEl.src = video.url;
+        // After seeking completes, capture the frame
+        videoEl.onseeked = () => {
+          try {
+            // Use a small canvas for the thumbnail (120x67 is enough)
+            const canvas = document.createElement('canvas');
+            canvas.width = 120;  // Very small dimensions to minimize memory
+            canvas.height = 67;  // 16:9 aspect ratio
+            
+            const ctx = canvas.getContext('2d');
+            if (!ctx || !videoEl.videoWidth) {
+              cleanupResources();
+              resolve();
+              return;
+            }
+            
+            // Draw video frame to canvas at reduced size
+            ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+            
+            // Convert to low-quality JPEG (0.4 quality)
+            const thumbnailUrl = canvas.toDataURL('image/jpeg', 0.4);
+            
+            // Update state only if component still mounted
+            if (isMounted) {
+              setUploadedVideos(prev => prev.map(v => 
+                v.id === video.id ? {...v, thumbnailUrl} : v
+              ));
+            }
+            
+            // Clean up all resources
+            canvas.remove();
+            cleanupResources();
+            resolve();
+          } catch (err) {
+            console.error("Error generating thumbnail:", err);
+            cleanupResources();
+            resolve();
+          }
+        };
+        
+        // Set source after all handlers are set up
+        try {
+          videoEl.src = video.url;
+          // Add source error event handler
+          videoEl.addEventListener('error', () => {
+            console.error(`Error loading video source: ${video.name}`);
+            cleanupResources();
+            resolve();
+          }, { once: true });
+        } catch (err) {
+          console.error("Error setting video source:", err);
+          cleanupResources();
+          resolve();
+        }
       });
     };
-    
-    // Run the thumbnail generation
+
+    // Start the generation process
     generateThumbnails();
+    
+    // Cleanup function
+    return () => {
+      isMounted = false;
+    };
   }, [uploadedVideos, selectedVideos]);
 
   // ------------------- FUNCTIONS -------------------
@@ -615,117 +666,153 @@ export default function EditorPage() {
     }
   };
 
-  // Function to start video playback
+  // Optimized video playback function
   const startPlayback = useCallback(() => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === 'undefined' || !audioRef.current || !canvasRef.current) {
+      return;
+    }
     
     const audio = audioRef.current;
     const canvas = canvasRef.current;
-    if (!audio || !canvas) return;
-    
     const ctx = canvas.getContext('2d');
+    
     if (!ctx) return;
     
-    // Reset canvas
+    console.log('Starting video playback...');
+    
+    // Clear canvas with black background
     ctx.fillStyle = 'black';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     
-    // Start audio
+    // Reset and start audio playback
     audio.currentTime = 0;
     audio.play().catch(err => {
-      console.error('Failed to play audio:', err);
+      console.error('Audio playback error:', err);
       setIsPlaying(false);
       return;
     });
     
-    // Set playing state
+    // Update UI state
     setIsPlaying(true);
     
-    // Clean up previous animation
+    // Clean up any previous animation
     if (animationRef.current) {
       cancelAnimationFrame(animationRef.current);
       animationRef.current = null;
     }
     
-    // Create a single video element we can reuse
-    const videoElement = document.createElement('video');
+    // Create a video placeholder for reduced memory usage
+    let videoElement: HTMLVideoElement | null = document.createElement('video');
     videoElement.muted = true;
-    videoElement.preload = 'auto';
+    videoElement.preload = 'metadata';
     
-    // Track current playing video index
+    // Track which video we're showing
     let currentVideoIndex = 0;
-    let isVideoLoading = false;
+    let videoLoadingStartTime = 0;
+    let isLoadingVideo = false;
     
-    // Function to load a specific video
-    const loadVideo = (index: number) => {
-      if (index >= selectedVideos.length) return false;
+    // Load a specific video
+    const loadVideo = (index: number): boolean => {
+      if (!videoElement || index >= selectedVideos.length) return false;
       
       const videoId = selectedVideos[index];
-      const video = uploadedVideos.find(v => v.id === videoId);
+      const videoData = uploadedVideos.find(v => v.id === videoId);
       
-      if (!video) return false;
+      if (!videoData) return false;
       
-      isVideoLoading = true;
-      videoElement.src = video.url;
-      videoElement.load();
+      // Mark as loading
+      isLoadingVideo = true;
+      videoLoadingStartTime = performance.now();
       
-      // Handle video loaded
-      videoElement.onloadeddata = () => {
-        isVideoLoading = false;
-      };
-      
-      // Handle errors
-      videoElement.onerror = () => {
-        console.error(`Error loading video ${videoId}`);
-        isVideoLoading = false;
-        // Try next video
-        currentVideoIndex++;
-        if (!loadVideo(currentVideoIndex)) {
-          stopPlayback();
-        }
-      };
-      
-      return true;
+      try {
+        // Track loading events
+        const handleLoadedData = () => {
+          isLoadingVideo = false;
+          const loadTime = performance.now() - videoLoadingStartTime;
+          console.log(`Video loaded in ${Math.round(loadTime)}ms`);
+        };
+        
+        // Handle loading errors
+        const handleError = () => {
+          console.error(`Error loading video at index ${index}`);
+          isLoadingVideo = false;
+          
+          // Try next video if this one fails
+          currentVideoIndex++;
+          if (currentVideoIndex < selectedVideos.length) {
+            loadVideo(currentVideoIndex);
+          }
+        };
+        
+        // Set up event handlers
+        videoElement!.onloadeddata = handleLoadedData;
+        videoElement!.onerror = handleError;
+        
+        // Set the source
+        videoElement!.src = videoData.url;
+        return true;
+      } catch (err) {
+        console.error('Error setting video source:', err);
+        isLoadingVideo = false;
+        return false;
+      }
     };
     
-    // Load first video
+    // Start with the first video
     if (!loadVideo(0)) {
+      console.error('Failed to load initial video');
       stopPlayback();
       return;
     }
     
-    // Animation function
+    // Main animation loop
     const animate = () => {
-      if (!audio || !ctx) return;
-      
-      // If audio ended, stop playback
-      if (audio.ended || audio.paused) {
+      // Stop if audio has ended
+      if (!audio || audio.ended || audio.paused) {
         stopPlayback();
         return;
       }
       
-      // Draw current video frame
-      if (!isVideoLoading && videoElement.readyState >= 2) {
+      // Draw current video frame if loaded
+      if (videoElement && !isLoadingVideo && videoElement.readyState >= 3) {
         try {
           ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
         } catch (e) {
           console.error('Error drawing video frame:', e);
+          ctx.fillStyle = 'black';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
         }
         
-        // Simple timing - change video every ~5 seconds
-        const videoPlayTime = 5; // seconds
-        const totalElapsed = audio.currentTime;
-        const shouldBeOnVideoIndex = Math.floor(totalElapsed / videoPlayTime);
+        // Determine if we should switch videos based on audio time
+        const videoSwitchInterval = 5; // Switch every 5 seconds
+        const currentAudioTime = audio.currentTime;
+        const targetVideoIndex = Math.floor(currentAudioTime / videoSwitchInterval);
         
-        // If we should move to next video
-        if (shouldBeOnVideoIndex > currentVideoIndex && shouldBeOnVideoIndex < selectedVideos.length) {
-          currentVideoIndex = shouldBeOnVideoIndex;
+        // If time to switch to next video
+        if (targetVideoIndex > currentVideoIndex && targetVideoIndex < selectedVideos.length) {
+          console.log(`Switching to video ${targetVideoIndex}`);
+          currentVideoIndex = targetVideoIndex;
           loadVideo(currentVideoIndex);
         }
-      } else {
-        // Show loading state - black screen or loading indicator
+      } else if (isLoadingVideo) {
+        // Show loading indicator
+        const loadingTime = performance.now() - videoLoadingStartTime;
+        if (loadingTime > 3000) {
+          // Loading is taking too long, try next video
+          console.warn('Video loading timeout, trying next video');
+          currentVideoIndex++;
+          if (currentVideoIndex < selectedVideos.length) {
+            loadVideo(currentVideoIndex);
+          }
+        }
+        
+        // Draw loading indicator
         ctx.fillStyle = 'black';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = 'white';
+        ctx.font = '14px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('Loading...', canvas.width / 2, canvas.height / 2);
       }
       
       // Continue animation if still playing
@@ -736,7 +823,7 @@ export default function EditorPage() {
       }
     };
     
-    // Start animation
+    // Start the animation loop
     animationRef.current = requestAnimationFrame(animate);
     
     // Return cleanup function
@@ -746,11 +833,15 @@ export default function EditorPage() {
         animationRef.current = null;
       }
       
+      // Clean up video element
       if (videoElement) {
+        videoElement.onloadeddata = null;
+        videoElement.onerror = null;
         videoElement.pause();
         videoElement.src = '';
         videoElement.load();
         videoElement.remove();
+        videoElement = null;
       }
     };
   }, [selectedVideos, uploadedVideos]);
@@ -933,38 +1024,68 @@ export default function EditorPage() {
     }
   }, []);
 
-  // Neue Funktion zum Laden von Videos direkt vom Server
+  // Improved function to load videos from the server with better memory management
   const fetchServerVideos = async () => {
     try {
+      console.log('Fetching videos from server...');
+      
       const response = await fetch('/api/media');
-      if (response.ok) {
-        const data = await response.json();
-        
-        if (data.files && data.files.length > 0) {
-          console.log('Loaded videos from server:', data.files.length);
-          
-          // Konvertiere das Server-Format in unser App-Format
-          const serverVideos = data.files.map((video: any) => ({
-            id: video.id,
-            name: video.name,
-            size: video.size || 0,
-            type: video.type || 'video/mp4',
-            url: video.url,
-            tags: video.tags || [],
-            filepath: video.path,
-            key: video.key,
-            // Initialize with no thumbnail to prevent undefined checks later
-            thumbnailUrl: undefined
-          }));
-          
-          // Replace videos instead of adding to prevent duplicates
-          setUploadedVideos(serverVideos);
-          return serverVideos; // Return the videos for chaining
-        }
-      } else {
-        console.error('Failed to fetch videos from server');
+      if (!response.ok) {
+        console.error('Failed to fetch videos from server:', response.status, response.statusText);
+        return [];
       }
-      return []; // Return empty array if no videos found
+      
+      const data = await response.json();
+      
+      if (!data.files || !Array.isArray(data.files)) {
+        console.error('Invalid server response - expected files array:', data);
+        return [];
+      }
+      
+      // Batch the processing to avoid memory issues
+      const processVideoBatch = (videos: any[], start: number, batchSize: number) => {
+        const end = Math.min(start + batchSize, videos.length);
+        const batch = videos.slice(start, end);
+        
+        console.log(`Processing video batch ${start}-${end} of ${videos.length} videos`);
+        
+        // Process this batch
+        const processedVideos = batch.map((video: any) => ({
+          id: video.id,
+          name: video.name,
+          size: video.size || 0,
+          type: video.type || 'video/mp4',
+          url: video.url,
+          tags: video.tags || [],
+          filepath: video.path,
+          key: video.key,
+          thumbnailUrl: undefined // Initialize with no thumbnail
+        }));
+        
+        // Update state with this batch
+        setUploadedVideos(prev => {
+          // Remove duplicates by merging with existing videos
+          const existingIds = new Set(prev.map(v => v.id));
+          const newVideos = processedVideos.filter(v => !existingIds.has(v.id));
+          return [...prev, ...newVideos];
+        });
+        
+        // Process next batch if there are more videos
+        if (end < videos.length) {
+          setTimeout(() => {
+            processVideoBatch(videos, end, batchSize);
+          }, 100); // Small delay between batches
+        }
+      };
+
+      // Start processing in batches of 10 videos
+      if (data.files.length > 0) {
+        console.log(`Found ${data.files.length} videos on server`);
+        processVideoBatch(data.files, 0, 10);
+        return data.files; // Return for chaining
+      }
+      
+      return [];
     } catch (error) {
       console.error('Error fetching videos from server:', error);
       return []; // Return empty array on error
