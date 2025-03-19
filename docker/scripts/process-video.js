@@ -388,63 +388,97 @@ async function generateFinalVideo() {
   }
   
   // 6. Wenn ein Voiceover vorhanden ist, füge es hinzu
-  if (TEMPLATE_DATA.voiceoverId) {
-    console.log(`Voiceover ID found: ${TEMPLATE_DATA.voiceoverId}`);
+  const VOICEOVER_URL = process.env.VOICEOVER_URL || '';
+  if (TEMPLATE_DATA.voiceoverId || VOICEOVER_URL) {
+    console.log(`Voiceover information found`);
+    if (TEMPLATE_DATA.voiceoverId) {
+      console.log(`Voiceover ID: ${TEMPLATE_DATA.voiceoverId}`);
+    }
+    if (VOICEOVER_URL) {
+      console.log(`Direct Voiceover URL provided: ${VOICEOVER_URL}`);
+    }
     
     try {
       // Lade die Voiceover-Datei von S3 herunter
-      const voiceoverPath = path.join(INPUT_DIR, `voiceover_${TEMPLATE_DATA.voiceoverId}.mp3`);
-      
-      // Versuche verschiedene mögliche Pfade für die Voiceover-Datei
-      const possiblePaths = [
-        `audio/${TEMPLATE_DATA.voiceoverId}.mp3`,
-        `audio/voiceover_${TEMPLATE_DATA.voiceoverId}.mp3`,
-        `audio/${TEMPLATE_DATA.voiceoverId}`,
-        `voiceovers/${TEMPLATE_DATA.voiceoverId}.mp3`,
-        `voiceovers/voiceover_${TEMPLATE_DATA.voiceoverId}.mp3`
-      ];
-      
-      // Check if voiceover file exists in S3 before attempting to download
+      const voiceoverPath = path.join(INPUT_DIR, `voiceover.mp3`);
       let voiceoverExists = false;
-      let existingVoiceoverKey = '';
+      let voiceoverSource = '';
       
-      for (const voiceoverKey of possiblePaths) {
+      // Prüfe zuerst, ob eine direkte URL angegeben wurde
+      if (VOICEOVER_URL) {
         try {
-          console.log(`Checking if voiceover exists in S3: ${S3_BUCKET}/${voiceoverKey}`);
-          await s3Client.send(new HeadObjectCommand({
-            Bucket: S3_BUCKET,
-            Key: voiceoverKey
-          }));
-          voiceoverExists = true;
-          existingVoiceoverKey = voiceoverKey;
-          console.log(`Voiceover file found in S3: ${voiceoverKey}`);
-          break;
+          console.log(`Downloading voiceover from direct URL: ${VOICEOVER_URL}`);
+          const response = await fetch(VOICEOVER_URL);
+          if (response.ok) {
+            const buffer = Buffer.from(await response.arrayBuffer());
+            fs.writeFileSync(voiceoverPath, buffer);
+            voiceoverExists = true;
+            voiceoverSource = 'direct URL';
+            console.log(`Successfully downloaded voiceover from URL to ${voiceoverPath}`);
+          } else {
+            console.error(`Failed to download voiceover from URL: ${response.status} ${response.statusText}`);
+          }
         } catch (error) {
-          console.log(`Voiceover not found at ${voiceoverKey}`);
+          console.error(`Error downloading voiceover from URL: ${error.message}`);
+        }
+      }
+      
+      // Wenn keine direkte URL erfolgreich war, versuche es mit der ID
+      if (!voiceoverExists && TEMPLATE_DATA.voiceoverId) {
+        // Versuche verschiedene mögliche Pfade für die Voiceover-Datei
+        const possiblePaths = [
+          `audio/${TEMPLATE_DATA.voiceoverId}.mp3`,
+          `audio/voiceover_${TEMPLATE_DATA.voiceoverId}.mp3`,
+          `audio/${TEMPLATE_DATA.voiceoverId}`,
+          `voiceovers/${TEMPLATE_DATA.voiceoverId}.mp3`,
+          `voiceovers/voiceover_${TEMPLATE_DATA.voiceoverId}.mp3`
+        ];
+        
+        // Check if voiceover file exists in S3 before attempting to download
+        let existingVoiceoverKey = '';
+        
+        for (const voiceoverKey of possiblePaths) {
+          try {
+            console.log(`Checking if voiceover exists in S3: ${S3_BUCKET}/${voiceoverKey}`);
+            await s3Client.send(new HeadObjectCommand({
+              Bucket: S3_BUCKET,
+              Key: voiceoverKey
+            }));
+            voiceoverExists = true;
+            existingVoiceoverKey = voiceoverKey;
+            voiceoverSource = `S3 path: ${voiceoverKey}`;
+            console.log(`Voiceover file found in S3: ${voiceoverKey}`);
+            break;
+          } catch (error) {
+            console.log(`Voiceover not found at ${voiceoverKey}`);
+          }
+        }
+        
+        if (existingVoiceoverKey) {
+          // Download the voiceover file
+          try {
+            console.log(`Downloading voiceover from S3: ${existingVoiceoverKey}`);
+            await downloadFromS3(existingVoiceoverKey, voiceoverPath);
+            console.log(`Successfully downloaded voiceover to ${voiceoverPath}`);
+          } catch (error) {
+            console.error(`Error downloading voiceover: ${error.message}`);
+            voiceoverExists = false;
+          }
         }
       }
       
       if (!voiceoverExists) {
-        console.warn(`Voiceover file not found in S3 for ID: ${TEMPLATE_DATA.voiceoverId}`);
+        console.warn(`Could not find or download voiceover file`);
         console.log('Continuing without voiceover');
         return concatenatedFile;
       }
       
-      // Download the voiceover file
-      try {
-        console.log(`Downloading voiceover from S3: ${existingVoiceoverKey}`);
-        await downloadFromS3(existingVoiceoverKey, voiceoverPath);
-        console.log(`Successfully downloaded voiceover to ${voiceoverPath}`);
-        
-        // Verify the voiceover file exists and has content
-        if (!fs.existsSync(voiceoverPath) || fs.statSync(voiceoverPath).size === 0) {
-          throw new Error(`Downloaded voiceover file is empty or does not exist: ${voiceoverPath}`);
-        }
-      } catch (error) {
-        console.error(`Error downloading voiceover: ${error.message}`);
-        console.log('Continuing without voiceover due to download error');
-        return concatenatedFile;
+      // Verify the voiceover file exists and has content
+      if (!fs.existsSync(voiceoverPath) || fs.statSync(voiceoverPath).size === 0) {
+        throw new Error(`Downloaded voiceover file is empty or does not exist: ${voiceoverPath}`);
       }
+      
+      console.log(`Using voiceover from ${voiceoverSource}`);
       
       const finalFile = path.join(OUTPUT_DIR, 'final.mp4');
       

@@ -8,6 +8,7 @@ import { generateUniqueFileName, getS3Url } from '@/lib/storage';
 import { Types } from 'mongoose';
 import { NextRequest } from 'next/server';
 import { submitAwsBatchJob, BatchJobTypes } from '@/utils/aws-batch-utils';
+import mongoose from 'mongoose';
 
 // Typ für eingehende Video-Segment-Daten
 type VideoSegmentRequest = {
@@ -213,17 +214,36 @@ export async function POST(request: Request) {
       console.log('Using first video as input URL:', firstVideoUrl);
 
       // Job an AWS Batch senden
-      const additionalParams = {
+      const additionalParams: Record<string, string> = {
         USER_ID: session.user.id,
         PROJECT_ID: project._id.toString(),
         SEGMENTS: JSON.stringify(videoSegments),
-        TEMPLATE_DATA: JSON.stringify({ segments: videoSegments }),
+        TEMPLATE_DATA: JSON.stringify({ 
+          segments: videoSegments,
+          voiceoverId: voiceoverId || null,
+          voiceoverText: voiceoverText || ''
+        }),
         TITLE: title,
         ADD_SUBTITLES: addSubtitles ? 'true' : 'false',
         SUBTITLE_OPTIONS: subtitleOptions ? JSON.stringify(subtitleOptions) : '',
         VOICEOVER_TEXT: voiceoverText || '',
         VOICEOVER_ID: voiceoverId || ''
       };
+
+      // Voiceover-URL direkt bereitstellen, wenn verfügbar
+      if (voiceoverId) {
+        try {
+          // Hole die Voiceover-Datei aus der Datenbank
+          const voiceover = await mongoose.model('Voiceover').findById(voiceoverId);
+          if (voiceover && voiceover.fileKey) {
+            additionalParams.VOICEOVER_URL = getS3Url(voiceover.fileKey);
+            console.log('Adding voiceover URL to batch job:', additionalParams.VOICEOVER_URL);
+          }
+        } catch (voiceoverError) {
+          console.error('Error getting voiceover:', voiceoverError);
+          // Fahre fort ohne Voiceover-URL
+        }
+      }
 
       console.log('Submitting AWS Batch job with params:', additionalParams);
       
