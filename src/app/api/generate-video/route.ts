@@ -4,9 +4,10 @@ import { authOptions } from '@/lib/auth';
 import dbConnect from '@/lib/mongoose';
 import ProjectModel from '@/models/Project';
 import VideoModel from '@/models/Video';
-import { generateUniqueFileName } from '@/lib/storage';
+import { generateUniqueFileName, getS3Url } from '@/lib/storage';
 import { Types } from 'mongoose';
 import { NextRequest } from 'next/server';
+import { submitAwsBatchJob, BatchJobTypes } from '@/utils/aws-batch-utils';
 
 // Typ für eingehende Video-Segment-Daten
 type VideoSegmentRequest = {
@@ -190,124 +191,78 @@ export async function POST(request: Request) {
       }, { status: 500 });
     }
 
-    // Starte den Video-Workflow
+    // Starte direkt den AWS Batch Job statt über video-workflow
     try {
-      // Erstelle ein Objekt mit den Workflow-Daten
-      const workflowData = {
-        workflowType: 'generate-final',
-        projectId: project._id.toString(),
-        userId: session.user.id,
-        title,
-        description: 'Video generiert aus Script-Matches',
-        videos: [{
-          id: 'combined',
-          key: '',
-          segments: data.segments
-        }],
-        voiceoverId,
-        voiceoverText, // Übergebe den Voiceover-Text für Untertitel
-        options: {
-          addSubtitles: addSubtitles,
-          subtitleOptions: subtitleOptions
-        }
+      // Ausgabedateinamen generieren
+      const outputFileName = generateUniqueFileName(`${title.toLowerCase().replace(/\s+/g, '-')}.mp4`);
+      const outputKey = `final/${session.user.id}/${outputFileName}`;
+      console.log('Generated output key:', outputKey);
+
+      // Die Segmente für den AWS Batch Job vorbereiten
+      const videoSegments = segments.map(segment => ({
+        videoId: segment.videoId,
+        url: getS3Url(segment.videoKey),
+        startTime: segment.startTime,
+        duration: segment.duration,
+        position: segment.position
+      }));
+
+      // Job an AWS Batch senden
+      const additionalParams = {
+        USER_ID: session.user.id,
+        PROJECT_ID: project._id.toString(),
+        SEGMENTS: JSON.stringify(videoSegments),
+        TITLE: title,
+        ADD_SUBTITLES: addSubtitles ? 'true' : 'false',
+        SUBTITLE_OPTIONS: subtitleOptions ? JSON.stringify(subtitleOptions) : '',
+        VOICEOVER_TEXT: voiceoverText || '',
+        VOICEOVER_ID: voiceoverId || ''
       };
-      
-      console.log('Preparing workflow data:', JSON.stringify(workflowData, null, 2));
-      console.log('User ID type and value:', {
-        type: typeof session.user.id,
-        value: session.user.id
-      });
-      
-      // Verwende die direkte Methode, um den Workflow zu starten
-      const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || 'https://ad-video-generator.vercel.app').replace(/\/+$/, '');
-      console.log(`Sending request to video-workflow at ${baseUrl}/api/video-workflow`);
-      
-      const requestOptions = {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': process.env.API_SECRET_KEY || 'internal-api-call',
-          'Authorization': `Bearer ${session.user.id}`
-        },
-        body: JSON.stringify(workflowData)
-      };
-      
-      console.log('Request options:', {
-        url: `${baseUrl}/api/video-workflow`,
-        method: requestOptions.method,
-        headers: requestOptions.headers,
-        bodyLength: JSON.stringify(workflowData).length
-      });
-      
-      const workflowResponse = await fetch(`${baseUrl}/api/video-workflow`, requestOptions);
-      
-      console.log('Workflow response status:', workflowResponse.status);
 
-      if (!workflowResponse.ok) {
-        let errorData;
-        try {
-          errorData = await workflowResponse.json();
-          console.error('Workflow API error response:', errorData);
-        } catch (parseError) {
-          console.error('Failed to parse error response:', parseError);
-          errorData = { error: 'Unknown error', status: workflowResponse.status };
-        }
-        
-        // Detaillierte Fehlerinformationen loggen
-        console.error('Workflow request failed with details:', {
-          status: workflowResponse.status,
-          statusText: workflowResponse.statusText,
-          url: `${baseUrl}/api/video-workflow`,
-          projectId: project._id.toString(),
-          errorData
-        });
-        
-        // Update project status to failed
-        await ProjectModel.findByIdAndUpdate(project._id, {
-          status: 'failed',
-          error: errorData.message || errorData.error || `Failed to start video workflow (Status: ${workflowResponse.status})`
-        });
-        
-        throw new Error(errorData.message || errorData.error || `Failed to start video workflow (Status: ${workflowResponse.status})`);
-      }
-
-      let workflowResponseData;
-      try {
-        workflowResponseData = await workflowResponse.json();
-        console.log('Workflow started successfully:', workflowResponseData);
-      } catch (parseError) {
-        console.error('Failed to parse workflow response:', parseError);
-        throw new Error('Failed to parse response from workflow API');
-      }
-
-      // Update project with workflow data
+      console.log('Submitting AWS Batch job with params:', additionalParams);
+      
+      const batchResponse = await submitAwsBatchJob(
+        BatchJobTypes.GENERATE_FINAL,
+        'dummy-input-url', // Dummy-URL, da wir die Segmente direkt übergeben
+        outputKey,
+        additionalParams
+      );
+      
+      console.log('AWS Batch job submitted successfully:', batchResponse);
+      
+      // Aktualisiere das Projekt mit der Job-ID
       await ProjectModel.findByIdAndUpdate(project._id, {
         status: 'processing',
-        batchJobId: workflowResponseData.jobId,
-        batchJobName: workflowResponseData.jobName
+        jobId: batchResponse.jobId,
+        outputPath: outputKey
       });
-
+      
+      // Erfolgsantwort senden
       return NextResponse.json({
         success: true,
         message: 'Video generation started',
         projectId: project._id.toString(),
-        jobId: workflowResponseData.jobId,
-        jobName: workflowResponseData.jobName || workflowResponseData.status,
-        estimatedTime: "Your video will be processed and will be ready in a few minutes"
+        jobId: batchResponse.jobId,
+        outputPath: outputKey
       });
+      
     } catch (error) {
-      console.error('Error in workflow process:', error);
-      return NextResponse.json({
-        error: 'Failed to start video workflow',
-        details: error instanceof Error ? error.message : 'Unknown workflow error'
-      }, { status: 500 });
+      console.error('Error in AWS Batch process:', error);
+      
+      // Update project status to failed
+      await ProjectModel.findByIdAndUpdate(project._id, {
+        status: 'failed',
+        error: error instanceof Error ? error.message : 'Unknown error in AWS Batch process'
+      });
+      
+      throw error;
     }
   } catch (error) {
-    console.error('Unhandled error in video generation:', error);
-    return NextResponse.json({ 
-      error: 'Failed to generate video',
-      details: error instanceof Error ? error.message : 'Unknown error',
-      stack: error instanceof Error ? error.stack : undefined
+    console.error('Error in video generation process:', error);
+    return NextResponse.json({
+      error: 'Video generation failed',
+      message: error instanceof Error ? error.message : 'Unknown error',
+      details: error instanceof Error && error.stack ? error.stack : 'No stack trace available'
     }, { status: 500 });
   }
 } 
