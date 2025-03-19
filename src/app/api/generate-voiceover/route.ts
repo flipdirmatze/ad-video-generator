@@ -9,8 +9,8 @@ import { Types } from 'mongoose'
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY
 const DEFAULT_VOICE_ID = 'pNInz6obpgDQGcFmaJgB' // Standard-Stimme als Fallback
 
-// Längeres Timeout für große Texte (2 Minuten)
-const FETCH_TIMEOUT_MS = 120000;
+// Längeres Timeout für große Texte (3 Minuten)
+const FETCH_TIMEOUT_MS = 180000;
 
 // Hilfsfunktion für Fetch mit Timeout
 async function fetchWithTimeout(url: string, options: RequestInit, timeout: number) {
@@ -25,6 +25,12 @@ async function fetchWithTimeout(url: string, options: RequestInit, timeout: numb
       signal
     });
     return response;
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      // Klare Nachricht für Timeout-Fehler
+      throw new Error('Die Anfrage hat das Zeitlimit überschritten. Bitte versuche es mit einem kürzeren Text.');
+    }
+    throw error;
   } finally {
     clearTimeout(timeoutId);
   }
@@ -75,7 +81,11 @@ export async function POST(request: Request) {
     // Voiceover mit ElevenLabs API generieren
     try {
       const apiUrl = `https://api.elevenlabs.io/v1/text-to-speech/${selectedVoiceId}`;
-      console.log(`Calling ElevenLabs API at: ${apiUrl}`);
+      console.log(`Calling ElevenLabs API at: ${apiUrl} with timeout of ${FETCH_TIMEOUT_MS/1000} seconds`);
+      
+      // Erweitern Sie das Timeout basierend auf der Textlänge
+      const dynamicTimeout = Math.min(FETCH_TIMEOUT_MS, 60000 + (scriptLength * 20)); // Basiswert + 20ms pro Zeichen
+      console.log(`Using dynamic timeout of ${dynamicTimeout/1000} seconds based on text length`);
       
       // Verwende die Timeout-Funktion mit erhöhtem Timeout für die API-Anfrage
       const response = await fetchWithTimeout(
@@ -98,7 +108,7 @@ export async function POST(request: Request) {
             }
           })
         },
-        FETCH_TIMEOUT_MS
+        dynamicTimeout
       );
 
       if (!response.ok) {
@@ -225,11 +235,11 @@ export async function POST(request: Request) {
       
       // Prüfe auf Timeout-Fehler
       const errorMessage = apiError instanceof Error ? apiError.message : String(apiError);
-      if (errorMessage.includes('abort') || errorMessage.includes('timeout')) {
+      if (errorMessage.includes('abort') || errorMessage.includes('timeout') || errorMessage.includes('Zeitlimit')) {
         return NextResponse.json(
           { 
             error: 'Die Generierung des Voiceovers hat zu lange gedauert. Bitte versuche es mit einem kürzeren Text.',
-            details: 'API request timed out after ' + (FETCH_TIMEOUT_MS / 1000) + ' seconds',
+            details: `API request timed out after ${FETCH_TIMEOUT_MS / 1000} seconds. Text length: ${scriptLength} characters.`,
             timestamp: new Date().toISOString()
           },
           { status: 504 }

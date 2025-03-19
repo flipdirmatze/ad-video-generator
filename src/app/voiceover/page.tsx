@@ -304,9 +304,37 @@ export default function VoiceoverPage() {
         body: JSON.stringify(requestBody)
       })
       
-      const data = await response.json()
-      
+      // Verbesserte Fehlerbehandlung
       if (!response.ok) {
+        let errorMessage = '';
+        
+        // Spezielle Behandlung von Timeout-Fehlern (504)
+        if (response.status === 504) {
+          errorMessage = 'Es ist ein Timeout-Fehler aufgetreten. Bitte teile den Text in kleinere Abschnitte auf oder versuche es später noch einmal.';
+          throw new Error(errorMessage);
+        }
+        
+        // Versuche den Fehler als JSON zu parsen
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorData.details || 'Fehler bei der Generierung des Voiceovers';
+        } catch (parseError) {
+          // Wenn die Antwort kein JSON ist oder kein Fehlertext vorhanden ist
+          errorMessage = `Fehler (${response.status}): ${response.statusText || 'Unbekannter Fehler'}`;
+        }
+        
+        throw new Error(errorMessage);
+      }
+      
+      // Erfolgreich erhaltene Daten verarbeiten
+      let data;
+      try {
+        data = await response.json();
+      } catch (jsonError) {
+        throw new Error('Die Antwort des Servers konnte nicht verarbeitet werden');
+      }
+      
+      if (!data.success) {
         throw new Error(data.error || 'Failed to generate voiceover')
       }
       
@@ -352,8 +380,12 @@ export default function VoiceoverPage() {
       setIsPlaying(true);
       console.log('Autoplay started for newly generated voiceover');
     } catch (error) {
-      console.error('Failed to generate voiceover:', error)
-      setError(error instanceof Error ? error.message : 'Failed to generate voiceover')
+      console.error('Failed to generate voiceover:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unbekannter Fehler bei der Generierung des Voiceovers';
+      setError(errorMessage);
+      
+      // Zeige Toast-Benachrichtigung für den Fehler
+      toast.error(errorMessage, { duration: 5000 });
     } finally {
       setIsGenerating(false)
     }
