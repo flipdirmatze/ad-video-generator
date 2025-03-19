@@ -33,6 +33,7 @@ export interface IProject {
   outputUrl?: string;
   batchJobId?: string;
   batchJobName?: string;
+  jobId?: string;
   error?: string | null;
   progress?: number;
   createdAt: Date;
@@ -95,6 +96,9 @@ const ProjectSchema = new Schema<IProject>({
     type: String
   },
   batchJobId: {
+    type: String
+  },
+  jobId: {
     type: String
   },
   batchJobName: {
