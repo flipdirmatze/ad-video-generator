@@ -21,7 +21,18 @@ type VideoSegmentRequest = {
 type VideoGenerationRequest = {
   segments: VideoSegmentRequest[];
   voiceoverId?: string;
+  voiceoverText?: string; // Text für Untertitel
   title?: string;
+  projectId?: string;
+  addSubtitles?: boolean; // Untertitel aktiviert
+  subtitleOptions?: {
+    fontName: string;
+    fontSize: number;
+    primaryColor: string;
+    backgroundColor: string;
+    borderStyle: number;
+    position: string;
+  }; // Untertitel-Optionen
 };
 
 // Interface für das Video-Dokument mit _id
@@ -59,7 +70,15 @@ export async function POST(request: Request) {
       }, { status: 400 });
     }
     
-    const { segments, voiceoverId, title = 'Mein Video' } = data;
+    const { 
+      segments, 
+      voiceoverId, 
+      voiceoverText, 
+      title = 'Mein Video', 
+      projectId, 
+      addSubtitles, 
+      subtitleOptions 
+    } = data;
 
     if (!segments || !Array.isArray(segments) || segments.length === 0) {
       console.error('Invalid segments data:', segments);
@@ -175,20 +194,22 @@ export async function POST(request: Request) {
     try {
       // Erstelle ein Objekt mit den Workflow-Daten
       const workflowData = {
+        workflowType: 'generate-final',
         projectId: project._id.toString(),
-        workflowType: 'video_generation',
         userId: session.user.id,
-        title: title,
-        videos: segments.map(segment => ({
-          id: segment.videoId,
-          key: segment.videoKey,
-          segments: [{
-            startTime: segment.startTime,
-            duration: segment.duration,
-            position: segment.position
-          }]
-        })),
-        voiceoverId: voiceoverId
+        title,
+        description: 'Video generiert aus Script-Matches',
+        videos: [{
+          id: 'combined',
+          key: '',
+          segments: data.segments
+        }],
+        voiceoverId,
+        voiceoverText, // Übergebe den Voiceover-Text für Untertitel
+        options: {
+          addSubtitles: addSubtitles,
+          subtitleOptions: subtitleOptions
+        }
       };
       
       console.log('Preparing workflow data:', JSON.stringify(workflowData, null, 2));

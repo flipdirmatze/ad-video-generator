@@ -697,28 +697,20 @@ export default function EditorPage() {
         subtitleOptions: addCaptions ? subtitleOptions : undefined
       };
 
-      // Sende den Workflow-Auftrag
-      const response = await fetch('/api/video-workflow', {
+      // API-Request zum Generieren des Videos
+      const response = await fetch('/api/generate-video', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          workflowType: 'generate-final',
-          projectId: projectId,
-          userId: session?.user?.id,
-          title: 'Generiertes Video',
-          description: 'Automatisch generiertes Video',
-          voiceoverId: voiceoverId,
-          voiceoverText: voiceoverScript, // Übergebe den Text für Untertitel
-          videos: [
-            {
-              id: 'mixed',
-              key: '',
-              segments: segmentsWithKeys
-            }
-          ],
-          options: videoOptions
+          segments: segmentsWithKeys,
+          voiceoverId,
+          voiceoverText: voiceoverScript, // Für Untertitel
+          title: 'Ad Video',
+          projectId, // Übergebe die Projekt-ID, falls vorhanden
+          addSubtitles: videoOptions.addSubtitles,
+          subtitleOptions: videoOptions.subtitleOptions
         })
       });
       
