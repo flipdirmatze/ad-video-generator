@@ -69,6 +69,12 @@ export default function FinalStepForm({ onSubmit }: FinalStepFormProps) {
     setOptions({
       ...options,
       subtitleOptions: {
+        fontName: 'Arial',
+        fontSize: 24,
+        primaryColor: '#FFFFFF',
+        backgroundColor: '#80000000',
+        borderStyle: 4,
+        position: 'bottom',
         ...options.subtitleOptions,
         [key]: value
       }
@@ -77,8 +83,20 @@ export default function FinalStepForm({ onSubmit }: FinalStepFormProps) {
 
   // Funktion zum Absenden des Formulars
   const handleSubmit = () => {
+    const finalOptions = {
+      ...options,
+      subtitleOptions: options.addSubtitles ? {
+        fontName: options.subtitleOptions?.fontName || 'Arial',
+        fontSize: options.subtitleOptions?.fontSize || 24,
+        primaryColor: options.subtitleOptions?.primaryColor || '#FFFFFF',
+        backgroundColor: options.subtitleOptions?.backgroundColor || '#80000000',
+        borderStyle: options.subtitleOptions?.borderStyle || 4,
+        position: options.subtitleOptions?.position || 'bottom'
+      } : undefined
+    };
+    
     setIsSubmitting(true);
-    onSubmit(options);
+    onSubmit(finalOptions);
   };
 
   return (
