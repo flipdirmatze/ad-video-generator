@@ -331,6 +331,9 @@ export async function POST(request: NextRequest) {
       // Konvertiere das JSON-Objekt in einen Buffer
       const templateDataBuffer = Buffer.from(JSON.stringify(templateData));
       
+      // Logge die Größe der Template-Daten für Debugging-Zwecke
+      console.log(`Template data size: ${templateDataBuffer.length} bytes`);
+      
       // Lade die Template-Daten nach S3 hoch
       await uploadToS3(
         templateDataBuffer,
@@ -400,18 +403,20 @@ export async function POST(request: NextRequest) {
       const inputVideoUrl = getS3Url(segments[0].videoKey);
       console.log(`Converting S3 key to full URL: ${segments[0].videoKey} -> ${inputVideoUrl}`);
       
-      // Bereite die zusätzlichen Parameter vor - nur mit einem Verweis auf die S3-Datei
+      // Bereite die zusätzlichen Parameter vor - NUR mit einem Verweis auf die S3-Datei
+      // WICHTIG: Hier keinesfalls große Daten direkt übergeben
       const additionalParams = {
         USER_ID: userId,
         PROJECT_ID: project._id.toString(),
-        TEMPLATE_DATA_PATH: project.templateDataPath, // Speichere nur den Pfad zur Datei statt der gesamten Daten
+        TEMPLATE_DATA_PATH: templateDataKey, // Nur der Pfad, nicht die Daten selbst
         DEBUG: 'true'
       };
       
       console.log('Submitting job with template data in S3:', {
         segmentsCount: templateData.segments.length,
         hasVoiceover: !!templateData.voiceoverId,
-        templateDataPath: project.templateDataPath
+        templateDataPath: templateDataKey,
+        templateDataSizeBytes: JSON.stringify(templateData).length
       });
       
       // Sende den Job an AWS Batch

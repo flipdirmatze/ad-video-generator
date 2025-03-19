@@ -176,37 +176,54 @@ export async function POST(request: NextRequest) {
       environment.push({ name: 'OUTPUT_KEY', value: outputKey });
     }
 
-    // Füge zusätzliche Parameter hinzu
+    // Extrahiere Umgebungsvariablen aus zusätzlichen Parametern
     if (additionalParams) {
+      console.log('Processing additional parameters');
+      const maxEnvVarLength = 4000; // AWS Batch hat ein Limit für die Umgebungsvariablenlänge
+      
       Object.entries(additionalParams).forEach(([key, value]) => {
-        // Spezielle Behandlung für TEMPLATE_DATA, um sicherzustellen, dass es ein gültiger JSON-String ist
-        if (key === 'TEMPLATE_DATA') {
-          let templateDataStr;
-          if (typeof value === 'string') {
-            try {
-              // Versuche zu parsen, um zu prüfen, ob es gültiges JSON ist
-              JSON.parse(value);
-              templateDataStr = value;
-            } catch (e) {
-              // Wenn es kein gültiges JSON ist, konvertiere es
-              console.warn('TEMPLATE_DATA is not valid JSON, converting:', value);
-              templateDataStr = JSON.stringify(value);
-            }
+        if (value === undefined || value === null) {
+          console.log(`Skipping null/undefined value for key: ${key}`);
+          return;
+        }
+        
+        const stringValue = typeof value === 'string' ? value : JSON.stringify(value);
+        
+        // Prüfe die Größe des Werts
+        if (stringValue.length > maxEnvVarLength) {
+          console.warn(`Value for ${key} exceeds ${maxEnvVarLength} chars (${stringValue.length}). Using S3 reference instead.`);
+          
+          // Wenn eine spezielle S3-Referenz-Variable existiert, verwende diese stattdessen
+          if (key.endsWith('_PATH') || key.endsWith('_KEY') || key === 'TEMPLATE_DATA_PATH') {
+            console.log(`Using S3 path reference for ${key}: ${stringValue}`);
+            environment.push({
+              name: key,
+              value: stringValue
+            });
           } else {
-            // Wenn es kein String ist, konvertiere es zu JSON
-            templateDataStr = JSON.stringify(value);
+            console.log(`Skipping large parameter ${key} (${stringValue.length} chars)`);
           }
-          environment.push({ name: key, value: templateDataStr });
         } else {
           environment.push({
             name: key,
-            value: typeof value === 'string' ? value : JSON.stringify(value)
+            value: stringValue
           });
         }
       });
     }
 
     console.log('Prepared environment variables:', environment);
+    
+    // Überprüfe die Gesamtgröße der Umgebungsvariablen
+    const totalSize = environment.reduce((sum, env) => sum + (env.name.length + (env.value?.length || 0)), 0);
+    console.log(`Total environment variables size: ${totalSize} bytes`);
+    
+    // Warnung ausgeben, wenn sich der Gesamtwert dem AWS-Limit nähert
+    const awsLimit = 8000; // AWS Batch Container Overrides haben ein Limit von etwa 8192 Bytes
+    if (totalSize > awsLimit * 0.8) {
+      console.warn(`Environment variables size (${totalSize}) is approaching AWS limit (${awsLimit})!`);
+    }
+
     console.log('Using job queue:', process.env.AWS_BATCH_JOB_QUEUE);
     console.log('Using job definition:', process.env.AWS_BATCH_JOB_DEFINITION);
 
@@ -216,7 +233,15 @@ export async function POST(request: NextRequest) {
       jobQueue: process.env.AWS_BATCH_JOB_QUEUE || '',
       jobDefinition: process.env.AWS_BATCH_JOB_DEFINITION || '',
       containerOverrides: {
-        environment,
+        // Verwende nur essentielle Umgebungsvariablen
+        environment: environment.filter(env => {
+          // Filtere unnötige oder sehr große Umgebungsvariablen
+          if (env.value && env.value.length > 5000) {
+            console.warn(`Removing environment variable ${env.name} due to excessive size (${env.value.length} bytes)`);
+            return false;
+          }
+          return true;
+        }),
         // Für Fargate müssen wir resourceRequirements anstelle von memory und vcpus verwenden
         resourceRequirements: [
           {

@@ -5,7 +5,7 @@ export interface IProject {
   userId: mongoose.Types.ObjectId | IUser | string;
   title: string;
   status: 'pending' | 'processing' | 'completed' | 'failed';
-  workflowStep?: 'voiceover' | 'upload' | 'matching' | 'editing' | 'processing' | 'completed';
+  workflowStep?: 'voiceover' | 'upload' | 'matching' | 'editing' | 'processing' | 'completed' | 'failed';
   segments: Array<{
     videoId: string;
     videoKey: string;
@@ -57,7 +57,7 @@ const ProjectSchema = new Schema<IProject>({
   },
   workflowStep: {
     type: String,
-    enum: ['voiceover', 'upload', 'matching', 'editing', 'processing', 'completed'],
+    enum: ['voiceover', 'upload', 'matching', 'editing', 'processing', 'completed', 'failed'],
     default: 'voiceover'
   },
   segments: [{
