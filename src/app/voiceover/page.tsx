@@ -17,7 +17,7 @@ const ELEVENLABS_VOICES = [
 ];
 
 // Beispielsatz für den Stimmentest
-const TEST_SENTENCE = "Hallo, so klingt meine Stimme. Ich kann dein Voiceover generieren.";
+const TEST_SENTENCE = "Hallo, so klingt meine Stimme";
 
 type VoiceoverData = {
   dataUrl: string; // Base64-URL für Browser-Vorschau
@@ -42,6 +42,10 @@ export default function VoiceoverPage() {
   const [selectedVoice, setSelectedVoice] = useState(ELEVENLABS_VOICES[0].id)
   const [isTestingVoice, setIsTestingVoice] = useState(false)
   const [testAudio, setTestAudio] = useState<HTMLAudioElement | null>(null)
+  const [currentTime, setCurrentTime] = useState(0)
+  const [duration, setDuration] = useState(0)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+  const progressIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
   // Authentifizierungsprüfung
   useEffect(() => {
@@ -151,14 +155,48 @@ export default function VoiceoverPage() {
       console.log('Creating new audio element with URL:', audioUrl);
       const audio = new Audio(audioUrl)
       audio.addEventListener('ended', () => setIsPlaying(false))
+      audio.addEventListener('loadedmetadata', () => {
+        setDuration(audio.duration);
+      })
+      
+      // Aktualisiere die Zeit alle 100ms
+      const updateProgress = () => {
+        if (progressIntervalRef.current) {
+          clearInterval(progressIntervalRef.current);
+        }
+        
+        progressIntervalRef.current = setInterval(() => {
+          if (audio) {
+            setCurrentTime(audio.currentTime);
+          }
+        }, 100);
+      };
+      
+      audio.addEventListener('play', updateProgress);
+      audio.addEventListener('ended', () => {
+        if (progressIntervalRef.current) {
+          clearInterval(progressIntervalRef.current);
+        }
+      });
+      
+      audioRef.current = audio;
       setAudioElement(audio)
       audio.play()
       setIsPlaying(true)
     } else {
       if (isPlaying) {
         audioElement.pause()
+        if (progressIntervalRef.current) {
+          clearInterval(progressIntervalRef.current);
+        }
       } else {
         audioElement.play()
+        // Aktualisiere die Zeit alle 100ms
+        progressIntervalRef.current = setInterval(() => {
+          if (audioElement) {
+            setCurrentTime(audioElement.currentTime);
+          }
+        }, 100);
       }
       setIsPlaying(!isPlaying)
     }
@@ -169,8 +207,13 @@ export default function VoiceoverPage() {
       audioElement.pause();
       setAudioElement(null);
     }
+    if (progressIntervalRef.current) {
+      clearInterval(progressIntervalRef.current);
+    }
     setVoiceoverData(null);
     setIsPlaying(false);
+    setCurrentTime(0);
+    setDuration(0);
     localStorage.removeItem('voiceoverData');
     localStorage.removeItem('voiceoverUrl'); // Legacy-Eintrag auch entfernen
     localStorage.removeItem('voiceoverScript');
@@ -238,6 +281,14 @@ export default function VoiceoverPage() {
     // Sicherstellen, dass die aktuelle Stimme verwendet wird
     const currentVoiceId = selectedVoice;
     console.log('Generating voiceover with voice ID (current selection):', currentVoiceId);
+    
+    // Prüfe die Länge des Textes und zeige eine Warnung an, wenn er sehr lang ist
+    if (script.length > 5000) {
+      console.warn(`Generating voiceover for long text (${script.length} characters). This might take a while.`);
+      toast('Der Text ist sehr lang. Die Generierung kann einige Zeit dauern...', {
+        duration: 5000,
+      });
+    }
     
     try {
       const requestBody = {
@@ -360,6 +411,26 @@ export default function VoiceoverPage() {
     link.click()
     document.body.removeChild(link)
   }
+
+  // Format time as mm:ss
+  const formatTime = (time: number) => {
+    const minutes = Math.floor(time / 60);
+    const seconds = Math.floor(time % 60);
+    return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
+  };
+
+  // Handle progress bar click
+  const handleProgressBarClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!audioElement || !voiceoverData) return;
+    
+    const progressBar = e.currentTarget;
+    const rect = progressBar.getBoundingClientRect();
+    const clickPositionRatio = (e.clientX - rect.left) / rect.width;
+    const newTime = clickPositionRatio * duration;
+    
+    audioElement.currentTime = newTime;
+    setCurrentTime(newTime);
+  };
 
   if (isLoading) {
     return (
@@ -493,6 +564,24 @@ export default function VoiceoverPage() {
                         </button>
                       </div>
                     </div>
+                    
+                    {/* Audio Player mit Progress Bar */}
+                    <div className="mt-4">
+                      <div className="flex items-center justify-between text-sm text-gray-400 mb-1">
+                        <span>{formatTime(currentTime)}</span>
+                        <span>{formatTime(duration)}</span>
+                      </div>
+                      <div 
+                        className="h-2 bg-gray-700 rounded-full overflow-hidden cursor-pointer"
+                        onClick={handleProgressBarClick}
+                      >
+                        <div 
+                          className="h-full bg-indigo-600 transition-all"
+                          style={{ width: `${duration ? (currentTime / duration) * 100 : 0}%` }}
+                        ></div>
+                      </div>
+                    </div>
+                    
                     {/* Zeige die Name der aktuell ausgewählten Stimme an */}
                     <div className="mt-2 text-sm text-gray-400">
                       Aktuelle Stimme: {ELEVENLABS_VOICES.find(v => v.id === selectedVoice)?.name || 'Standard'}
