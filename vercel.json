@@ -35,6 +35,9 @@
    },
    "src/app/api/batch-callback/route.ts": {
      "maxDuration": 30
+   },
+   "src/app/api/generate-voiceover/route.ts": {
+     "maxDuration": 60
    }
  }
 }

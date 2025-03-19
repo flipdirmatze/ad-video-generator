@@ -12,6 +12,9 @@ const DEFAULT_VOICE_ID = 'pNInz6obpgDQGcFmaJgB' // Standard-Stimme als Fallback
 // Längeres Timeout für große Texte (3 Minuten)
 const FETCH_TIMEOUT_MS = 180000;
 
+// Maximale Textlänge, um Timeouts zu vermeiden
+const MAX_TEXT_LENGTH = 3000; // 3000 Zeichen ist ein vernünftiges Limit für Vercel Pro (60s)
+
 // Hilfsfunktion für Fetch mit Timeout
 async function fetchWithTimeout(url: string, options: RequestInit, timeout: number) {
   const controller = new AbortController();
@@ -73,9 +76,21 @@ export async function POST(request: Request) {
     const scriptLength = script.length;
     console.log(`Generating voiceover with ElevenLabs API. Script length: ${scriptLength} characters. Voice ID: ${selectedVoiceId}`);
     
+    // Prüfe Textlänge und weise ab, wenn zu lang
+    if (scriptLength > MAX_TEXT_LENGTH) {
+      console.error(`Text too long: ${scriptLength} characters (maximum: ${MAX_TEXT_LENGTH})`);
+      return NextResponse.json(
+        { 
+          error: `Der Text ist zu lang (${scriptLength} Zeichen). Bitte kürze den Text auf maximal ${MAX_TEXT_LENGTH} Zeichen.`,
+          details: 'Die Verarbeitung langer Texte kann zu Timeouts führen.'
+        },
+        { status: 413 } // 413 = Payload Too Large
+      );
+    }
+    
     // Warnung bei sehr langen Texten ausgeben
-    if (scriptLength > 5000) {
-      console.warn(`WARNING: Processing very long text (${scriptLength} characters). This might take a while.`);
+    if (scriptLength > 2000) {
+      console.warn(`WARNING: Processing long text (${scriptLength} characters). This might take a while.`);
     }
     
     // Voiceover mit ElevenLabs API generieren
@@ -83,8 +98,8 @@ export async function POST(request: Request) {
       const apiUrl = `https://api.elevenlabs.io/v1/text-to-speech/${selectedVoiceId}`;
       console.log(`Calling ElevenLabs API at: ${apiUrl} with timeout of ${FETCH_TIMEOUT_MS/1000} seconds`);
       
-      // Erweitern Sie das Timeout basierend auf der Textlänge
-      const dynamicTimeout = Math.min(FETCH_TIMEOUT_MS, 60000 + (scriptLength * 20)); // Basiswert + 20ms pro Zeichen
+      // Erweitern Sie das Timeout basierend auf der Textlänge, aber begrenzt auf Vercel Pro Limit (55s)
+      const dynamicTimeout = Math.min(55000, 30000 + (scriptLength * 10)); // Basiswert + 10ms pro Zeichen
       console.log(`Using dynamic timeout of ${dynamicTimeout/1000} seconds based on text length`);
       
       // Verwende die Timeout-Funktion mit erhöhtem Timeout für die API-Anfrage
@@ -249,11 +264,16 @@ export async function POST(request: Request) {
       throw new Error(`Failed to generate voiceover with ElevenLabs: ${errorMessage}`);
     }
   } catch (error) {
-    console.error('Voiceover generation error:', error)
+    console.error('Voiceover generation error:', error);
+    
+    // Verbesserte Fehlermeldung für Frontend
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    
     return NextResponse.json(
       { 
-        error: 'Failed to generate voiceover', 
-        details: error instanceof Error ? error.message : String(error),
+        error: errorMessage.startsWith('Failed to generate') 
+          ? errorMessage 
+          : `Fehler bei der Voiceover-Generierung: ${errorMessage}`,
         timestamp: new Date().toISOString()
       },
       { status: 500 }
