@@ -149,8 +149,10 @@ export default function UploadPage() {
         continue
       }
       
-      if (file.size > 500 * 1024 * 1024) {
-        setError(`File ${file.name} is too large. Maximum size is 500MB.`)
+      // Wir erhöhen das Limit auf 2GB für direkte S3-Uploads
+      const MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024; // 2GB
+      if (file.size > MAX_FILE_SIZE) {
+        setError(`File ${file.name} is too large. Maximum size is 2GB.`)
         continue
       }
       
@@ -170,60 +172,103 @@ export default function UploadPage() {
       setIsUploading(prev => ({ ...prev, [videoId]: true }))
       setUploadProgress(prev => ({ ...prev, [videoId]: 0 }))
       
-      // Upload-Progress simulieren
-      const progressInterval = setInterval(() => {
-        setUploadProgress(prev => {
-          const currentProgress = prev[videoId] || 0
-          if (currentProgress >= 99) {
-            clearInterval(progressInterval)
-            return prev
-          }
-          return {
-            ...prev,
-            [videoId]: Math.min(currentProgress + 5, 99)
-          }
-        })
-      }, 500)
-      
       try {
-        // Upload zur API
-        const formData = new FormData()
-        formData.append('file', file)
-        formData.append('videoId', videoId)
-        
-        const response = await fetch('/api/upload-video', {
+        // 1. Hole einen presigned URL von der API
+        console.log(`Getting presigned URL for file: ${file.name} (${file.size} bytes)`)
+        const uploadUrlResponse = await fetch('/api/get-upload-url', {
           method: 'POST',
-          body: formData
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            fileName: file.name,
+            contentType: file.type,
+            folder: 'uploads'
+          })
         })
         
-        if (!response.ok) {
-          throw new Error('Upload failed')
+        if (!uploadUrlResponse.ok) {
+          throw new Error('Failed to get upload URL')
+        }
+        
+        const { uploadUrl, fileUrl, key } = await uploadUrlResponse.json()
+        
+        // 2. Lade die Datei direkt zu S3 hoch mit Progress-Tracking
+        console.log(`Uploading file directly to S3: ${uploadUrl}`)
+        
+        const xhr = new XMLHttpRequest()
+        xhr.open('PUT', uploadUrl)
+        xhr.setRequestHeader('Content-Type', file.type)
+        
+        // Progress-Tracking
+        xhr.upload.onprogress = (event) => {
+          if (event.lengthComputable) {
+            const percentComplete = Math.round((event.loaded / event.total) * 100)
+            setUploadProgress(prev => ({ ...prev, [videoId]: percentComplete }))
+          }
+        }
+        
+        // Promise für den Upload
+        const uploadPromise = new Promise<void>((resolve, reject) => {
+          xhr.onload = () => {
+            if (xhr.status === 200) {
+              resolve()
+            } else {
+              reject(new Error(`Upload failed with status: ${xhr.status}`))
+            }
+          }
+          xhr.onerror = () => reject(new Error('Upload failed'))
+          xhr.onabort = () => reject(new Error('Upload aborted'))
+        })
+        
+        // Datei senden
+        xhr.send(file)
+        await uploadPromise
+        
+        // 3. Speichere die Metadaten in der Datenbank
+        console.log(`File uploaded successfully, saving metadata to database`)
+        const metadataResponse = await fetch('/api/upload-video', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            videoId,
+            name: file.name,
+            size: file.size,
+            type: file.type,
+            key,
+            url: fileUrl,
+            tags: []
+          })
+        })
+        
+        if (!metadataResponse.ok) {
+          throw new Error('Failed to save video metadata')
         }
         
         // Upload erfolgreich
-        clearInterval(progressInterval)
         setUploadProgress(prev => ({ ...prev, [videoId]: 100 }))
         setIsUploading(prev => ({ ...prev, [videoId]: false }))
         
         // Video-Liste aktualisieren
-        const data = await response.json()
+        const data = await metadataResponse.json()
         setUploadedVideos(prev => [...prev, {
           id: videoId,
           name: file.name,
           size: file.size,
           type: file.type,
-          url: data.url,
+          url: fileUrl,
           tags: [],
-          key: data.key
+          key: key
         }])
         
         // Pending Upload entfernen
         setPendingUploads(prev => prev.filter(v => v.id !== videoId))
         
       } catch (error) {
-        clearInterval(progressInterval)
         console.error('Upload error:', error)
-        setError(`Failed to upload ${file.name}`)
+        setError(`Failed to upload ${file.name}: ${error instanceof Error ? error.message : 'Unknown error'}`)
         setIsUploading(prev => ({ ...prev, [videoId]: false }))
         setPendingUploads(prev => prev.filter(v => v.id !== videoId))
       }
@@ -381,7 +426,7 @@ export default function UploadPage() {
             className="hidden"
           />
           <p className="mt-4 text-sm text-white/40">
-            Maximum file size: 500MB
+            Maximum file size: 2GB
           </p>
         </div>
 
