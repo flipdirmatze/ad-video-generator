@@ -1,4 +1,4 @@
-FROM --platform=linux/amd64 node:18-slim
+FROM node:18-slim
 
 # Umgebungsvariablen
 ENV DEBIAN_FRONTEND=noninteractive
@@ -21,13 +21,13 @@ RUN pip3 install --no-cache-dir awscli --break-system-packages
 WORKDIR /app
 
 # Package.json und package-lock.json kopieren
-COPY docker/package.json ./
+COPY package.json ./
 
 # Abhängigkeiten installieren
 RUN npm install
 
 # Skripte kopieren
-COPY docker/scripts/ /app/
+COPY scripts/ /app/
 
 # Mache die Skripte ausführbar
 RUN chmod +x /app/*.js
