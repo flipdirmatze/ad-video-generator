@@ -207,6 +207,11 @@ export async function POST(request: Request) {
         position: segment.position
       }));
 
+      // Verwende den ersten Videoclip als Eingabevideo für AWS Batch
+      // Der AWS Batch Job wird die eigentliche Verarbeitung basierend auf den übergebenen Segmenten durchführen
+      const firstVideoUrl = getS3Url(segments[0].videoKey);
+      console.log('Using first video as input URL:', firstVideoUrl);
+
       // Job an AWS Batch senden
       const additionalParams = {
         USER_ID: session.user.id,
@@ -223,7 +228,7 @@ export async function POST(request: Request) {
       
       const batchResponse = await submitAwsBatchJob(
         BatchJobTypes.GENERATE_FINAL,
-        'dummy-input-url', // Dummy-URL, da wir die Segmente direkt übergeben
+        firstVideoUrl, // Verwende das erste Video als Eingabe-URL
         outputKey,
         additionalParams
       );
