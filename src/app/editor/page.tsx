@@ -59,26 +59,22 @@ const VideoThumbnail = React.memo(({ video, match, index }: {
   const thumbnailRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Intersection Observer für Lazy Loading
+    // Simplify intersection observer for better performance
     if (!thumbnailRef.current) return;
     
     const observer = new IntersectionObserver(
       (entries) => {
-        entries.forEach(entry => {
-          if (entry.isIntersecting) {
-            setIsVisible(true);
-            observer.disconnect(); // Trennen, sobald es sichtbar ist
-          }
-        });
+        if (entries[0].isIntersecting) {
+          setIsVisible(true);
+          observer.disconnect();
+        }
       },
-      { threshold: 0.1, rootMargin: '100px' } // Laden, wenn 10% sichtbar oder 100px davor
+      { threshold: 0.1, rootMargin: '200px' }
     );
     
     observer.observe(thumbnailRef.current);
     
-    return () => {
-      observer.disconnect();
-    };
+    return () => observer.disconnect();
   }, []);
 
   return (
@@ -87,25 +83,27 @@ const VideoThumbnail = React.memo(({ video, match, index }: {
       className="bg-gray-900/60 border border-gray-800 rounded overflow-hidden"
     >
       <div className="aspect-video bg-gray-900 relative overflow-hidden">
-        {video?.url && isVisible ? (
-          video.thumbnailUrl ? (
-            // Zeige das generierte Thumbnail, wenn verfügbar
-            <div 
-              className="absolute inset-0 bg-center bg-cover" 
-              style={{ backgroundImage: `url(${video.thumbnailUrl})` }}
+        {isVisible ? (
+          video?.thumbnailUrl ? (
+            // Use an img tag with explicit dimensions for better memory management
+            <img 
+              src={video.thumbnailUrl} 
+              alt={video.name || `Video ${index + 1}`}
+              className="absolute inset-0 w-full h-full object-cover"
+              loading="lazy"
+              width="160"
+              height="90"
             />
           ) : (
-            // Fallback: Zeige ein statisches SVG-Symbol anstelle eines kaputten Bildes
+            // Fallback: Zeige ein statisches SVG-Symbol
             <div className="absolute inset-0 flex items-center justify-center">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8 text-gray-700">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
-              </svg>
+              <FilmIcon className="h-8 w-8 text-gray-700" />
             </div>
           )
         ) : (
-          // Platzhalter, wenn noch nicht sichtbar oder kein Video
+          // Skeleton loader while not visible
           <div className="absolute inset-0 flex items-center justify-center">
-            <FilmIcon className="h-8 w-8 text-gray-700" />
+            <div className="w-full h-full bg-gray-800 animate-pulse"></div>
           </div>
         )}
         <div className="absolute bottom-1 right-1 bg-black/60 text-white text-xs px-1.5 py-0.5 rounded">
@@ -274,11 +272,13 @@ export default function EditorPage() {
             }
           }
           
-          // Lade Videos vom Server
+          // First load the project data before loading videos to ensure proper sequence
           await fetchServerVideos();
           
-          // Lade verfügbare Uploads vom Server (für die Verarbeitungswarteschlange)
-          await fetchAvailableUploads();
+          // Wait a moment before loading available uploads to reduce concurrency
+          setTimeout(() => {
+            fetchAvailableUploads();
+          }, 1000);
           
         } catch (error) {
           console.error('Error loading project data:', error);
@@ -465,173 +465,132 @@ export default function EditorPage() {
 
   // Load all video elements for the selected videos
   useEffect(() => {
-    // Thumbnail Generierung optimieren
-    const fetchVideoThumbnails = async () => {
-      if (uploadedVideos.length === 0 || selectedVideos.length === 0) return;
-      
-      console.log('Generating thumbnails for selected videos...');
-      
-      // Begrenze die Anzahl der gleichzeitigen Thumbnail-Generierungen
-      const BATCH_SIZE = 3;
+    // Only run this if we have videos to process
+    if (uploadedVideos.length === 0 || selectedVideos.length === 0) return;
+    
+    // Safer thumbnailing approach
+    const generateThumbnails = async () => {
+      // Identify videos that need thumbnails
       const videosNeedingThumbnails = selectedVideos
         .map(videoId => uploadedVideos.find(v => v.id === videoId))
         .filter((video): video is UploadedVideo => !!video && !video.thumbnailUrl);
       
-      console.log(`${videosNeedingThumbnails.length} videos need thumbnails. Processing in batches of ${BATCH_SIZE}`);
+      // Don't do anything if all videos already have thumbnails
+      if (videosNeedingThumbnails.length === 0) return;
       
-      // Videos in Batches verarbeiten, um Speichernutzung zu reduzieren
+      console.log(`Generating thumbnails for ${videosNeedingThumbnails.length} videos`);
+      
+      // Process videos in sequential batches to avoid memory issues
+      const BATCH_SIZE = 2;
+      
       for (let i = 0; i < videosNeedingThumbnails.length; i += BATCH_SIZE) {
         const batch = videosNeedingThumbnails.slice(i, i + BATCH_SIZE);
-        console.log(`Processing thumbnail batch ${i/BATCH_SIZE + 1}: ${batch.length} videos`);
         
-        // Parallel-Processing für den aktuellen Batch
-        await Promise.all(
-          batch.map(async (video) => {
-            try {
-              // Cache prüfen um doppelte Generierung zu vermeiden
-              if (video.thumbnailUrl) return;
-              
-              // Verwende Web Workers für Thumbnail-Generierung, wenn verfügbar
-              if (typeof window !== 'undefined' && 'OffscreenCanvas' in window) {
-                // Moderne Browser-Funktionen für effiziente Verarbeitung
-                await generateThumbnailEfficient(video);
-              } else {
-                // Fallback für ältere Browser
-                await generateThumbnailLegacy(video);
-              }
-            } catch (err) {
-              console.error(`Error generating thumbnail for video ${video.id}:`, err);
-            }
-          })
-        );
-        
-        // Kurze Pause zwischen Batches, um Browser UI-Updates zu ermöglichen
-        await new Promise<void>(resolve => setTimeout(resolve, 50));
+        // Sequential processing within batch for stability
+        for (const video of batch) {
+          try {
+            // Simple, more reliable thumbnail generation
+            await generateSingleThumbnail(video);
+            // Small delay between processing videos to prevent UI freezing
+            await new Promise(r => setTimeout(r, 100));
+          } catch (err) {
+            console.error(`Error generating thumbnail for video ${video.id}:`, err);
+            // Continue with other videos even if one fails
+          }
+        }
       }
     };
     
-    // Effiziente Thumbnail-Generierung für moderne Browser
-    const generateThumbnailEfficient = async (video: UploadedVideo): Promise<void> => {
-      return new Promise<void>((resolve, reject) => {
-        const videoElement = document.createElement('video');
-        videoElement.crossOrigin = "anonymous";
-        videoElement.muted = true;
-        videoElement.preload = 'metadata';
+    // Simplified, robust thumbnail generator for a single video
+    const generateSingleThumbnail = (video: UploadedVideo): Promise<void> => {
+      return new Promise((resolve, reject) => {
+        const videoEl = document.createElement('video');
         
-        // Event-Handler vor dem Setzen der Quelle definieren
-        videoElement.onloadedmetadata = () => {
-          // Seek to 1 second or 25% into the video for the thumbnail
-          const seekTime = Math.min(1, videoElement.duration * 0.25);
-          videoElement.currentTime = seekTime;
+        // Set up video properties
+        videoEl.muted = true;
+        videoEl.crossOrigin = "anonymous";
+        videoEl.preload = "metadata";
+        
+        // Cleanup function to ensure resources are released
+        const cleanup = () => {
+          videoEl.onloadedmetadata = null;
+          videoEl.onerror = null;
+          videoEl.onseeked = null;
+          videoEl.onloadeddata = null;
+          videoEl.pause();
+          videoEl.remove();
         };
         
-        videoElement.onseeked = () => {
+        // Set up a timeout to avoid hanging
+        const timeoutId = setTimeout(() => {
+          cleanup();
+          // Don't reject, just resolve without thumbnail to avoid stopping the process
+          console.warn(`Thumbnail generation timed out for video ${video.id}`);
+          resolve();
+        }, 5000);
+        
+        // Error handler
+        videoEl.onerror = () => {
+          clearTimeout(timeoutId);
+          cleanup();
+          resolve(); // Continue without thumbnail
+        };
+        
+        // Once metadata is loaded, seek to a good position for thumbnail
+        videoEl.onloadedmetadata = () => {
+          // Try to seek to 10% of the video for thumbnail
+          const seekPosition = Math.min(videoEl.duration * 0.1, 1);
+          videoEl.currentTime = seekPosition;
+        };
+        
+        // After seeking, capture the frame
+        videoEl.onseeked = () => {
           try {
+            // Create a small canvas for the thumbnail
             const canvas = document.createElement('canvas');
-            canvas.width = Math.min(videoElement.videoWidth || 320, 320); // Begrenze Größe
-            canvas.height = Math.min(videoElement.videoHeight || 180, 180); // Begrenze Größe
-            
             const ctx = canvas.getContext('2d');
-            if (ctx) {
-              ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
-              const thumbnailUrl = canvas.toDataURL('image/jpeg', 0.6); // Reduzierte Qualität
+            
+            // Set to small dimensions to save memory
+            canvas.width = 160;  // Smaller dimensions
+            canvas.height = 90;  // 16:9 ratio
+            
+            if (ctx && videoEl.videoWidth) {
+              // Draw the video frame
+              ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
               
-              // Store the thumbnail URL
+              // Convert to JPEG with lower quality
+              const thumbnailUrl = canvas.toDataURL('image/jpeg', 0.5);
+              
+              // Update the videos array with the new thumbnail
               setUploadedVideos(prev => 
                 prev.map(v => v.id === video.id ? {...v, thumbnailUrl} : v)
               );
               
-              // Ressourcen freigeben
-              URL.revokeObjectURL(videoElement.src);
-              videoElement.remove();
+              // Cleanup resources
+              clearTimeout(timeoutId);
+              cleanup();
+              canvas.remove();
               resolve();
             } else {
-              reject(new Error('Could not get canvas context'));
+              clearTimeout(timeoutId);
+              cleanup();
+              resolve(); // Continue without thumbnail
             }
           } catch (err) {
-            reject(err);
+            clearTimeout(timeoutId);
+            cleanup();
+            console.error('Error in thumbnail generation:', err);
+            resolve(); // Continue without thumbnail
           }
         };
         
-        videoElement.onerror = (e) => {
-          URL.revokeObjectURL(videoElement.src);
-          videoElement.remove();
-          reject(e);
-        };
-        
-        // Setze Quelle erst nach Definition der Event-Handler
-        videoElement.src = video.url;
-        
-        // Timeout für Fehlschlag
-        setTimeout(() => {
-          if (!videoElement.videoWidth) {
-            URL.revokeObjectURL(videoElement.src);
-            videoElement.remove();
-            reject(new Error('Video load timeout'));
-          }
-        }, 5000);
+        // Set the source after setting up all handlers
+        videoEl.src = video.url;
       });
     };
     
-    // Legacy Thumbnail-Generierung für ältere Browser
-    const generateThumbnailLegacy = async (video: UploadedVideo): Promise<void> => {
-      return new Promise<void>((resolve, reject) => {
-        const videoElement = document.createElement('video');
-        videoElement.crossOrigin = "anonymous";
-        videoElement.muted = true;
-        videoElement.preload = 'metadata';
-        
-        // Timeout von 5 Sekunden
-        const timeout = setTimeout(() => {
-          URL.revokeObjectURL(videoElement.src);
-          videoElement.remove();
-          reject(new Error('Timeout'));
-        }, 5000);
-        
-        videoElement.onloadedmetadata = () => {
-          const seekTime = Math.min(1, videoElement.duration * 0.25);
-          videoElement.currentTime = seekTime;
-        };
-        
-        videoElement.onseeked = () => {
-          clearTimeout(timeout);
-          try {
-            const canvas = document.createElement('canvas');
-            canvas.width = Math.min(videoElement.videoWidth || 320, 320);
-            canvas.height = Math.min(videoElement.videoHeight || 180, 180);
-            
-            const ctx = canvas.getContext('2d');
-            if (ctx) {
-              ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
-              const thumbnailUrl = canvas.toDataURL('image/jpeg', 0.6);
-              
-              setUploadedVideos(prev => 
-                prev.map(v => v.id === video.id ? {...v, thumbnailUrl} : v)
-              );
-              
-              URL.revokeObjectURL(videoElement.src);
-              videoElement.remove();
-              resolve();
-            } else {
-              reject(new Error('Could not get canvas context'));
-            }
-          } catch (err) {
-            reject(err);
-          }
-        };
-        
-        videoElement.onerror = (e) => {
-          clearTimeout(timeout);
-          URL.revokeObjectURL(videoElement.src);
-          videoElement.remove();
-          reject(e);
-        };
-        
-        videoElement.src = video.url;
-      });
-    };
-    
-    fetchVideoThumbnails();
+    // Run the thumbnail generation
+    generateThumbnails();
   }, [uploadedVideos, selectedVideos]);
 
   // ------------------- FUNCTIONS -------------------
@@ -673,84 +632,98 @@ export default function EditorPage() {
     
     // Start audio
     audio.currentTime = 0;
-    audio.play();
+    audio.play().catch(err => {
+      console.error('Failed to play audio:', err);
+      setIsPlaying(false);
+      return;
+    });
     
     // Set playing state
     setIsPlaying(true);
     
-    // Start animation loop
+    // Clean up previous animation
     if (animationRef.current) {
       cancelAnimationFrame(animationRef.current);
+      animationRef.current = null;
     }
     
-    // Einfachere Animation für direktes Abspielen der ausgewählten Videos
-    // Wir spielen jeweils das gesamte Video ab, ohne Segmentierung
+    // Create a single video element we can reuse
+    const videoElement = document.createElement('video');
+    videoElement.muted = true;
+    videoElement.preload = 'auto';
     
-    // Load all video elements for the selected videos
-    const videoElements: {[key: string]: HTMLVideoElement} = {};
+    // Track current playing video index
+    let currentVideoIndex = 0;
+    let isVideoLoading = false;
     
-    // Create video elements for each selected video
-    selectedVideos.forEach(videoId => {
+    // Function to load a specific video
+    const loadVideo = (index: number) => {
+      if (index >= selectedVideos.length) return false;
+      
+      const videoId = selectedVideos[index];
       const video = uploadedVideos.find(v => v.id === videoId);
-      if (video) {
-        const videoElement = document.createElement('video');
-        videoElement.src = video.url;
-        videoElement.muted = true;
-        videoElement.preload = 'auto';
-        videoElement.load();
-        videoElements[videoId] = videoElement;
-      }
-    });
+      
+      if (!video) return false;
+      
+      isVideoLoading = true;
+      videoElement.src = video.url;
+      videoElement.load();
+      
+      // Handle video loaded
+      videoElement.onloadeddata = () => {
+        isVideoLoading = false;
+      };
+      
+      // Handle errors
+      videoElement.onerror = () => {
+        console.error(`Error loading video ${videoId}`);
+        isVideoLoading = false;
+        // Try next video
+        currentVideoIndex++;
+        if (!loadVideo(currentVideoIndex)) {
+          stopPlayback();
+        }
+      };
+      
+      return true;
+    };
     
-    // Berechne die Dauer jedes Videos (standardmäßig 10 Sekunden)
-    const videoDurations = selectedVideos.map(() => 10); // Standard: 10 Sekunden pro Video
-    
-    // Berechne die Positionen, an denen jedes Video beginnt
-    const videoPositions: number[] = [];
-    let currentPosition = 0;
-    
-    for (const duration of videoDurations) {
-      videoPositions.push(currentPosition);
-      currentPosition += duration;
+    // Load first video
+    if (!loadVideo(0)) {
+      stopPlayback();
+      return;
     }
     
     // Animation function
     const animate = () => {
       if (!audio || !ctx) return;
       
-      const currentTime = audio.currentTime;
-      
-      // Find the current video based on the audio time
-      let currentVideoIndex = -1;
-      
-      for (let i = 0; i < selectedVideos.length; i++) {
-        const startTime = videoPositions[i];
-        const endTime = startTime + videoDurations[i];
-        
-        if (currentTime >= startTime && currentTime < endTime) {
-          currentVideoIndex = i;
-          break;
-        }
+      // If audio ended, stop playback
+      if (audio.ended || audio.paused) {
+        stopPlayback();
+        return;
       }
       
-      if (currentVideoIndex >= 0) {
-        const videoId = selectedVideos[currentVideoIndex];
-        const videoElement = videoElements[videoId];
-        
-        if (videoElement) {
-          // Calculate time within the source video
-          const videoTime = currentTime - videoPositions[currentVideoIndex];
-          
-          // Seek to the correct time in the video
-          if (Math.abs(videoElement.currentTime - videoTime) > 0.2) {
-            videoElement.currentTime = videoTime;
-          }
-          
-          // Draw the current frame
+      // Draw current video frame
+      if (!isVideoLoading && videoElement.readyState >= 2) {
+        try {
           ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+        } catch (e) {
+          console.error('Error drawing video frame:', e);
+        }
+        
+        // Simple timing - change video every ~5 seconds
+        const videoPlayTime = 5; // seconds
+        const totalElapsed = audio.currentTime;
+        const shouldBeOnVideoIndex = Math.floor(totalElapsed / videoPlayTime);
+        
+        // If we should move to next video
+        if (shouldBeOnVideoIndex > currentVideoIndex && shouldBeOnVideoIndex < selectedVideos.length) {
+          currentVideoIndex = shouldBeOnVideoIndex;
+          loadVideo(currentVideoIndex);
         }
       } else {
-        // If no video found, show black
+        // Show loading state - black screen or loading indicator
         ctx.fillStyle = 'black';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
       }
@@ -765,16 +738,32 @@ export default function EditorPage() {
     
     // Start animation
     animationRef.current = requestAnimationFrame(animate);
+    
+    // Return cleanup function
+    return () => {
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+        animationRef.current = null;
+      }
+      
+      if (videoElement) {
+        videoElement.pause();
+        videoElement.src = '';
+        videoElement.load();
+        videoElement.remove();
+      }
+    };
   }, [selectedVideos, uploadedVideos]);
-  
+
   // Function to stop video playback
   const stopPlayback = useCallback(() => {
     if (typeof window === 'undefined') return;
     
     const audio = audioRef.current;
-    if (!audio) return;
+    if (audio) {
+      audio.pause();
+    }
     
-    audio.pause();
     setIsPlaying(false);
     
     if (animationRef.current) {
@@ -963,9 +952,12 @@ export default function EditorPage() {
             url: video.url,
             tags: video.tags || [],
             filepath: video.path,
-            key: video.key
+            key: video.key,
+            // Initialize with no thumbnail to prevent undefined checks later
+            thumbnailUrl: undefined
           }));
           
+          // Replace videos instead of adding to prevent duplicates
           setUploadedVideos(serverVideos);
           return serverVideos; // Return the videos for chaining
         }
