@@ -830,10 +830,11 @@ async function sendCallback(data) {
   const callbackData = {
     ...data,
     jobId: AWS_BATCH_JOB_ID,
+    projectId: process.env.PROJECT_ID,
     callbackSecret: BATCH_CALLBACK_SECRET
   };
   
-  console.log(`Sending callback to ${BATCH_CALLBACK_URL}`);
+  console.log(`Sending callback to ${BATCH_CALLBACK_URL} for project ${process.env.PROJECT_ID}`);
   
   return new Promise((resolve, reject) => {
     const postData = JSON.stringify(callbackData);

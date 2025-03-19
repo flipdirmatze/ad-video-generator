@@ -8,6 +8,7 @@ const CALLBACK_SECRET = process.env.BATCH_CALLBACK_SECRET;
 
 type BatchCallbackRequest = {
   jobId: string;
+  projectId?: string;
   status: 'success' | 'failed';
   outputKey?: string;
   error?: string;
@@ -23,9 +24,9 @@ export async function POST(request: NextRequest) {
   
   try {
     const data: BatchCallbackRequest = await request.json();
-    const { jobId, status, outputKey, error, callbackSecret } = data;
+    const { jobId, projectId, status, outputKey, error, callbackSecret } = data;
     
-    console.log(`Processing callback for job ${jobId} with status ${status}`);
+    console.log(`Processing callback for job ${jobId} with status ${status}${projectId ? `, projectId: ${projectId}` : ''}`);
 
     // Verifiziere den Secret-Key
     if (CALLBACK_SECRET && (!callbackSecret || callbackSecret !== CALLBACK_SECRET)) {
@@ -46,17 +47,38 @@ export async function POST(request: NextRequest) {
     // Verbindung zur Datenbank herstellen
     await dbConnect();
 
-    // Projekt finden - versuche sowohl jobId als auch batchJobId
-    let project = await ProjectModel.findOne({ batchJobId: jobId });
+    // Projekt finden - versuche verschiedene Möglichkeiten
+    let project = null;
+    
+    // Wenn projectId angegeben ist, versuche zuerst damit
+    if (projectId) {
+      console.log(`Looking for project with ID: ${projectId}`);
+      project = await ProjectModel.findById(projectId);
+      if (project) {
+        console.log(`Found project with ID: ${projectId}`);
+      }
+    }
+    
+    // Wenn nicht gefunden, versuche mit batchJobId
+    if (!project) {
+      console.log(`Looking for project with batchJobId: ${jobId}`);
+      project = await ProjectModel.findOne({ batchJobId: jobId });
+      if (project) {
+        console.log(`Found project with batchJobId: ${jobId}`);
+      }
+    }
     
     // Wenn nicht gefunden, versuche mit jobId
     if (!project) {
-      console.log(`Project not found with batchJobId, trying jobId: ${jobId}`);
+      console.log(`Looking for project with jobId: ${jobId}`);
       project = await ProjectModel.findOne({ jobId: jobId });
+      if (project) {
+        console.log(`Found project with jobId: ${jobId}`);
+      }
     }
     
     if (!project) {
-      console.warn(`Project not found for job ID: ${jobId}`);
+      console.warn(`Project not found for job ID: ${jobId}${projectId ? ` or projectId: ${projectId}` : ''}`);
       return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     }
 
