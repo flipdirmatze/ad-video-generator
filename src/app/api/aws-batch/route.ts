@@ -162,14 +162,21 @@ export async function POST(request: NextRequest) {
     const jobName = `video-${jobType}-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
     console.log('Generated job name:', jobName);
 
-    // Bereite die Umgebungsvariablen für den Container vor
-    const environment = [
-      { name: 'JOB_TYPE', value: jobType },
-      { name: 'INPUT_VIDEO_URL', value: inputVideoUrl },
-      { name: 'USER_ID', value: userId },
-      { name: 'S3_BUCKET', value: process.env.S3_BUCKET_NAME || '' },
-      { name: 'AWS_REGION', value: process.env.AWS_REGION || 'eu-central-1' }
-    ];
+    // Erstelle eine Liste von Umgebungsvariablen
+    let environment: { name: string; value: string }[] = [];
+    
+    // Füge Basis-Umgebungsvariablen hinzu
+    environment.push({ name: 'JOB_TYPE', value: jobType });
+    environment.push({ name: 'INPUT_VIDEO_URL', value: inputVideoUrl });
+    environment.push({ name: 'USER_ID', value: userId });
+    environment.push({ name: 'S3_BUCKET', value: process.env.S3_BUCKET_NAME || '' });
+    environment.push({ name: 'AWS_REGION', value: process.env.AWS_REGION || 'eu-central-1' });
+    
+    // Setze "Enabled" auf true, um Callback-Integration für den Status zu aktivieren
+    environment.push({
+      name: 'BATCH_CALLBACK_ENABLED',
+      value: 'true'
+    });
 
     // Füge Output-Key hinzu, wenn vorhanden
     if (outputKey) {
@@ -181,6 +188,13 @@ export async function POST(request: NextRequest) {
       console.log('Processing additional parameters');
       const maxEnvVarLength = 4000; // AWS Batch hat ein Limit für die Umgebungsvariablenlänge
       
+      // Erstelle Liste von sicheren Parameternamen, die direkt übergeben werden können
+      const safeKeysToPassDirectly = [
+        'USER_ID', 'PROJECT_ID', 'TITLE', 'TEMPLATE_DATA_PATH', 'VOICEOVER_URL',
+        'DEBUG', 'AWS_REGION', 'OUTPUT_KEY'
+      ];
+      
+      // Filtere und verarbeite die Parameter
       Object.entries(additionalParams).forEach(([key, value]) => {
         if (value === undefined || value === null) {
           console.log(`Skipping null/undefined value for key: ${key}`);
@@ -189,25 +203,32 @@ export async function POST(request: NextRequest) {
         
         const stringValue = typeof value === 'string' ? value : JSON.stringify(value);
         
+        // Prüfe, ob wir diesen Parameter direkt übergeben sollten
+        const isSafeKey = safeKeysToPassDirectly.includes(key);
+        const isPathReference = key.endsWith('_PATH') || key.endsWith('_KEY');
+        
         // Prüfe die Größe des Werts
         if (stringValue.length > maxEnvVarLength) {
-          console.warn(`Value for ${key} exceeds ${maxEnvVarLength} chars (${stringValue.length}). Using S3 reference instead.`);
+          console.warn(`Value for ${key} exceeds ${maxEnvVarLength} chars (${stringValue.length} bytes)`);
           
-          // Wenn eine spezielle S3-Referenz-Variable existiert, verwende diese stattdessen
-          if (key.endsWith('_PATH') || key.endsWith('_KEY') || key === 'TEMPLATE_DATA_PATH') {
-            console.log(`Using S3 path reference for ${key}: ${stringValue}`);
+          // Wenn es eine Pfadreferenz ist, können wir sie übergeben
+          if (isPathReference) {
+            console.log(`Using S3 path reference for ${key}: ${stringValue.substring(0, 50)}...`);
             environment.push({
               name: key,
               value: stringValue
             });
           } else {
-            console.log(`Skipping large parameter ${key} (${stringValue.length} chars)`);
+            console.log(`Skipping large parameter ${key} (${stringValue.length} bytes)`);
           }
-        } else {
+        } else if (isSafeKey || isPathReference || stringValue.length < 1000) {
+          // Sichere Schlüssel, Pfadreferenzen oder kleine Werte direkt übergeben
           environment.push({
             name: key,
             value: stringValue
           });
+        } else {
+          console.log(`Skipping non-essential parameter ${key} (${stringValue.length} bytes)`);
         }
       });
     }
@@ -222,6 +243,49 @@ export async function POST(request: NextRequest) {
     const awsLimit = 8000; // AWS Batch Container Overrides haben ein Limit von etwa 8192 Bytes
     if (totalSize > awsLimit * 0.8) {
       console.warn(`Environment variables size (${totalSize}) is approaching AWS limit (${awsLimit})!`);
+      
+      // Bei Überschreitung: Entferne nicht essentielle Variablen
+      if (totalSize > awsLimit) {
+        console.error(`Environment variables exceed AWS limit! Removing non-essential variables.`);
+        
+        // Sortiere die Variablen nach Wichtigkeit und Größe
+        const sortedEnvironment = environment
+          .map(env => ({ 
+            env, 
+            isEssential: ['USER_ID', 'PROJECT_ID', 'TEMPLATE_DATA_PATH'].includes(env.name),
+            size: (env.name.length + (env.value?.length || 0))
+          }))
+          .sort((a, b) => {
+            // Essentielle Variablen immer zuerst behalten
+            if (a.isEssential && !b.isEssential) return -1;
+            if (!a.isEssential && b.isEssential) return 1;
+            // Bei gleicher Wichtigkeit: Kleinere Variablen bevorzugen
+            return a.size - b.size;
+          });
+        
+        // Behalte nur so viele Variablen wie möglich ohne das Limit zu überschreiten
+        let currentSize = 0;
+        environment = [];
+        
+        for (const item of sortedEnvironment) {
+          const itemSize = item.size;
+          if (currentSize + itemSize <= awsLimit) {
+            environment.push(item.env);
+            currentSize += itemSize;
+          } else if (item.isEssential) {
+            // Essentielle Variablen immer behalten, auch wenn das Limit überschritten wird
+            environment.push(item.env);
+            currentSize += itemSize;
+            console.warn(`Including essential variable ${item.env.name} despite size (${itemSize} bytes)`);
+          } else {
+            console.warn(`Excluding variable ${item.env.name} to stay under limit (${itemSize} bytes)`);
+          }
+        }
+        
+        // Neue Gesamtgröße loggen
+        const newTotalSize = environment.reduce((sum, env) => sum + (env.name.length + (env.value?.length || 0)), 0);
+        console.log(`New environment variables size after optimization: ${newTotalSize} bytes`);
+      }
     }
 
     console.log('Using job queue:', process.env.AWS_BATCH_JOB_QUEUE);
@@ -233,15 +297,8 @@ export async function POST(request: NextRequest) {
       jobQueue: process.env.AWS_BATCH_JOB_QUEUE || '',
       jobDefinition: process.env.AWS_BATCH_JOB_DEFINITION || '',
       containerOverrides: {
-        // Verwende nur essentielle Umgebungsvariablen
-        environment: environment.filter(env => {
-          // Filtere unnötige oder sehr große Umgebungsvariablen
-          if (env.value && env.value.length > 5000) {
-            console.warn(`Removing environment variable ${env.name} due to excessive size (${env.value.length} bytes)`);
-            return false;
-          }
-          return true;
-        }),
+        // Nach Optimierung verwenden wir die vollständige Umgebung
+        environment,
         // Für Fargate müssen wir resourceRequirements anstelle von memory und vcpus verwenden
         resourceRequirements: [
           {

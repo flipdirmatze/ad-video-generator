@@ -212,22 +212,48 @@ export async function POST(request: Request) {
       // Der AWS Batch Job wird die eigentliche Verarbeitung basierend auf den übergebenen Segmenten durchführen
       const firstVideoUrl = getS3Url(segments[0].videoKey);
       console.log('Using first video as input URL:', firstVideoUrl);
+      
+      // Erstelle template Daten die zu S3 hochgeladen werden
+      const templateData = {
+        segments: videoSegments,
+        voiceoverId: voiceoverId || null,
+        voiceoverText: voiceoverText || '',
+        addSubtitles: addSubtitles || false,
+        subtitleOptions: subtitleOptions || null
+      };
+      
+      // Template-Daten in S3 speichern, um die Container Overrides Limite zu umgehen
+      const { v4: uuidv4 } = await import('uuid');
+      const templateDataKey = `config/${session.user.id}/${uuidv4()}-template.json`;
+      console.log(`Storing template data in S3 with key: ${templateDataKey}`);
+      
+      const templateDataBuffer = Buffer.from(JSON.stringify(templateData));
+      console.log(`Template data size: ${templateDataBuffer.length} bytes`);
+      
+      // Importiere uploadToS3 Funktion
+      const { uploadToS3 } = await import('@/lib/storage');
+      
+      // Lade template Daten nach S3 hoch
+      await uploadToS3(
+        templateDataBuffer,
+        templateDataKey.split('/').pop() || 'template.json',
+        'application/json',
+        'config'
+      );
+      
+      console.log('Template data stored in S3 successfully');
+      
+      // Speichere den Pfad zur Template-Datei im Projekt
+      await ProjectModel.findByIdAndUpdate(project._id, {
+        templateDataPath: templateDataKey
+      });
 
-      // Job an AWS Batch senden
+      // Job an AWS Batch senden - NUR mit essentiellen Parametern
       const additionalParams: Record<string, string> = {
         USER_ID: session.user.id,
         PROJECT_ID: project._id.toString(),
-        SEGMENTS: JSON.stringify(videoSegments),
-        TEMPLATE_DATA: JSON.stringify({ 
-          segments: videoSegments,
-          voiceoverId: voiceoverId || null,
-          voiceoverText: voiceoverText || ''
-        }),
-        TITLE: title,
-        ADD_SUBTITLES: addSubtitles ? 'true' : 'false',
-        SUBTITLE_OPTIONS: subtitleOptions ? JSON.stringify(subtitleOptions) : '',
-        VOICEOVER_TEXT: voiceoverText || '',
-        VOICEOVER_ID: voiceoverId || ''
+        TEMPLATE_DATA_PATH: templateDataKey, // Nur Pfad statt vollständiger Daten
+        TITLE: title
       };
 
       // Voiceover-URL direkt bereitstellen, wenn verfügbar
