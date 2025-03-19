@@ -16,6 +16,8 @@ interface IProjectDocument extends Omit<IProject, 'status'> {
   _id: mongoose.Types.ObjectId;
   status: ProjectStatus;
   progress?: number;
+  batchJobId?: string;
+  jobId?: string;
   save(): Promise<IProjectDocument>;
 }
 
@@ -114,11 +116,25 @@ export async function GET(
     }
 
     // Wenn das Projekt noch in Bearbeitung ist und eine Batch-Job-ID hat, prüfe den Status des Jobs
-    if (project.status === 'processing' && project.batchJobId) {
+    if (project.status === 'processing' && (project.batchJobId || project.jobId)) {
       try {
+        // Verwende entweder batchJobId oder jobId
+        const jobIdToUse = project.batchJobId || project.jobId;
+        
+        if (!jobIdToUse) {
+          console.warn(`No job ID found for project ${project._id}`);
+          return NextResponse.json({
+            projectId: project._id.toString(),
+            status: project.status,
+            outputUrl: project.outputUrl || null,
+            error: 'No job ID found for project',
+            progress: project.progress || 0
+          });
+        }
+        
         // Rufe den Status des AWS Batch-Jobs ab
-        const jobStatus = await getJobStatus(project.batchJobId, session.user.id);
-        console.log(`AWS Batch job status for ${project.batchJobId}: ${jobStatus}`);
+        const jobStatus = await getJobStatus(jobIdToUse, session.user.id);
+        console.log(`AWS Batch job status for ${jobIdToUse}: ${jobStatus}`);
 
         // Berechne den Fortschritt basierend auf dem Job-Status
         let progress = 0;
