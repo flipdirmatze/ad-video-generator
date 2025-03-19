@@ -46,8 +46,15 @@ export async function POST(request: NextRequest) {
     // Verbindung zur Datenbank herstellen
     await dbConnect();
 
-    // Projekt finden
-    const project = await ProjectModel.findOne({ batchJobId: jobId });
+    // Projekt finden - versuche sowohl jobId als auch batchJobId
+    let project = await ProjectModel.findOne({ batchJobId: jobId });
+    
+    // Wenn nicht gefunden, versuche mit jobId
+    if (!project) {
+      console.log(`Project not found with batchJobId, trying jobId: ${jobId}`);
+      project = await ProjectModel.findOne({ jobId: jobId });
+    }
+    
     if (!project) {
       console.warn(`Project not found for job ID: ${jobId}`);
       return NextResponse.json({ error: 'Project not found' }, { status: 404 });
