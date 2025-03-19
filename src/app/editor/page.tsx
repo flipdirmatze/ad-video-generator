@@ -64,6 +64,15 @@ export default function EditorPage() {
   const [fromScriptMatcher, setFromScriptMatcher] = useState(false)
   const [workflowStatusMessage, setWorkflowStatusMessage] = useState('')
   const [shouldAutoGenerate, setShouldAutoGenerate] = useState(false)
+  const [addCaptions, setAddCaptions] = useState(false)
+  const [subtitleOptions, setSubtitleOptions] = useState({
+    fontName: 'Arial',
+    fontSize: 24,
+    primaryColor: '#FFFFFF',
+    backgroundColor: '#80000000',
+    borderStyle: 4,
+    position: 'bottom'
+  })
   
   // Content states
   const [voiceoverUrl, setVoiceoverUrl] = useState<string | null>(null)
@@ -682,17 +691,34 @@ export default function EditorPage() {
       
       console.log('Sending segments to API:', segmentsWithKeys);
       
-      // API-Request zum Generieren des Videos
-      const response = await fetch('/api/generate-video', {
+      // Optionen für das generierte Video
+      const videoOptions = {
+        addSubtitles: addCaptions,
+        subtitleOptions: addCaptions ? subtitleOptions : undefined
+      };
+
+      // Sende den Workflow-Auftrag
+      const response = await fetch('/api/video-workflow', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          segments: segmentsWithKeys,
-          voiceoverId,
-          title: 'Ad Video',
-          projectId // Übergebe die Projekt-ID, falls vorhanden
+          workflowType: 'generate-final',
+          projectId: projectId,
+          userId: session?.user?.id,
+          title: 'Generiertes Video',
+          description: 'Automatisch generiertes Video',
+          voiceoverId: voiceoverId,
+          voiceoverText: voiceoverScript, // Übergebe den Text für Untertitel
+          videos: [
+            {
+              id: 'mixed',
+              key: '',
+              segments: segmentsWithKeys
+            }
+          ],
+          options: videoOptions
         })
       });
       
@@ -967,49 +993,166 @@ export default function EditorPage() {
                     {/* Video Generation Form */}
                     <div className="space-y-5">
                       {/* Caption Option */}
-                      <div className="flex items-center">
-                        <input
-                          type="checkbox"
-                          id="addCaptions"
-                          className="w-4 h-4 bg-gray-700 border-gray-600 rounded focus:ring-blue-600 ring-offset-gray-800 focus:ring-2"
-                        />
-                        <label htmlFor="addCaptions" className="ml-2 text-sm font-medium">
-                          Untertitel hinzufügen (automatisch generiert)
-                        </label>
+                      <div className="space-y-5">
+                        <div className="flex items-center">
+                          <input
+                            type="checkbox"
+                            id="addCaptions"
+                            checked={addCaptions}
+                            onChange={(e) => setAddCaptions(e.target.checked)}
+                            className="w-4 h-4 bg-gray-700 border-gray-600 rounded focus:ring-blue-600 ring-offset-gray-800 focus:ring-2"
+                          />
+                          <label htmlFor="addCaptions" className="ml-2 text-sm font-medium">
+                            Untertitel hinzufügen (automatisch generiert)
+                          </label>
+                        </div>
+                        
+                        {addCaptions && (
+                          <div className="mt-4 p-3 bg-gray-800 rounded-md">
+                            <h3 className="text-sm font-medium mb-3">Untertitel-Einstellungen</h3>
+                            
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              {/* Schriftart */}
+                              <div>
+                                <label htmlFor="subtitleFont" className="block text-xs font-medium">
+                                  Schriftart
+                                </label>
+                                <select
+                                  id="subtitleFont"
+                                  value={subtitleOptions.fontName}
+                                  onChange={(e) => setSubtitleOptions({...subtitleOptions, fontName: e.target.value})}
+                                  className="mt-1 p-2 w-full text-sm rounded-md bg-gray-700 border-gray-600"
+                                >
+                                  <option value="Arial">Arial (Standard)</option>
+                                  <option value="Helvetica">Helvetica</option>
+                                  <option value="Verdana">Verdana</option>
+                                  <option value="Georgia">Georgia</option>
+                                  <option value="Courier">Courier</option>
+                                  <option value="Times">Times</option>
+                                </select>
+                              </div>
+                              
+                              {/* Schriftgröße */}
+                              <div>
+                                <label htmlFor="subtitleSize" className="block text-xs font-medium">
+                                  Schriftgröße
+                                </label>
+                                <select
+                                  id="subtitleSize"
+                                  value={subtitleOptions.fontSize}
+                                  onChange={(e) => setSubtitleOptions({...subtitleOptions, fontSize: parseInt(e.target.value)})}
+                                  className="mt-1 p-2 w-full text-sm rounded-md bg-gray-700 border-gray-600"
+                                >
+                                  {[18, 20, 22, 24, 26, 28, 30, 32, 36, 40].map(size => (
+                                    <option key={size} value={size}>
+                                      {size}px
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                              
+                              {/* Textfarbe */}
+                              <div>
+                                <label htmlFor="subtitleColor" className="block text-xs font-medium">
+                                  Textfarbe
+                                </label>
+                                <div className="flex items-center mt-1">
+                                  <input
+                                    type="color"
+                                    id="subtitleColor"
+                                    value={subtitleOptions.primaryColor}
+                                    onChange={(e) => setSubtitleOptions({...subtitleOptions, primaryColor: e.target.value})}
+                                    className="h-8 w-8 rounded border border-gray-600"
+                                  />
+                                </div>
+                              </div>
+                              
+                              {/* Hintergrundfarbe */}
+                              <div>
+                                <label htmlFor="subtitleBgColor" className="block text-xs font-medium">
+                                  Hintergrundfarbe
+                                </label>
+                                <div className="flex items-center mt-1">
+                                  <input
+                                    type="color"
+                                    id="subtitleBgColor"
+                                    value={subtitleOptions.backgroundColor.substring(0, 7)}
+                                    onChange={(e) => setSubtitleOptions({...subtitleOptions, backgroundColor: e.target.value + '80'})}
+                                    className="h-8 w-8 rounded border border-gray-600"
+                                  />
+                                  <div className="text-xs text-white/50 ml-2">(mit 50% Transparenz)</div>
+                                </div>
+                              </div>
+                              
+                              {/* Position */}
+                              <div>
+                                <label htmlFor="subtitlePosition" className="block text-xs font-medium">
+                                  Position
+                                </label>
+                                <select
+                                  id="subtitlePosition"
+                                  value={subtitleOptions.position}
+                                  onChange={(e) => setSubtitleOptions({...subtitleOptions, position: e.target.value})}
+                                  className="mt-1 p-2 w-full text-sm rounded-md bg-gray-700 border-gray-600"
+                                >
+                                  <option value="bottom">Unten (Standard)</option>
+                                  <option value="top">Oben</option>
+                                  <option value="middle">Mitte</option>
+                                </select>
+                              </div>
+                            </div>
+                            
+                            <div className="mt-3 p-2 bg-gray-900 rounded border border-gray-700">
+                              <div className="text-center text-xs">Vorschau</div>
+                              <div 
+                                className="mt-2 p-2 rounded text-center"
+                                style={{
+                                  fontFamily: subtitleOptions.fontName,
+                                  fontSize: `${subtitleOptions.fontSize}px`,
+                                  color: subtitleOptions.primaryColor,
+                                  backgroundColor: subtitleOptions.backgroundColor.substring(0, 7) + '80',
+                                  borderRadius: subtitleOptions.borderStyle === 4 ? '4px' : '0'
+                                }}
+                              >
+                                Beispieltext für Untertitel
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      
+                        {/* Generate Video Button */}
+                        <button
+                          onClick={handleGenerateVideo}
+                          disabled={isGenerating || selectedVideos.length === 0 || !voiceoverUrl}
+                          className="w-full py-3 px-4 bg-gradient-to-r from-purple-600 to-purple-500 text-white rounded-md hover:from-purple-500 hover:to-purple-400 disabled:opacity-50 font-medium flex items-center justify-center"
+                        >
+                          <SparklesIcon className="h-5 w-5 mr-2" />
+                          Video generieren
+                        </button>
+                        
+                        {(!selectedVideos.length || !voiceoverUrl) && (
+                          <div className="text-yellow-500 text-sm mt-2">
+                            <ExclamationTriangleIcon className="h-4 w-4 inline-block mr-1" />
+                            {!selectedVideos.length ? 'Keine Videos ausgewählt. ' : ''}
+                            {!voiceoverUrl ? 'Kein Voiceover gefunden. ' : ''}
+                            {!selectedVideos.length || !voiceoverUrl ? 'Bitte gehe zurück zum Script-Matcher.' : ''}
+                          </div>
+                        )}
                       </div>
                       
-                      {/* Generate Video Button */}
-                      <button
-                        onClick={handleGenerateVideo}
-                        disabled={isGenerating || selectedVideos.length === 0 || !voiceoverUrl}
-                        className="w-full py-3 px-4 bg-gradient-to-r from-purple-600 to-purple-500 text-white rounded-md hover:from-purple-500 hover:to-purple-400 disabled:opacity-50 font-medium flex items-center justify-center"
-                      >
-                        <SparklesIcon className="h-5 w-5 mr-2" />
-                        Video generieren
-                      </button>
-                      
-                      {(!selectedVideos.length || !voiceoverUrl) && (
-                        <div className="text-yellow-500 text-sm mt-2">
-                          <ExclamationTriangleIcon className="h-4 w-4 inline-block mr-1" />
-                          {!selectedVideos.length ? 'Keine Videos ausgewählt. ' : ''}
-                          {!voiceoverUrl ? 'Kein Voiceover gefunden. ' : ''}
-                          {!selectedVideos.length || !voiceoverUrl ? 'Bitte gehe zurück zum Script-Matcher.' : ''}
+                      {/* Back to Script Matcher Button */}
+                      {(!fromScriptMatcher || selectedVideos.length === 0) && (
+                        <div className="mt-6 text-center">
+                          <Link
+                            href="/script-matcher"
+                            className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700"
+                          >
+                            <ArrowLeftIcon className="h-4 w-4 mr-2" />
+                            Zurück zum Script-Matcher
+                          </Link>
                         </div>
                       )}
                     </div>
-                    
-                    {/* Back to Script Matcher Button */}
-                    {(!fromScriptMatcher || selectedVideos.length === 0) && (
-                      <div className="mt-6 text-center">
-                        <Link
-                          href="/script-matcher"
-                          className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700"
-                        >
-                          <ArrowLeftIcon className="h-4 w-4 mr-2" />
-                          Zurück zum Script-Matcher
-                        </Link>
-                      </div>
-                    )}
                   </>
                 )}
               </div>
