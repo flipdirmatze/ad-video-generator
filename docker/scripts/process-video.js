@@ -12,6 +12,7 @@
  * - OUTPUT_KEY: S3-Schlüssel für die Ausgabedatei
  * - USER_ID: ID des Benutzers, der den Job gestartet hat
  * - TEMPLATE_DATA: JSON-String mit Template-Daten
+ * - TEMPLATE_DATA_PATH: S3-Pfad zur JSON-Datei mit Template-Daten
  * - S3_BUCKET: Name des S3-Buckets
  * - AWS_REGION: AWS-Region
  * - BATCH_CALLBACK_SECRET: Secret-Key für die Callback-API
@@ -99,34 +100,18 @@ try {
     const templateDataStr = process.env.TEMPLATE_DATA.trim();
     console.log(`TEMPLATE_DATA length: ${templateDataStr.length}`);
     
-    // Check for valid JSON structure
-    if (templateDataStr.startsWith('{') && templateDataStr.endsWith('}')) {
-      TEMPLATE_DATA = JSON.parse(templateDataStr);
-      console.log('Successfully parsed TEMPLATE_DATA');
-      
-      // Validate required fields
-      if (!TEMPLATE_DATA.segments || !Array.isArray(TEMPLATE_DATA.segments)) {
-        console.warn('TEMPLATE_DATA is missing segments array or it is not an array');
-        TEMPLATE_DATA.segments = TEMPLATE_DATA.segments || [];
-      }
-      
-      if (TEMPLATE_DATA.voiceoverId) {
-        console.log(`Voiceover ID found: ${TEMPLATE_DATA.voiceoverId}`);
-      }
-    } else {
-      console.error('TEMPLATE_DATA does not appear to be a valid JSON object');
-      console.log('TEMPLATE_DATA first char:', templateDataStr.charAt(0));
-      console.log('TEMPLATE_DATA last char:', templateDataStr.charAt(templateDataStr.length - 1));
-    }
+    TEMPLATE_DATA = JSON.parse(templateDataStr);
+    console.log(`TEMPLATE_DATA parsed successfully, contains ${TEMPLATE_DATA.segments ? TEMPLATE_DATA.segments.length : 0} segments`);
+  } else if (process.env.TEMPLATE_DATA_PATH) {
+    console.log(`Loading template data from S3 path: ${process.env.TEMPLATE_DATA_PATH}`);
+    // Template-Daten werden später in der main-Funktion aus S3 geladen
   } else {
-    console.warn('TEMPLATE_DATA environment variable is not set');
+    console.warn('No TEMPLATE_DATA or TEMPLATE_DATA_PATH provided, some features may not work correctly');
   }
 } catch (error) {
-  console.error('Error parsing TEMPLATE_DATA:', error.message);
-  console.log('TEMPLATE_DATA raw value (first 200 chars):', 
-    process.env.TEMPLATE_DATA ? process.env.TEMPLATE_DATA.substring(0, 200) : 'undefined');
-  console.log('TEMPLATE_DATA raw value (last 200 chars):', 
-    process.env.TEMPLATE_DATA ? process.env.TEMPLATE_DATA.substring(process.env.TEMPLATE_DATA.length - 200) : 'undefined');
+  console.error('Error parsing TEMPLATE_DATA:', error);
+  console.error('First 100 characters of TEMPLATE_DATA:', process.env.TEMPLATE_DATA?.substring(0, 100));
+  console.error('Job will continue but may fail later if template data is required');
 }
 
 /**
@@ -163,6 +148,26 @@ async function main() {
     
     // Erstelle temporäre Verzeichnisse
     await createDirectories();
+    
+    // Wenn TEMPLATE_DATA_PATH vorhanden ist, lade die Daten aus S3
+    if (process.env.TEMPLATE_DATA_PATH && !TEMPLATE_DATA) {
+      try {
+        console.log(`Loading template data from S3: ${process.env.TEMPLATE_DATA_PATH}`);
+        
+        // Lade die Template-Daten aus S3
+        const templateDataPath = `${TEMP_DIR}/template-data.json`;
+        await downloadFromS3(process.env.TEMPLATE_DATA_PATH, templateDataPath);
+        
+        // Lese und parse die JSON-Datei
+        const templateDataStr = fs.readFileSync(templateDataPath, 'utf8');
+        TEMPLATE_DATA = JSON.parse(templateDataStr);
+        
+        console.log(`Template data loaded from S3 successfully, contains ${TEMPLATE_DATA.segments ? TEMPLATE_DATA.segments.length : 0} segments`);
+      } catch (error) {
+        console.error('Error loading template data from S3:', error);
+        throw new Error(`Failed to load template data from S3: ${error.message}`);
+      }
+    }
     
     // Verarbeite Video je nach Job-Typ
     let outputFilePath;

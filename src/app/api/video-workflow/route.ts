@@ -5,7 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import dbConnect from '@/lib/mongoose';
 import ProjectModel from '@/models/Project';
 import VideoModel from '@/models/Video';
-import { getS3Url, generateUniqueFileName } from '@/lib/storage';
+import { getS3Url, generateUniqueFileName, uploadToS3 } from '@/lib/storage';
 import { submitAwsBatchJob, BatchJobTypes } from '@/utils/aws-batch-utils';
 
 type VideoSegment = {
@@ -285,6 +285,70 @@ export async function POST(request: NextRequest) {
       }, { status: 500 });
     }
     
+    // Bereite die Template-Daten vor
+    const templateData: {
+      segments: { url: string; startTime: number; duration: number; position: number; }[];
+      options: Record<string, unknown>;
+      voiceoverId?: string;
+      voiceoverText?: string;
+      subtitleOptions?: {
+        fontName: string;
+        fontSize: number;
+        primaryColor: string;
+        backgroundColor: string;
+        borderStyle: number;
+        position: string;
+      };
+    } = {
+      segments: segments.map(segment => ({
+        url: getS3Url(segment.videoKey),
+        startTime: segment.startTime || 0,
+        duration: segment.duration || 10,
+        position: segment.position || 0
+      })),
+      options: {}
+    };
+    
+    // Voiceover- und Untertitelinformationen hinzufügen
+    if (data.voiceoverId) {
+      templateData.voiceoverId = data.voiceoverId;
+    }
+    
+    if (data.voiceoverText) {
+      templateData.voiceoverText = data.voiceoverText;
+    }
+    
+    // Untertitel-Optionen hinzufügen, falls vorhanden
+    if (data.options?.addSubtitles && data.options?.subtitleOptions) {
+      templateData.subtitleOptions = data.options.subtitleOptions;
+    }
+    
+    // Speichere die Template-Daten in S3, um die Container Overrides Limits zu umgehen
+    const templateDataKey = `config/${userId}/${uuidv4()}-template.json`;
+    console.log(`Storing template data in S3 with key: ${templateDataKey}`);
+    
+    try {
+      // Konvertiere das JSON-Objekt in einen Buffer
+      const templateDataBuffer = Buffer.from(JSON.stringify(templateData));
+      
+      // Lade die Template-Daten nach S3 hoch
+      await uploadToS3(
+        templateDataBuffer,
+        templateDataKey.split('/').pop() || 'template.json',
+        'application/json',
+        templateDataKey.startsWith('config/') ? 'config' : 'uploads'
+      );
+      
+      console.log('Template data stored in S3 successfully');
+      
+      // Aktualisiere das Projekt mit dem Pfad zur Template-Datei
+      project.templateDataPath = templateDataKey;
+      await project.save();
+    } catch (s3Error) {
+      console.error('Error storing template data in S3:', s3Error);
+      throw new Error(`Failed to store template data: ${s3Error instanceof Error ? s3Error.message : String(s3Error)}`);
+    }
+    
     // Bereite die Job-Parameter vor
     const jobParams: Record<string, string | number | boolean> = {
       PROJECT_ID: project._id.toString(),
@@ -336,55 +400,18 @@ export async function POST(request: NextRequest) {
       const inputVideoUrl = getS3Url(segments[0].videoKey);
       console.log(`Converting S3 key to full URL: ${segments[0].videoKey} -> ${inputVideoUrl}`);
       
-      // Bereite die Template-Daten vor
-      const templateData: {
-        segments: { url: string; startTime: number; duration: number; position: number; }[];
-        options: Record<string, unknown>;
-        voiceoverId?: string;
-        voiceoverText?: string;
-        subtitleOptions?: {
-          fontName: string;
-          fontSize: number;
-          primaryColor: string;
-          backgroundColor: string;
-          borderStyle: number;
-          position: string;
-        };
-      } = {
-        segments: segments.map(segment => ({
-          url: getS3Url(segment.videoKey),
-          startTime: segment.startTime || 0,
-          duration: segment.duration || 10,
-          position: segment.position || 0
-        })),
-        options: {}
-      };
-      
-      // Voiceover- und Untertitelinformationen hinzufügen
-      if (data.voiceoverId) {
-        templateData.voiceoverId = data.voiceoverId;
-      }
-      
-      if (data.voiceoverText) {
-        templateData.voiceoverText = data.voiceoverText;
-      }
-      
-      // Untertitel-Optionen hinzufügen, falls vorhanden
-      if (data.options?.addSubtitles && data.options?.subtitleOptions) {
-        templateData.subtitleOptions = data.options.subtitleOptions;
-      }
-      
-      // Bereite die zusätzlichen Parameter vor - ohne TEMPLATE_DATA als JSON-String
+      // Bereite die zusätzlichen Parameter vor - nur mit einem Verweis auf die S3-Datei
       const additionalParams = {
         USER_ID: userId,
         PROJECT_ID: project._id.toString(),
-        TEMPLATE_DATA: JSON.stringify(templateData), // Zurück zu JSON.stringify
+        TEMPLATE_DATA_PATH: project.templateDataPath, // Speichere nur den Pfad zur Datei statt der gesamten Daten
         DEBUG: 'true'
       };
       
-      console.log('Submitting job with template data structure:', {
+      console.log('Submitting job with template data in S3:', {
         segmentsCount: templateData.segments.length,
-        hasVoiceover: !!templateData.voiceoverId
+        hasVoiceover: !!templateData.voiceoverId,
+        templateDataPath: project.templateDataPath
       });
       
       // Sende den Job an AWS Batch

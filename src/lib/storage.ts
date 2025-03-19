@@ -7,10 +7,11 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
  * - processed/: Zwischenverarbeitete Videosegmente
  * - final/: Endgültige zusammengesetzte Videos
  * - audio/: Audiodateien und Voiceovers
+ * - config/: Konfigurationsdateien für Video-Verarbeitung
  */
 
 // Typ für Bucket-Kategorien
-export type S3BucketFolder = 'uploads' | 'processed' | 'final' | 'audio';
+export type S3BucketFolder = 'uploads' | 'processed' | 'final' | 'audio' | 'config';
 
 // S3 Client Konfiguration
 const s3Config: S3ClientConfig = {
