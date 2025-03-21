@@ -288,11 +288,31 @@ export async function POST(request: Request) {
       // Voiceover-URL direkt bereitstellen, wenn verfügbar
       if (voiceoverId) {
         try {
+          console.log(`Finding voiceover with ID: ${voiceoverId}`);
           // Hole die Voiceover-Datei aus der Datenbank
           const voiceover = await mongoose.model('Voiceover').findById(voiceoverId);
-          if (voiceover && voiceover.fileKey) {
-            additionalParams.VOICEOVER_URL = getS3Url(voiceover.fileKey);
-            console.log('Adding voiceover URL to batch job:', additionalParams.VOICEOVER_URL);
+          
+          if (voiceover) {
+            console.log('Voiceover found:', {
+              id: voiceover._id,
+              name: voiceover.name,
+              path: voiceover.path,
+              url: voiceover.url
+            });
+            
+            if (voiceover.path) {
+              // Pass both the direct S3 URL and the file path for maximum compatibility
+              additionalParams.VOICEOVER_URL = getS3Url(voiceover.path);
+              additionalParams.VOICEOVER_KEY = voiceover.path;
+              
+              console.log('Adding voiceover to batch job:');
+              console.log('- VOICEOVER_URL:', additionalParams.VOICEOVER_URL);
+              console.log('- VOICEOVER_KEY:', additionalParams.VOICEOVER_KEY);
+            } else {
+              console.error('Voiceover document has no path field:', voiceover);
+            }
+          } else {
+            console.error(`Voiceover with ID ${voiceoverId} not found in database`);
           }
         } catch (voiceoverError) {
           console.error('Error getting voiceover:', voiceoverError);

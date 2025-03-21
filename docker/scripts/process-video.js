@@ -413,13 +413,18 @@ async function generateFinalVideo() {
   
   // 6. Wenn ein Voiceover vorhanden ist, füge es hinzu
   const VOICEOVER_URL = process.env.VOICEOVER_URL || '';
-  if (TEMPLATE_DATA.voiceoverId || VOICEOVER_URL) {
+  const VOICEOVER_KEY = process.env.VOICEOVER_KEY || '';
+  
+  if (TEMPLATE_DATA.voiceoverId || VOICEOVER_URL || VOICEOVER_KEY) {
     console.log(`Voiceover information found`);
     if (TEMPLATE_DATA.voiceoverId) {
       console.log(`Voiceover ID: ${TEMPLATE_DATA.voiceoverId}`);
     }
     if (VOICEOVER_URL) {
       console.log(`Direct Voiceover URL provided: ${VOICEOVER_URL}`);
+    }
+    if (VOICEOVER_KEY) {
+      console.log(`Voiceover Key provided: ${VOICEOVER_KEY}`);
     }
     
     try {
@@ -436,9 +441,18 @@ async function generateFinalVideo() {
           if (response.ok) {
             const buffer = Buffer.from(await response.arrayBuffer());
             fs.writeFileSync(voiceoverPath, buffer);
-            voiceoverExists = true;
-            voiceoverSource = 'direct URL';
-            console.log(`Successfully downloaded voiceover from URL to ${voiceoverPath}`);
+            
+            // Verify file was written
+            const fileSize = fs.statSync(voiceoverPath).size;
+            console.log(`Voiceover file written with size: ${fileSize} bytes`);
+            
+            if (fileSize > 0) {
+              voiceoverExists = true;
+              voiceoverSource = 'direct URL';
+              console.log(`Successfully downloaded voiceover from URL to ${voiceoverPath}`);
+            } else {
+              console.error(`Downloaded voiceover file is empty`);
+            }
           } else {
             console.error(`Failed to download voiceover from URL: ${response.status} ${response.statusText}`);
           }
@@ -447,7 +461,29 @@ async function generateFinalVideo() {
         }
       }
       
-      // Wenn keine direkte URL erfolgreich war, versuche es mit der ID
+      // Wenn keine direkte URL erfolgreich war, versuche es mit dem Key
+      if (!voiceoverExists && VOICEOVER_KEY) {
+        try {
+          console.log(`Downloading voiceover from key: ${VOICEOVER_KEY}`);
+          await downloadFromS3(VOICEOVER_KEY, voiceoverPath);
+          
+          // Verify the download
+          const fileSize = fs.statSync(voiceoverPath).size;
+          console.log(`Voiceover file downloaded with size: ${fileSize} bytes`);
+          
+          if (fileSize > 0) {
+            voiceoverExists = true;
+            voiceoverSource = `S3 key: ${VOICEOVER_KEY}`;
+            console.log(`Successfully downloaded voiceover from S3 key to ${voiceoverPath}`);
+          } else {
+            console.error(`Downloaded voiceover file from key is empty`);
+          }
+        } catch (error) {
+          console.error(`Error downloading voiceover from key: ${error.message}`);
+        }
+      }
+      
+      // Wenn weder URL noch Key erfolgreich waren, versuche es mit der ID
       if (!voiceoverExists && TEMPLATE_DATA.voiceoverId) {
         // Versuche verschiedene mögliche Pfade für die Voiceover-Datei
         const possiblePaths = [
