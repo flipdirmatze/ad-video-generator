@@ -248,12 +248,19 @@ export async function POST(request: Request) {
         templateDataPath: templateDataKey
       });
 
-      // Job an AWS Batch senden - NUR mit essentiellen Parametern
-      const additionalParams: Record<string, string> = {
+      // Konstruiere die additionalParams für den AWS Batch Job
+      const additionalParams: Record<string, any> = {
         USER_ID: session.user.id,
         PROJECT_ID: project._id.toString(),
-        TEMPLATE_DATA_PATH: templateDataKey, // Nur Pfad statt vollständiger Daten
-        TITLE: title
+        TEMPLATE_DATA_PATH: templateDataKey, // Pfad zu den Template-Daten in S3
+        TITLE: title,
+        // Für Abwärtskompatibilität mit bestehenden AWS Batch Container-Skripten
+        // fügen wir TEMPLATE_DATA mit Verweis auf S3 und Typ hinzu
+        TEMPLATE_DATA: JSON.stringify({
+          type: 's3Path',
+          path: templateDataKey,
+          segments: templateData.segments.length
+        })
       };
 
       // Voiceover-URL direkt bereitstellen, wenn verfügbar

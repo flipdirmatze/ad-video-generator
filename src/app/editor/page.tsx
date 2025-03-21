@@ -412,72 +412,134 @@ export default function EditorPage() {
   useEffect(() => {
     if (!projectId || !jobId || !isGenerating) return;
     
+    let isPollingActive = true; // Flag to track if polling should continue
+    let consecutiveErrors = 0; // Track consecutive errors
+    let isMounted = true; // Track if component is still mounted
+    let timeoutId: NodeJS.Timeout | null = null; // Track current timeout
+    
     // Funktion zum Abrufen des Projekt-Status
     const checkProjectStatus = async () => {
+      if (!isPollingActive || !isMounted) return;
+      
       try {
-        const response = await fetch(`/api/project-status/${projectId}`);
+        // Use AbortController to handle timeouts properly
+        const abortController = new AbortController();
+        const timeoutPromise = setTimeout(() => abortController.abort(), 10000);
+        
+        const response = await fetch(`/api/project-status/${projectId}`, {
+          signal: abortController.signal
+        });
+        clearTimeout(timeoutPromise);
+        
         if (!response.ok) {
-          console.error('Failed to fetch project status');
+          console.error('Failed to fetch project status:', response.status, response.statusText);
+          consecutiveErrors++;
+          
+          if (consecutiveErrors >= 5) {
+            console.error('Too many consecutive errors, stopping polling');
+            setIsGenerating(false);
+            setError('Failed to check video generation status. Please refresh the page.');
+            isPollingActive = false;
+            return;
+          }
+          
+          // Exponential backoff for retries
+          const delay = Math.min(5000, 1000 * Math.pow(1.5, consecutiveErrors));
+          console.log(`Retrying in ${delay}ms (attempt ${consecutiveErrors})`);
+          
+          if (isMounted && isPollingActive) {
+            timeoutId = setTimeout(checkProjectStatus, delay);
+          }
           return;
         }
+        
+        // Reset error counter on successful responses
+        consecutiveErrors = 0;
         
         const data = await response.json();
         
         if (data.status === 'completed') {
           // Video ist fertig! Setze final video URL
-          setFinalVideoUrl(data.outputUrl);
-          setSignedVideoUrl(data.signedUrl || data.outputUrl);
-          setIsGenerating(false);
-          setGenerationProgress(100);
-          
-          // Update workflow status to completed
-          await saveWorkflowState('completed');
-          
-          setWorkflowStatusMessage('Deine Werbung wurde erfolgreich generiert!');
+          if (isMounted) {
+            setFinalVideoUrl(data.outputUrl);
+            setSignedVideoUrl(data.signedUrl || data.outputUrl);
+            setIsGenerating(false);
+            setGenerationProgress(100);
+            
+            // Update workflow status to completed
+            await saveWorkflowState('completed');
+            
+            setWorkflowStatusMessage('Deine Werbung wurde erfolgreich generiert!');
+          }
           
           // Keine weiteren Status-Checks notwendig
-          return true;
+          isPollingActive = false;
+          return;
         } else if (data.status === 'failed') {
           // Fehler bei der Generierung
-          setError('Video generation failed');
-          setErrorDetails(data.error || null);
-          setIsGenerating(false);
-          setGenerationProgress(0);
-          
-          // Update workflow status to failed
-          await saveWorkflowState('failed');
+          if (isMounted) {
+            setError('Video generation failed');
+            setErrorDetails(data.error || null);
+            setIsGenerating(false);
+            setGenerationProgress(0);
+            
+            // Update workflow status to failed
+            await saveWorkflowState('failed');
+          }
           
           // Keine weiteren Status-Checks notwendig
-          return true;
+          isPollingActive = false;
+          return;
         } else if (data.status === 'processing') {
           // Update progress if available
-          if (data.progress) {
+          if (data.progress && isMounted) {
             setGenerationProgress(Math.min(20 + data.progress * 0.8, 99)); // Scale 0-100 to 20-99
           }
         }
         
         // Weiter prüfen, wenn der Status noch "processing" ist
-        return false;
+        if (isMounted && isPollingActive) {
+          // More conservative polling rate - 5 seconds instead of 3
+          timeoutId = setTimeout(checkProjectStatus, 5000);
+        }
       } catch (error) {
         console.error('Error checking project status:', error);
-        return false;
+        consecutiveErrors++;
+        
+        if (consecutiveErrors >= 5) {
+          console.error('Too many consecutive errors, stopping polling');
+          if (isMounted) {
+            setIsGenerating(false);
+            setError('Failed to check video generation status.');
+          }
+          isPollingActive = false;
+          return;
+        }
+        
+        // Exponential backoff for retries with jitter
+        const baseDelay = Math.min(8000, 1000 * Math.pow(1.5, consecutiveErrors));
+        const jitter = Math.random() * 1000; // Add up to 1 second of random jitter
+        const delay = baseDelay + jitter;
+        
+        console.log(`Retrying after error in ${Math.round(delay)}ms (attempt ${consecutiveErrors})`);
+        
+        if (isMounted && isPollingActive) {
+          timeoutId = setTimeout(checkProjectStatus, delay);
+        }
       }
     };
     
-    // Initialer Status-Check
-    checkProjectStatus();
-    
-    // Status-Check alle 3 Sekunden
-    const intervalId = setInterval(async () => {
-      const shouldStop = await checkProjectStatus();
-      if (shouldStop) {
-        clearInterval(intervalId);
-      }
-    }, 3000);
+    // Initialer Status-Check mit kurzer Verzögerung
+    timeoutId = setTimeout(checkProjectStatus, 1000);
     
     // Cleanup
     return () => {
-      clearInterval(intervalId);
+      isMounted = false;
+      isPollingActive = false;
+      
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
     };
   }, [projectId, jobId, isGenerating]);
 
