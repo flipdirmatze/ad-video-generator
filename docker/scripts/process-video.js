@@ -101,7 +101,20 @@ try {
     console.log(`TEMPLATE_DATA length: ${templateDataStr.length}`);
     
     TEMPLATE_DATA = JSON.parse(templateDataStr);
-    console.log(`TEMPLATE_DATA parsed successfully, contains ${TEMPLATE_DATA.segments ? TEMPLATE_DATA.segments.length : 0} segments`);
+    
+    // Check if TEMPLATE_DATA is a reference to S3
+    if (TEMPLATE_DATA.type === 's3Path' && TEMPLATE_DATA.path) {
+      console.log(`TEMPLATE_DATA contains S3 path reference: ${TEMPLATE_DATA.path}`);
+      
+      // We'll load the actual data from S3 path in the main function
+      if (TEMPLATE_DATA.segments && Array.isArray(TEMPLATE_DATA.segments)) {
+        console.log(`TEMPLATE_DATA already contains ${TEMPLATE_DATA.segments.length} segments`);
+      } else {
+        console.log(`TEMPLATE_DATA is S3 reference, will load full data later`);
+      }
+    } else {
+      console.log(`TEMPLATE_DATA parsed successfully, contains ${TEMPLATE_DATA.segments ? TEMPLATE_DATA.segments.length : 0} segments`);
+    }
   } else if (process.env.TEMPLATE_DATA_PATH) {
     console.log(`Loading template data from S3 path: ${process.env.TEMPLATE_DATA_PATH}`);
     // Template-Daten werden später in der main-Funktion aus S3 geladen
@@ -118,15 +131,19 @@ try {
  * Hauptfunktion für die Videoverarbeitung
  */
 async function main() {
+  console.log('Starting video processing job', JOB_TYPE, 'for user', USER_ID);
+  console.log('Job ID:', AWS_BATCH_JOB_ID);
+  console.log('Project ID:', PROJECT_ID);
+  console.log('Input video URL:', INPUT_VIDEO_URL);
+  console.log('Output key:', OUTPUT_KEY);
+  console.log('S3 bucket:', S3_BUCKET);
+  
   try {
-    console.log(`Starting video processing job '${JOB_TYPE}' for user ${USER_ID}`);
-    console.log(`Job ID: ${AWS_BATCH_JOB_ID}`);
-    console.log(`Project ID: ${PROJECT_ID}`);
-    console.log(`Input video URL: ${INPUT_VIDEO_URL}`);
-    console.log(`Output key: ${OUTPUT_KEY}`);
-    console.log(`S3 bucket: ${S3_BUCKET}`);
+    // Validiere, dass alle erforderlichen Umgebungsvariablen vorhanden sind
+    if (!INPUT_VIDEO_URL) {
+      throw new Error('INPUT_VIDEO_URL environment variable is required');
+    }
     
-    // Validiere erforderliche Umgebungsvariablen
     if (!S3_BUCKET) {
       throw new Error('S3_BUCKET or S3_BUCKET_NAME environment variable is required');
     }
@@ -135,37 +152,39 @@ async function main() {
       throw new Error('OUTPUT_KEY environment variable is required');
     }
     
-    // For generate-final, we need TEMPLATE_DATA but we'll try to proceed even if it's not perfect
-    if (JOB_TYPE === 'generate-final') {
-      if (!TEMPLATE_DATA) {
-        throw new Error('TEMPLATE_DATA environment variable is required for generate-final job type');
-      }
-      
-      if (!TEMPLATE_DATA.segments || !Array.isArray(TEMPLATE_DATA.segments) || TEMPLATE_DATA.segments.length === 0) {
-        throw new Error('No video segments provided in TEMPLATE_DATA');
-      }
-    }
-    
     // Erstelle temporäre Verzeichnisse
     await createDirectories();
     
-    // Wenn TEMPLATE_DATA_PATH vorhanden ist, lade die Daten aus S3
-    if (process.env.TEMPLATE_DATA_PATH && !TEMPLATE_DATA) {
+    // Lade Template-Daten aus S3, wenn ein Pfad angegeben ist
+    const templateDataPath = process.env.TEMPLATE_DATA_PATH || (TEMPLATE_DATA?.type === 's3Path' ? TEMPLATE_DATA.path : null);
+    
+    if (templateDataPath) {
       try {
-        console.log(`Loading template data from S3: ${process.env.TEMPLATE_DATA_PATH}`);
+        console.log(`Loading template data from S3 path: ${templateDataPath}`);
         
         // Lade die Template-Daten aus S3
-        const templateDataPath = `${TEMP_DIR}/template-data.json`;
-        await downloadFromS3(process.env.TEMPLATE_DATA_PATH, templateDataPath);
+        const tempDataPath = `${TEMP_DIR}/template-data.json`;
+        await downloadFromS3(templateDataPath, tempDataPath);
         
         // Lese und parse die JSON-Datei
-        const templateDataStr = fs.readFileSync(templateDataPath, 'utf8');
+        const templateDataStr = fs.readFileSync(tempDataPath, 'utf8');
         TEMPLATE_DATA = JSON.parse(templateDataStr);
         
         console.log(`Template data loaded from S3 successfully, contains ${TEMPLATE_DATA.segments ? TEMPLATE_DATA.segments.length : 0} segments`);
       } catch (error) {
         console.error('Error loading template data from S3:', error);
         throw new Error(`Failed to load template data from S3: ${error.message}`);
+      }
+    }
+    
+    // Validiere Template-Daten für generate-final
+    if (JOB_TYPE === 'generate-final') {
+      if (!TEMPLATE_DATA) {
+        throw new Error('TEMPLATE_DATA or TEMPLATE_DATA_PATH is required for generate-final job type');
+      }
+      
+      if (!TEMPLATE_DATA.segments || !Array.isArray(TEMPLATE_DATA.segments) || TEMPLATE_DATA.segments.length === 0) {
+        throw new Error('No video segments provided in TEMPLATE_DATA');
       }
     }
     

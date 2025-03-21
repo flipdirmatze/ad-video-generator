@@ -6,6 +6,38 @@ import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 
+// Reduziert die Häufigkeit von API-Aufrufen
+const debounce = (fn: Function, ms = 300) => {
+  let timeoutId: ReturnType<typeof setTimeout>;
+  return function(this: any, ...args: any[]) {
+    clearTimeout(timeoutId);
+    timeoutId = setTimeout(() => fn.apply(this, args), ms);
+  };
+};
+
+// Definiert einen sicheren Fetch-Wrapper mit Timeout und Retry-Logik
+const safeFetch = async (url: string, options: RequestInit = {}, timeoutMs = 10000): Promise<Response> => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  
+  const fetchOptions = {
+    ...options,
+    signal: controller.signal
+  };
+  
+  try {
+    const response = await fetch(url, fetchOptions);
+    clearTimeout(timeoutId);
+    return response;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error(`Request timed out after ${timeoutMs}ms`);
+    }
+    throw error;
+  }
+};
+
 type UploadedVideo = {
   id: string;
   name: string;
@@ -417,19 +449,13 @@ export default function EditorPage() {
     let isMounted = true; // Track if component is still mounted
     let timeoutId: NodeJS.Timeout | null = null; // Track current timeout
     
-    // Funktion zum Abrufen des Projekt-Status
+    // Funktion zum Abrufen des Projekt-Status - optimiert für Stabilität
     const checkProjectStatus = async () => {
       if (!isPollingActive || !isMounted) return;
       
       try {
-        // Use AbortController to handle timeouts properly
-        const abortController = new AbortController();
-        const timeoutPromise = setTimeout(() => abortController.abort(), 10000);
-        
-        const response = await fetch(`/api/project-status/${projectId}`, {
-          signal: abortController.signal
-        });
-        clearTimeout(timeoutPromise);
+        // Verwende die safeFetch-Funktion mit 15 Sekunden Timeout
+        const response = await safeFetch(`/api/project-status/${projectId}`, {}, 15000);
         
         if (!response.ok) {
           console.error('Failed to fetch project status:', response.status, response.statusText);
@@ -437,18 +463,20 @@ export default function EditorPage() {
           
           if (consecutiveErrors >= 5) {
             console.error('Too many consecutive errors, stopping polling');
-            setIsGenerating(false);
-            setError('Failed to check video generation status. Please refresh the page.');
+            if (isMounted) {
+              setIsGenerating(false);
+              setError('Failed to check video generation status. Please refresh the page.');
+            }
             isPollingActive = false;
             return;
           }
           
-          // Exponential backoff for retries
-          const delay = Math.min(5000, 1000 * Math.pow(1.5, consecutiveErrors));
-          console.log(`Retrying in ${delay}ms (attempt ${consecutiveErrors})`);
+          // Exponential backoff for retries with randomness
+          const delayTime = Math.min(8000, 1000 * Math.pow(1.5, consecutiveErrors)) + (Math.random() * 2000);
+          console.log(`Retrying in ${Math.round(delayTime)}ms (attempt ${consecutiveErrors})`);
           
           if (isMounted && isPollingActive) {
-            timeoutId = setTimeout(checkProjectStatus, delay);
+            timeoutId = setTimeout(checkProjectStatus, delayTime);
           }
           return;
         }
@@ -456,18 +484,34 @@ export default function EditorPage() {
         // Reset error counter on successful responses
         consecutiveErrors = 0;
         
-        const data = await response.json();
+        // Daten nur lesen, wenn noch mounted und aktiv
+        if (!isMounted || !isPollingActive) return;
         
+        let data;
+        try {
+          data = await response.json();
+        } catch (jsonError) {
+          console.error('Error parsing response JSON:', jsonError);
+          if (isMounted && isPollingActive) {
+            timeoutId = setTimeout(checkProjectStatus, 5000);
+          }
+          return;
+        }
+        
+        // Status verarbeiten und UI aktualisieren
         if (data.status === 'completed') {
           // Video ist fertig! Setze final video URL
           if (isMounted) {
+            console.log('Video generation completed successfully', data);
             setFinalVideoUrl(data.outputUrl);
             setSignedVideoUrl(data.signedUrl || data.outputUrl);
             setIsGenerating(false);
             setGenerationProgress(100);
             
-            // Update workflow status to completed
-            await saveWorkflowState('completed');
+            // Asynchron Workflow-Status aktualisieren
+            saveWorkflowState('completed').catch(err => 
+              console.error('Error saving workflow state:', err)
+            );
             
             setWorkflowStatusMessage('Deine Werbung wurde erfolgreich generiert!');
           }
@@ -478,13 +522,16 @@ export default function EditorPage() {
         } else if (data.status === 'failed') {
           // Fehler bei der Generierung
           if (isMounted) {
+            console.error('Video generation failed:', data.error);
             setError('Video generation failed');
             setErrorDetails(data.error || null);
             setIsGenerating(false);
             setGenerationProgress(0);
             
-            // Update workflow status to failed
-            await saveWorkflowState('failed');
+            // Asynchron Workflow-Status aktualisieren
+            saveWorkflowState('failed').catch(err => 
+              console.error('Error saving workflow state:', err)
+            );
           }
           
           // Keine weiteren Status-Checks notwendig
@@ -499,8 +546,18 @@ export default function EditorPage() {
         
         // Weiter prüfen, wenn der Status noch "processing" ist
         if (isMounted && isPollingActive) {
-          // More conservative polling rate - 5 seconds instead of 3
-          timeoutId = setTimeout(checkProjectStatus, 5000);
+          // Polling rate dynamisch anpassen - längere Intervalle für längere Ausführung
+          const basePollingRate = 5000; // Start mit 5 Sekunden
+          const currentProgress = data.progress || 0;
+          
+          // Höherer Fortschritt = längeres Intervall (bis zu 12 Sekunden)
+          const dynamicRate = basePollingRate + (currentProgress > 50 ? 7000 : 2000);
+          
+          // Füge etwas Jitter hinzu, um Server-Load-Spitzen zu vermeiden
+          const jitter = Math.random() * 1000;
+          const nextPollTime = dynamicRate + jitter;
+          
+          timeoutId = setTimeout(checkProjectStatus, nextPollTime);
         }
       } catch (error) {
         console.error('Error checking project status:', error);
@@ -516,9 +573,9 @@ export default function EditorPage() {
           return;
         }
         
-        // Exponential backoff for retries with jitter
-        const baseDelay = Math.min(8000, 1000 * Math.pow(1.5, consecutiveErrors));
-        const jitter = Math.random() * 1000; // Add up to 1 second of random jitter
+        // Exponential backoff with increased max time (15 seconds)
+        const baseDelay = Math.min(15000, 1000 * Math.pow(1.8, consecutiveErrors));
+        const jitter = Math.random() * 2000; // Add up to 2 seconds of random jitter
         const delay = baseDelay + jitter;
         
         console.log(`Retrying after error in ${Math.round(delay)}ms (attempt ${consecutiveErrors})`);
@@ -529,11 +586,13 @@ export default function EditorPage() {
       }
     };
     
-    // Initialer Status-Check mit kurzer Verzögerung
-    timeoutId = setTimeout(checkProjectStatus, 1000);
+    // Initialer Status-Check mit Verzögerung
+    console.log('Starting project status polling for project:', projectId);
+    timeoutId = setTimeout(checkProjectStatus, 2000);
     
-    // Cleanup
+    // Cleanup-Funktion
     return () => {
+      console.log('Cleaning up project status polling');
       isMounted = false;
       isPollingActive = false;
       
@@ -563,68 +622,110 @@ export default function EditorPage() {
     if (!uploadedVideos.length || !selectedVideos.length) return;
     
     let isMounted = true; // For cleanup
+    let thumbnailsInProgress = false; // Flag to prevent multiple runs
     
-    // Throttled thumbnail generation with better memory management
+    // Optimized thumbnail generation with better memory management
     const generateThumbnails = async () => {
+      if (thumbnailsInProgress) return;
+      thumbnailsInProgress = true;
+      
       try {
         // Get videos that need thumbnails (avoid regenerating existing thumbnails)
         const videosNeedingThumbnails = uploadedVideos.filter(video => 
           selectedVideos.includes(video.id) && !video.thumbnailUrl
         );
         
-        if (!videosNeedingThumbnails.length) return;
+        if (!videosNeedingThumbnails.length) {
+          thumbnailsInProgress = false;
+          return;
+        }
         
         console.log(`Generating thumbnails for ${videosNeedingThumbnails.length} videos`);
         
-        // Process one video at a time with delay between each
-        for (let i = 0; i < videosNeedingThumbnails.length; i++) {
-          if (!isMounted) break; // Stop if component unmounted
+        // Limit the number of videos to process at once to avoid memory issues
+        const batchSize = 3; // Kleinere Batch-Größe für bessere Stabilität
+        
+        // Process videos in batches
+        for (let batchIndex = 0; batchIndex < videosNeedingThumbnails.length; batchIndex += batchSize) {
+          if (!isMounted) break; // Break if component unmounted
           
-          const video = videosNeedingThumbnails[i];
-          try {
-            await generateThumbnailSafely(video);
-            // Add small delay between processes to avoid memory spikes
-            await new Promise(r => setTimeout(r, 200));
-          } catch (err) {
-            console.error(`Error generating thumbnail for video ${video.id}:`, err);
-            // Continue with next video even if one fails
+          // Get current batch
+          const batch = videosNeedingThumbnails.slice(batchIndex, batchIndex + batchSize);
+          console.log(`Processing thumbnail batch ${batchIndex / batchSize + 1} of ${Math.ceil(videosNeedingThumbnails.length / batchSize)}`);
+          
+          // Process each video in the batch
+          for (const video of batch) {
+            if (!isMounted) break;
+            
+            try {
+              await generateThumbnailSafely(video);
+              // Force a pause between each video to clear garbage collection
+              await new Promise(r => setTimeout(r, 300));
+            } catch (err) {
+              console.error(`Error generating thumbnail for video ${video.id}:`, err);
+            }
+          }
+          
+          // Force garbage collection pause between batches
+          if (batchIndex + batchSize < videosNeedingThumbnails.length) {
+            console.log('Pausing between batches to clear memory');
+            await new Promise(r => setTimeout(r, 1000));
           }
         }
       } catch (err) {
         console.error("Thumbnail generation process failed:", err);
+      } finally {
+        thumbnailsInProgress = false;
       }
     };
     
-    // Simplified, error-resistant thumbnail generator
+    // Simplified, memory-optimized thumbnail generator
     const generateThumbnailSafely = async (video: UploadedVideo): Promise<void> => {
       return new Promise((resolve) => {
-        // Create video element
+        // Create video element with optimal memory settings
         const videoEl = document.createElement('video');
         videoEl.muted = true;
         videoEl.crossOrigin = "anonymous";
         videoEl.preload = "metadata";
+        videoEl.playsInline = true; // Prevents fullscreen on mobile
         
         // Setup timeouts and cleanup
+        let isProcessingComplete = false;
         const timeoutId = setTimeout(() => {
-          cleanupResources();
-          console.warn(`Thumbnail generation timed out for ${video.name}`);
-          resolve(); // Always resolve, never reject
-        }, 5000);
+          if (!isProcessingComplete) {
+            console.warn(`Thumbnail generation timed out for ${video.name}`);
+            cleanupResources();
+            resolve(); 
+          }
+        }, 7000); // Longer timeout to allow slow connections
         
         // Cleanup function to prevent memory leaks
         const cleanupResources = () => {
+          if (isProcessingComplete) return;
+          isProcessingComplete = true;
+          
           videoEl.onloadedmetadata = null;
           videoEl.onerror = null;
           videoEl.onseeked = null;
           videoEl.onloadeddata = null;
-          videoEl.src = ''; // Important: Clear source
-          videoEl.load(); // Force garbage collection
-          videoEl.remove();
+          
+          // Clear all source and references for garbage collection
+          videoEl.pause();
+          videoEl.removeAttribute('src');
+          videoEl.load();
+          
+          try {
+            URL.revokeObjectURL(videoEl.src); // Clean up any blob URLs
+          } catch (e) {
+            // Ignore errors on URL revocation
+          }
+          
           clearTimeout(timeoutId);
         };
         
         // Handle errors
         videoEl.onerror = () => {
+          console.error(`Error loading video: ${video.name}`);
           cleanupResources();
           resolve();
         };
@@ -644,23 +745,23 @@ export default function EditorPage() {
         // After seeking completes, capture the frame
         videoEl.onseeked = () => {
           try {
-            // Use a small canvas for the thumbnail (120x67 is enough)
+            // Use a small canvas for the thumbnail (80x45 is tiny but enough)
             const canvas = document.createElement('canvas');
-            canvas.width = 120;  // Very small dimensions to minimize memory
-            canvas.height = 67;  // 16:9 aspect ratio
+            canvas.width = 80;  // Extremely small thumbnail for memory efficiency
+            canvas.height = 45; // 16:9 aspect ratio
             
-            const ctx = canvas.getContext('2d');
+            const ctx = canvas.getContext('2d', { alpha: false }); // Non-alpha for memory efficiency
             if (!ctx || !videoEl.videoWidth) {
               cleanupResources();
               resolve();
               return;
             }
             
-            // Draw video frame to canvas at reduced size
+            // Draw video frame to tiny canvas
             ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
             
-            // Convert to low-quality JPEG (0.4 quality)
-            const thumbnailUrl = canvas.toDataURL('image/jpeg', 0.4);
+            // Convert to extremely low-quality JPEG (0.3 quality)
+            const thumbnailUrl = canvas.toDataURL('image/jpeg', 0.3);
             
             // Update state only if component still mounted
             if (isMounted) {
@@ -669,8 +770,10 @@ export default function EditorPage() {
               ));
             }
             
-            // Clean up all resources
-            canvas.remove();
+            // Release references to canvas
+            canvas.width = 1;
+            canvas.height = 1;
+            
             cleanupResources();
             resolve();
           } catch (err) {
@@ -689,6 +792,9 @@ export default function EditorPage() {
             cleanupResources();
             resolve();
           }, { once: true });
+          
+          // Set low-memory play settings
+          videoEl.load(); // Load metadata only
         } catch (err) {
           console.error("Error setting video source:", err);
           cleanupResources();
@@ -697,8 +803,10 @@ export default function EditorPage() {
       });
     };
 
-    // Start the generation process
-    generateThumbnails();
+    // Start the generation process with a slight delay to allow UI to render first
+    setTimeout(() => {
+      generateThumbnails();
+    }, 500);
     
     // Cleanup function
     return () => {
@@ -1091,18 +1199,34 @@ export default function EditorPage() {
     try {
       console.log('Fetching videos from server...');
       
-      const response = await fetch('/api/media');
+      const response = await safeFetch('/api/media', {}, 15000);
       if (!response.ok) {
         console.error('Failed to fetch videos from server:', response.status, response.statusText);
         return [];
       }
       
-      const data = await response.json();
+      let data;
+      try {
+        data = await response.json();
+      } catch (e) {
+        console.error('Error parsing server response:', e);
+        return [];
+      }
       
       if (!data.files || !Array.isArray(data.files)) {
         console.error('Invalid server response - expected files array:', data);
         return [];
       }
+      
+      // Kleiner Hack: Sortiere Videos nach Datum, neueste zuerst 
+      // (basierend auf der ID, die normalerweise einen Zeitstempel enthält)
+      data.files.sort((a: any, b: any) => {
+        // Versuche, nach ID zu sortieren (neueste zuerst)
+        if (a.id && b.id) {
+          return b.id.localeCompare(a.id);
+        }
+        return 0;
+      });
       
       // Batch the processing to avoid memory issues
       const processVideoBatch = (videos: any[], start: number, batchSize: number) => {
@@ -1111,7 +1235,7 @@ export default function EditorPage() {
         
         console.log(`Processing video batch ${start}-${end} of ${videos.length} videos`);
         
-        // Process this batch
+        // Process this batch with minimized object size
         const processedVideos = batch.map((video: any) => ({
           id: video.id,
           name: video.name,
@@ -1121,29 +1245,36 @@ export default function EditorPage() {
           tags: video.tags || [],
           filepath: video.path,
           key: video.key,
-          thumbnailUrl: undefined // Initialize with no thumbnail
+          // Kein thumbnailUrl - wird später generiert
         }));
         
-        // Update state with this batch
+        // Update state with this batch (with deduplication)
         setUploadedVideos(prev => {
           // Remove duplicates by merging with existing videos
           const existingIds = new Set(prev.map(v => v.id));
           const newVideos = processedVideos.filter(v => !existingIds.has(v.id));
-          return [...prev, ...newVideos];
+          
+          // Nur die ersten 100 Videos behalten, um Speicher zu sparen
+          const combinedVideos = [...prev, ...newVideos];
+          if (combinedVideos.length > 100) {
+            console.log(`Limiting to 100 videos for memory efficiency (${combinedVideos.length} total)`);
+            return combinedVideos.slice(0, 100);
+          }
+          return combinedVideos;
         });
         
         // Process next batch if there are more videos
         if (end < videos.length) {
           setTimeout(() => {
             processVideoBatch(videos, end, batchSize);
-          }, 100); // Small delay between batches
+          }, 300); // Small delay between batches for memory cleanup
         }
       };
 
-      // Start processing in batches of 10 videos
+      // Start processing in batches of 5 videos (smaller batches for better GC)
       if (data.files.length > 0) {
         console.log(`Found ${data.files.length} videos on server`);
-        processVideoBatch(data.files, 0, 10);
+        processVideoBatch(data.files, 0, 5);
         return data.files; // Return for chaining
       }
       

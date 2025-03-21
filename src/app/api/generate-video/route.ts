@@ -255,11 +255,13 @@ export async function POST(request: Request) {
         TEMPLATE_DATA_PATH: templateDataKey, // Pfad zu den Template-Daten in S3
         TITLE: title,
         // Für Abwärtskompatibilität mit bestehenden AWS Batch Container-Skripten
-        // fügen wir TEMPLATE_DATA mit Verweis auf S3 und Typ hinzu
+        // setzen wir die wichtigsten Daten direkt in TEMPLATE_DATA, damit der Container
+        // sie sofort verarbeiten kann, während er parallel die vollständigen Daten aus S3 lädt
         TEMPLATE_DATA: JSON.stringify({
           type: 's3Path',
           path: templateDataKey,
-          segments: templateData.segments.length
+          segments: videoSegments, // Wichtig: Komplette Segmente übergeben
+          segmentCount: videoSegments.length
         })
       };
 
