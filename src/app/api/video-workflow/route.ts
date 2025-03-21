@@ -7,6 +7,7 @@ import ProjectModel from '@/models/Project';
 import VideoModel from '@/models/Video';
 import { getS3Url, generateUniqueFileName, uploadToS3 } from '@/lib/storage';
 import { submitAwsBatchJob, BatchJobTypes } from '@/utils/aws-batch-utils';
+import mongoose from 'mongoose';
 
 type VideoSegment = {
   videoId: string;
@@ -361,8 +362,44 @@ export async function POST(request: NextRequest) {
     };
     
     // Füge optionale Parameter hinzu
-    if (data.voiceoverId) jobParams.VOICEOVER_ID = data.voiceoverId;
+    if (data.voiceoverId) {
+      try {
+        console.log(`Finding voiceover with ID: ${data.voiceoverId}`);
+        // Hole die Voiceover-Datei aus der Datenbank
+        const VoiceoverModel = mongoose.model('Voiceover');
+        const voiceover = await VoiceoverModel.findById(data.voiceoverId);
+        
+        if (voiceover) {
+          console.log('Voiceover found:', {
+            id: voiceover._id,
+            name: voiceover.name,
+            path: voiceover.path,
+            url: voiceover.url
+          });
+          
+          if (voiceover.path) {
+            // Pass both the direct S3 URL and the file path for maximum compatibility
+            jobParams.VOICEOVER_URL = getS3Url(voiceover.path);
+            jobParams.VOICEOVER_KEY = voiceover.path;
+            
+            console.log('Adding voiceover to batch job:');
+            console.log('- VOICEOVER_URL:', jobParams.VOICEOVER_URL);
+            console.log('- VOICEOVER_KEY:', jobParams.VOICEOVER_KEY);
+          } else {
+            console.error('Voiceover document has no path field:', voiceover);
+          }
+        } else {
+          console.error(`Voiceover with ID ${data.voiceoverId} not found in database`);
+        }
+      } catch (voiceoverError) {
+        console.error('Error getting voiceover:', voiceoverError);
+        // Fahre fort ohne Voiceover-URL, aber behalte die ID
+        jobParams.VOICEOVER_ID = data.voiceoverId;
+      }
+    }
+
     if (data.voiceoverText) jobParams.SUBTITLE_TEXT = data.voiceoverText;
+
     if (data.options) {
       if (data.options.resolution) jobParams.RESOLUTION = data.options.resolution;
       if (data.options.aspectRatio) jobParams.ASPECT_RATIO = data.options.aspectRatio;
