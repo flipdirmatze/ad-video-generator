@@ -310,15 +310,34 @@ export async function POST(request: Request) {
               console.log('- VOICEOVER_KEY:', additionalParams.VOICEOVER_KEY);
             } else {
               console.error('Voiceover document has no path field:', voiceover);
+              // Trotzdem die ID übergeben als Fallback
+              additionalParams.VOICEOVER_ID = voiceoverId;
+              console.log('Added VOICEOVER_ID as fallback:', voiceoverId);
             }
           } else {
             console.error(`Voiceover with ID ${voiceoverId} not found in database`);
+            // Trotzdem die ID übergeben als Fallback
+            additionalParams.VOICEOVER_ID = voiceoverId;
+            console.log('Added VOICEOVER_ID as fallback:', voiceoverId);
           }
         } catch (voiceoverError) {
           console.error('Error getting voiceover:', voiceoverError);
-          // Fahre fort ohne Voiceover-URL
+          // Trotzdem die ID übergeben als Fallback
+          additionalParams.VOICEOVER_ID = voiceoverId;
+          console.log('Added VOICEOVER_ID as fallback despite error:', voiceoverId);
         }
       }
+
+      // WICHTIG: Hier immer die Voiceover-ID direkt übergeben, unabhängig davon, ob wir die URL haben
+      if (voiceoverId && !additionalParams.VOICEOVER_ID) {
+        additionalParams.VOICEOVER_ID = voiceoverId;
+        console.log('Added VOICEOVER_ID directly:', voiceoverId);
+      }
+
+      console.log('Final batch parameters for voiceover:');
+      console.log('- VOICEOVER_URL:', additionalParams.VOICEOVER_URL || 'not set');
+      console.log('- VOICEOVER_KEY:', additionalParams.VOICEOVER_KEY || 'not set');
+      console.log('- VOICEOVER_ID:', additionalParams.VOICEOVER_ID || 'not set');
 
       console.log('Submitting AWS Batch job with params:', additionalParams);
       
