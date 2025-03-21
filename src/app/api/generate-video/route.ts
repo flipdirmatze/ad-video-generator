@@ -255,15 +255,30 @@ export async function POST(request: Request) {
         TEMPLATE_DATA_PATH: templateDataKey, // Pfad zu den Template-Daten in S3
         TITLE: title,
         // Für Abwärtskompatibilität mit bestehenden AWS Batch Container-Skripten
-        // setzen wir die wichtigsten Daten direkt in TEMPLATE_DATA, damit der Container
-        // sie sofort verarbeiten kann, während er parallel die vollständigen Daten aus S3 lädt
+        // setzen wir sowohl ein Verweis auf die S3-Template-Datei als auch die wichtigsten
+        // Daten direkt in TEMPLATE_DATA, damit der Container initial arbeiten kann
         TEMPLATE_DATA: JSON.stringify({
           type: 's3Path',
           path: templateDataKey,
-          segments: videoSegments, // Wichtig: Komplette Segmente übergeben
-          segmentCount: videoSegments.length
+          // Include essential data to avoid dependency on S3 loading
+          segments: videoSegments.slice(0, 5), // Include first 5 segments directly
+          segmentCount: videoSegments.length,
+          voiceoverText: voiceoverText || '',
+          addSubtitles: addSubtitles || false
         })
       };
+
+      // Set subtitle options if enabled
+      if (addSubtitles && subtitleOptions) {
+        console.log('Adding subtitle options to batch parameters');
+        additionalParams.ADD_SUBTITLES = 'true';
+        additionalParams.SUBTITLE_TEXT = voiceoverText || '';
+        additionalParams.SUBTITLE_FONT_NAME = subtitleOptions.fontName || 'Arial';
+        additionalParams.SUBTITLE_FONT_SIZE = subtitleOptions.fontSize || 24;
+        additionalParams.SUBTITLE_PRIMARY_COLOR = subtitleOptions.primaryColor || '#FFFFFF';
+        additionalParams.SUBTITLE_BACKGROUND_COLOR = subtitleOptions.backgroundColor || '#80000000';
+        additionalParams.SUBTITLE_POSITION = subtitleOptions.position || 'bottom';
+      }
 
       // Voiceover-URL direkt bereitstellen, wenn verfügbar
       if (voiceoverId) {
