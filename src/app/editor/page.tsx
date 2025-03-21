@@ -7,7 +7,7 @@ import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 
 // Reduziert die Häufigkeit von API-Aufrufen
-const debounce = (fn: Function, ms = 300) => {
+const debounce = (fn: (...args: any[]) => any, ms = 300) => {
   let timeoutId: ReturnType<typeof setTimeout>;
   return function(this: any, ...args: any[]) {
     clearTimeout(timeoutId);
