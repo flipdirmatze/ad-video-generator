@@ -190,7 +190,7 @@ export async function POST(request: NextRequest) {
       
       // Erstelle Liste von sicheren Parameternamen, die direkt übergeben werden können
       const safeKeysToPassDirectly = [
-        'USER_ID', 'PROJECT_ID', 'TITLE', 'TEMPLATE_DATA_PATH', 'VOICEOVER_URL',
+        'USER_ID', 'PROJECT_ID', 'TITLE', 'TEMPLATE_DATA_PATH', 'TEMPLATE_DATA', 'VOICEOVER_URL',
         'DEBUG', 'AWS_REGION', 'OUTPUT_KEY'
       ];
       
@@ -231,6 +231,20 @@ export async function POST(request: NextRequest) {
           console.log(`Skipping non-essential parameter ${key} (${stringValue.length} bytes)`);
         }
       });
+
+      // Stelle sicher, dass TEMPLATE_DATA in den Umgebungsvariablen enthalten ist
+      const hasTemplateData = environment.some(env => env.name === 'TEMPLATE_DATA');
+      if (!hasTemplateData && additionalParams?.TEMPLATE_DATA) {
+        console.log('Adding TEMPLATE_DATA to environment variables directly');
+        const templateDataValue = typeof additionalParams.TEMPLATE_DATA === 'string' 
+          ? additionalParams.TEMPLATE_DATA 
+          : JSON.stringify(additionalParams.TEMPLATE_DATA);
+        
+        environment.push({
+          name: 'TEMPLATE_DATA',
+          value: templateDataValue
+        });
+      }
     }
 
     console.log('Prepared environment variables:', environment);
@@ -252,7 +266,7 @@ export async function POST(request: NextRequest) {
         const sortedEnvironment = environment
           .map(env => ({ 
             env, 
-            isEssential: ['USER_ID', 'PROJECT_ID', 'TEMPLATE_DATA_PATH'].includes(env.name),
+            isEssential: ['USER_ID', 'PROJECT_ID', 'TEMPLATE_DATA_PATH', 'TEMPLATE_DATA'].includes(env.name),
             size: (env.name.length + (env.value?.length || 0))
           }))
           .sort((a, b) => {

@@ -261,7 +261,12 @@ export async function POST(request: Request) {
           type: 's3Path',
           path: templateDataKey,
           // Include essential data to avoid dependency on S3 loading
-          segments: videoSegments.slice(0, 5), // Include first 5 segments directly
+          segments: videoSegments.slice(0, 5).map(s => ({
+            url: s.url,
+            startTime: s.startTime || 0,
+            duration: s.duration || 10,
+            position: s.position || 0
+          })), // Include first 5 segments with minimal data
           segmentCount: videoSegments.length,
           voiceoverText: voiceoverText || '',
           addSubtitles: addSubtitles || false
