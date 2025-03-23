@@ -102,12 +102,12 @@ export async function POST(request: Request) {
       const dynamicTimeout = Math.min(55000, 30000 + (scriptLength * 10)); // Basiswert + 10ms pro Zeichen
       console.log(`Using dynamic timeout of ${dynamicTimeout/1000} seconds based on text length`);
       
-      // Verwende detaillierte Antwort für Wort-Zeitstempel
-      const detailsUrl = `https://api.elevenlabs.io/v1/text-to-speech/${selectedVoiceId}/stream`;
-      console.log(`Calling ElevenLabs detailed API for word timestamps at: ${detailsUrl}`);
+      // Verwende die neue with-timestamps API für präzisere Wort-Zeitstempel
+      const timestampsUrl = `https://api.elevenlabs.io/v1/text-to-speech/${selectedVoiceId}/with-timestamps`;
+      console.log(`Calling ElevenLabs with-timestamps API for precise word timestamps at: ${timestampsUrl}`);
       
-      // Zwei separate Anfragen - eine für die Audiodaten und eine für die detaillierten Zeitstempel
-      const [audioResponse, detailsResponse] = await Promise.all([
+      // Zwei separate Anfragen - eine für die Audiodaten und eine für die präzisen Zeitstempel
+      const [audioResponse, timestampsResponse] = await Promise.all([
         // Standard-Anfrage für Audiodaten
         fetchWithTimeout(
           apiUrl,
@@ -132,9 +132,9 @@ export async function POST(request: Request) {
           dynamicTimeout
         ),
         
-        // Detaillierte Anfrage für Wort-Zeitstempel
+        // Anfrage für präzise Wort-Zeitstempel mit dem with-timestamps Endpunkt
         fetchWithTimeout(
-          detailsUrl,
+          timestampsUrl,
           {
             method: 'POST',
             headers: {
@@ -150,10 +150,6 @@ export async function POST(request: Request) {
                 similarity_boost: 0.85,
                 style: 0.20,
                 use_speaker_boost: true
-              },
-              output_format: "mp3_44100_128",
-              generation_config: {
-                return_detailed_response: true
               }
             })
           },
@@ -182,28 +178,107 @@ export async function POST(request: Request) {
         throw new Error(errorMessage);
       }
 
-      // Parse der detaillierten Antwort für Wort-Zeitstempel
+      // Parse der Antwort für Wort-Zeitstempel mit dem neuen Endpunkt
       let wordTimestamps = [];
       try {
-        if (detailsResponse.ok) {
-          const detailsData = await detailsResponse.json();
-          console.log(`Received detailed response with metadata`);
+        if (timestampsResponse.ok) {
+          const timestampsData = await timestampsResponse.json();
+          console.log(`Received timestamps response with data`);
+          console.log('Response structure:', Object.keys(timestampsData).join(', '));
           
-          if (detailsData.metadata && detailsData.metadata.word_timestamps) {
-            wordTimestamps = detailsData.metadata.word_timestamps.map((item: any) => ({
+          // Der with-timestamps Endpunkt gibt ein anderes Format zurück
+          if (timestampsData.alignment) {
+            // Log first to debug structure
+            console.log('Alignment data structure found. Converting to word timestamps...');
+            console.log('Sample alignment data:', JSON.stringify(timestampsData.alignment).substring(0, 200) + '...');
+            
+            // Im Alignment-Objekt haben wir character-level Timestamps
+            // Wir müssen diese zu Wort-Timestamps konvertieren
+            const characters = timestampsData.alignment.characters || [];
+            const startTimes = timestampsData.alignment.character_start_times_seconds || [];
+            const endTimes = timestampsData.alignment.character_end_times_seconds || [];
+            
+            console.log(`Character-level timestamps found: ${characters.length} characters`);
+            
+            // Konvertiere Zeichen-Level zu Wort-Level Timestamps
+            if (characters.length > 0 && characters.length === startTimes.length && characters.length === endTimes.length) {
+              // Gruppieren wir die Zeichen zu Wörtern
+              let currentWord = '';
+              let wordStart = 0;
+              let wordEnd = 0;
+              let inWord = false;
+              
+              for (let i = 0; i < characters.length; i++) {
+                const char = characters[i];
+                const startTime = startTimes[i];
+                const endTime = endTimes[i];
+                
+                // Überspringe Leerzeichen zwischen Wörtern
+                if (char.trim() === '') {
+                  if (inWord) {
+                    // Wort endet
+                    wordTimestamps.push({
+                      word: currentWord,
+                      startTime: wordStart,
+                      endTime: wordEnd
+                    });
+                    
+                    // Zurücksetzen
+                    currentWord = '';
+                    inWord = false;
+                  }
+                  continue;
+                }
+                
+                // Beginn eines neuen Wortes
+                if (!inWord) {
+                  inWord = true;
+                  wordStart = startTime;
+                }
+                
+                // Füge Buchstaben zum Wort hinzu
+                currentWord += char;
+                wordEnd = endTime;
+              }
+              
+              // Das letzte Wort, falls vorhanden
+              if (inWord && currentWord) {
+                wordTimestamps.push({
+                  word: currentWord,
+                  startTime: wordStart,
+                  endTime: wordEnd
+                });
+              }
+              
+              console.log(`Extracted ${wordTimestamps.length} word timestamps from character-level alignment`);
+            }
+          } else if (timestampsData.words) {
+            // Alternative Struktur, falls die API direkt Wort-Timestamps zurückgibt
+            console.log('Word-level timestamps found directly.');
+            
+            wordTimestamps = timestampsData.words.map((item: any) => ({
               word: item.word,
-              startTime: item.start, // Startzeit in Sekunden
-              endTime: item.end      // Endzeit in Sekunden
+              startTime: item.start_time,
+              endTime: item.end_time
             }));
-            console.log(`Extracted ${wordTimestamps.length} word timestamps from ElevenLabs API`);
+            
+            console.log(`Extracted ${wordTimestamps.length} word timestamps directly from API response`);
           } else {
-            console.warn('No word timestamps found in the detailed response');
+            console.warn('Unexpected response format from with-timestamps API. No alignment or words property found.');
+            console.log('Full response:', JSON.stringify(timestampsData));
           }
         } else {
-          console.warn(`Failed to get detailed response: ${detailsResponse.status} - ${detailsResponse.statusText}`);
+          console.warn(`Failed to get timestamps response: ${timestampsResponse.status} - ${timestampsResponse.statusText}`);
+          // Versuche Fehlermeldung zu lesen
+          try {
+            const errorData = await timestampsResponse.json();
+            console.error('Timestamps API error:', errorData);
+          } catch (e) {
+            console.error('Could not parse timestamps error response');
+          }
         }
-      } catch (detailsError) {
-        console.error('Error processing detailed response:', detailsError);
+      } catch (timestampsError) {
+        console.error('Error processing timestamps response:', timestampsError);
         // Wir brechen nicht ab, wenn die Zeitstempel fehlschlagen - wir nutzen dann einfach keine
       }
 

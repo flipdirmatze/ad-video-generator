@@ -308,6 +308,43 @@ export async function POST(request: Request) {
               console.log('Adding voiceover to batch job:');
               console.log('- VOICEOVER_URL:', additionalParams.VOICEOVER_URL);
               console.log('- VOICEOVER_KEY:', additionalParams.VOICEOVER_KEY);
+              
+              // Übergebe Wort-Zeitstempel für Untertitel-Synchronisation, wenn verfügbar
+              if (voiceover.wordTimestamps && voiceover.wordTimestamps.length > 0) {
+                console.log(`Found ${voiceover.wordTimestamps.length} word timestamps for accurate subtitle synchronization`);
+                
+                // Detaillierte Debug-Ausgabe
+                console.log(`Type of wordTimestamps: ${typeof voiceover.wordTimestamps}`);
+                console.log(`Is array: ${Array.isArray(voiceover.wordTimestamps)}`);
+                
+                // Überprüfe die Timestamp-Struktur
+                const firstThree = voiceover.wordTimestamps.slice(0, 3);
+                console.log('First 3 timestamps structure check:');
+                console.log(JSON.stringify(firstThree, null, 2));
+                
+                // Konvertiere zu JSON-String
+                const timestampsJson = JSON.stringify(voiceover.wordTimestamps);
+                console.log(`JSON string length: ${timestampsJson.length} characters`);
+                
+                // Prüfe auf Maximalgröße (AWS Batch Environment Variable Limit)
+                const MAX_ENV_SIZE = 32768; // 32 KB ist ein typisches Limit für Umgebungsvariablen
+                
+                if (timestampsJson.length > MAX_ENV_SIZE) {
+                  console.warn(`WARNING: Timestamps JSON string is ${timestampsJson.length} bytes, which exceeds typical env var limit of ${MAX_ENV_SIZE} bytes. May be truncated.`);
+                  console.log('Consider using S3 to store and retrieve large timestamp data instead.');
+                }
+                
+                // Zeitstempel als JSON-String übergeben
+                additionalParams.WORD_TIMESTAMPS = timestampsJson;
+                
+                // Für Debugging: Ausgabe der ersten paar Timestamps
+                console.log('Sample timestamps (first 3):');
+                voiceover.wordTimestamps.slice(0, 3).forEach((ts: any, i: number) => {
+                  console.log(`  ${i+1}: "${ts.word}" - ${ts.startTime}s to ${ts.endTime}s`);
+                });
+              } else {
+                console.log('No word timestamps available for this voiceover, subtitles will use estimated timing');
+              }
             } else {
               console.error('Voiceover document has no path field:', voiceover);
               // Trotzdem die ID übergeben als Fallback

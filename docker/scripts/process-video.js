@@ -927,10 +927,26 @@ async function generateFinalVideo() {
             let wordTimestamps = null;
             
             if (process.env.WORD_TIMESTAMPS) {
+              // Detaillierte Debug-Informationen
+              const timestampEnvSize = process.env.WORD_TIMESTAMPS.length;
+              console.log(`WORD_TIMESTAMPS environment variable found with size: ${timestampEnvSize} characters`);
+              
+              // Ausgabe einer Beispielprobe der Daten
+              const sampleData = process.env.WORD_TIMESTAMPS.substring(0, 200) + '...';
+              console.log(`WORD_TIMESTAMPS sample: ${sampleData}`);
+              
               try {
-                console.log('Found WORD_TIMESTAMPS environment variable');
+                console.log('Attempting to parse WORD_TIMESTAMPS JSON data');
                 wordTimestamps = JSON.parse(process.env.WORD_TIMESTAMPS);
                 console.log(`Parsed ${wordTimestamps.length} word timestamps for subtitle synchronization`);
+                
+                // Ausgabe einiger Beispiel-Timestamps
+                if (wordTimestamps.length > 0) {
+                  console.log('First 3 timestamps:');
+                  wordTimestamps.slice(0, 3).forEach((ts, i) => {
+                    console.log(`  ${i+1}: "${ts.word}" - ${ts.startTime}s to ${ts.endTime}s`);
+                  });
+                }
               } catch (timestampError) {
                 console.error('Error parsing word timestamps:', timestampError);
                 console.log('Will use fallback timing based on character count');
@@ -1049,10 +1065,26 @@ async function generateFinalVideo() {
       let wordTimestamps = null;
       
       if (process.env.WORD_TIMESTAMPS) {
+        // Detaillierte Debug-Informationen
+        const timestampEnvSize = process.env.WORD_TIMESTAMPS.length;
+        console.log(`WORD_TIMESTAMPS environment variable found with size: ${timestampEnvSize} characters`);
+        
+        // Ausgabe einer Beispielprobe der Daten
+        const sampleData = process.env.WORD_TIMESTAMPS.substring(0, 200) + '...';
+        console.log(`WORD_TIMESTAMPS sample: ${sampleData}`);
+        
         try {
-          console.log('Found WORD_TIMESTAMPS environment variable');
+          console.log('Attempting to parse WORD_TIMESTAMPS JSON data');
           wordTimestamps = JSON.parse(process.env.WORD_TIMESTAMPS);
           console.log(`Parsed ${wordTimestamps.length} word timestamps for subtitle synchronization`);
+          
+          // Ausgabe einiger Beispiel-Timestamps
+          if (wordTimestamps.length > 0) {
+            console.log('First 3 timestamps:');
+            wordTimestamps.slice(0, 3).forEach((ts, i) => {
+              console.log(`  ${i+1}: "${ts.word}" - ${ts.startTime}s to ${ts.endTime}s`);
+            });
+          }
         } catch (timestampError) {
           console.error('Error parsing word timestamps:', timestampError);
           console.log('Will use fallback timing based on character count');
