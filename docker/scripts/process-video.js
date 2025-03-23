@@ -932,24 +932,50 @@ async function generateFinalVideo() {
               console.log(`WORD_TIMESTAMPS environment variable found with size: ${timestampEnvSize} characters`);
               
               // Ausgabe einer Beispielprobe der Daten
-              const sampleData = process.env.WORD_TIMESTAMPS.substring(0, 200) + '...';
+              const sampleData = process.env.WORD_TIMESTAMPS.substring(0, Math.min(200, timestampEnvSize)) + (timestampEnvSize > 200 ? '...' : '');
               console.log(`WORD_TIMESTAMPS sample: ${sampleData}`);
               
               try {
                 console.log('Attempting to parse WORD_TIMESTAMPS JSON data');
                 wordTimestamps = JSON.parse(process.env.WORD_TIMESTAMPS);
-                console.log(`Parsed ${wordTimestamps.length} word timestamps for subtitle synchronization`);
                 
-                // Ausgabe einiger Beispiel-Timestamps
-                if (wordTimestamps.length > 0) {
-                  console.log('First 3 timestamps:');
-                  wordTimestamps.slice(0, 3).forEach((ts, i) => {
-                    console.log(`  ${i+1}: "${ts.word}" - ${ts.startTime}s to ${ts.endTime}s`);
-                  });
+                if (Array.isArray(wordTimestamps)) {
+                  console.log(`Successfully parsed ${wordTimestamps.length} word timestamps for subtitle synchronization`);
+                  
+                  // Validiere die Timestamp-Struktur - haben wir word, startTime und endTime?
+                  let isValid = true;
+                  if (wordTimestamps.length > 0) {
+                    const firstTimestamp = wordTimestamps[0];
+                    if (!firstTimestamp.word || 
+                        typeof firstTimestamp.startTime !== 'number' || 
+                        typeof firstTimestamp.endTime !== 'number') {
+                      console.error('Invalid timestamp structure. Expected: {word, startTime, endTime}');
+                      console.error('Got:', JSON.stringify(firstTimestamp));
+                      isValid = false;
+                    }
+                  }
+                  
+                  if (isValid) {
+                    // Ausgabe einiger Beispiel-Timestamps
+                    if (wordTimestamps.length > 0) {
+                      console.log('First 3 timestamps:');
+                      wordTimestamps.slice(0, Math.min(3, wordTimestamps.length)).forEach((ts, i) => {
+                        console.log(`  ${i+1}: "${ts.word}" - ${ts.startTime}s to ${ts.endTime}s (duration: ${ts.endTime - ts.startTime}s)`);
+                      });
+                    }
+                  } else {
+                    // Struktur ungültig - zurücksetzen
+                    console.warn('Invalid timestamp structure detected - reverting to character-based timing');
+                    wordTimestamps = null;
+                  }
+                } else {
+                  console.error('Parsed WORD_TIMESTAMPS is not an array!', typeof wordTimestamps);
+                  wordTimestamps = null;
                 }
               } catch (timestampError) {
                 console.error('Error parsing word timestamps:', timestampError);
                 console.log('Will use fallback timing based on character count');
+                wordTimestamps = null;
               }
             } else {
               console.log('No word timestamps provided, using character-based timing');
@@ -1070,24 +1096,50 @@ async function generateFinalVideo() {
         console.log(`WORD_TIMESTAMPS environment variable found with size: ${timestampEnvSize} characters`);
         
         // Ausgabe einer Beispielprobe der Daten
-        const sampleData = process.env.WORD_TIMESTAMPS.substring(0, 200) + '...';
+        const sampleData = process.env.WORD_TIMESTAMPS.substring(0, Math.min(200, timestampEnvSize)) + (timestampEnvSize > 200 ? '...' : '');
         console.log(`WORD_TIMESTAMPS sample: ${sampleData}`);
         
         try {
           console.log('Attempting to parse WORD_TIMESTAMPS JSON data');
           wordTimestamps = JSON.parse(process.env.WORD_TIMESTAMPS);
-          console.log(`Parsed ${wordTimestamps.length} word timestamps for subtitle synchronization`);
           
-          // Ausgabe einiger Beispiel-Timestamps
-          if (wordTimestamps.length > 0) {
-            console.log('First 3 timestamps:');
-            wordTimestamps.slice(0, 3).forEach((ts, i) => {
-              console.log(`  ${i+1}: "${ts.word}" - ${ts.startTime}s to ${ts.endTime}s`);
-            });
+          if (Array.isArray(wordTimestamps)) {
+            console.log(`Successfully parsed ${wordTimestamps.length} word timestamps for subtitle synchronization`);
+            
+            // Validiere die Timestamp-Struktur - haben wir word, startTime und endTime?
+            let isValid = true;
+            if (wordTimestamps.length > 0) {
+              const firstTimestamp = wordTimestamps[0];
+              if (!firstTimestamp.word || 
+                  typeof firstTimestamp.startTime !== 'number' || 
+                  typeof firstTimestamp.endTime !== 'number') {
+                console.error('Invalid timestamp structure. Expected: {word, startTime, endTime}');
+                console.error('Got:', JSON.stringify(firstTimestamp));
+                isValid = false;
+              }
+            }
+            
+            if (isValid) {
+              // Ausgabe einiger Beispiel-Timestamps
+              if (wordTimestamps.length > 0) {
+                console.log('First 3 timestamps:');
+                wordTimestamps.slice(0, Math.min(3, wordTimestamps.length)).forEach((ts, i) => {
+                  console.log(`  ${i+1}: "${ts.word}" - ${ts.startTime}s to ${ts.endTime}s (duration: ${ts.endTime - ts.startTime}s)`);
+                });
+              }
+            } else {
+              // Struktur ungültig - zurücksetzen
+              console.warn('Invalid timestamp structure detected - reverting to character-based timing');
+              wordTimestamps = null;
+            }
+          } else {
+            console.error('Parsed WORD_TIMESTAMPS is not an array!', typeof wordTimestamps);
+            wordTimestamps = null;
           }
         } catch (timestampError) {
           console.error('Error parsing word timestamps:', timestampError);
           console.log('Will use fallback timing based on character count');
+          wordTimestamps = null;
         }
       } else {
         console.log('No word timestamps provided, using character-based timing');
