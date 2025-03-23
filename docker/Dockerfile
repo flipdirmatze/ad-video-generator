@@ -27,10 +27,10 @@ COPY package.json ./
 RUN npm install
 
 # Skripte kopieren
-COPY scripts/ /app/scripts/
+COPY docker/scripts/ /app/
 
-# Stelle sicher, dass die Skripte ausführbar sind
-RUN chmod +x /app/scripts/*.js
+# Mache die Skripte ausführbar
+RUN chmod +x /app/*.js
 
 # Setze den Ausführungspunkt
-ENTRYPOINT ["node", "/app/scripts/process-video.js"] 
+ENTRYPOINT ["node", "/app/process-video.js"] 
