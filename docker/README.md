@@ -58,14 +58,21 @@ Wichtig: Das Image muss für die Plattform `linux/amd64` gebaut werden, da AWS B
 cd ai-ad-generator
 
 # Baue das Docker-Image mit buildx für die richtige Plattform
-cd docker
-docker buildx build --platform linux/amd64 -t video-processor -f Dockerfile .
+docker buildx build --platform linux/amd64 -t video-processor -f docker/Dockerfile .
 ```
 
 ### Docker-Image auf AWS ECR hochladen
 
+**Wichtig**: Achte darauf, die korrekte AWS-Kontonummer zu verwenden. Du kannst deine aktuelle Konto-ID überprüfen mit:
+
 ```bash
-# Bei ECR anmelden
+aws sts get-caller-identity
+```
+
+Verwende dann die angezeigte Kontonummer für die folgenden Befehle:
+
+```bash
+# Bei ECR anmelden (ersetze 585768181583 durch deine tatsächliche AWS-Kontonummer)
 aws ecr get-login-password --region eu-central-1 | docker login --username AWS --password-stdin 585768181583.dkr.ecr.eu-central-1.amazonaws.com
 
 # Image taggen
@@ -75,6 +82,11 @@ docker tag video-processor:latest 585768181583.dkr.ecr.eu-central-1.amazonaws.co
 docker push 585768181583.dkr.ecr.eu-central-1.amazonaws.com/video-processor:latest
 ```
 
+Häufige Fehler beim Pushen:
+- **"403 Forbidden"**: Das deutet auf eine falsche Kontonummer oder fehlende Berechtigungen hin
+- **"Not Found"**: Das Repository existiert möglicherweise nicht und muss erst erstellt werden
+- **"No Basic Auth"**: Du bist nicht korrekt bei ECR angemeldet
+
 ## Änderungen am Verarbeitungsskript
 
 Wenn du Änderungen am `process-video.js` Skript oder anderen Teilen des Docker-Images vornimmst, musst du:
@@ -82,7 +94,29 @@ Wenn du Änderungen am `process-video.js` Skript oder anderen Teilen des Docker-
 1. Die Änderungen im Code-Repository vornehmen und testen
 2. Das Docker-Image neu bauen (wie oben beschrieben)
 3. Das neue Image auf ECR hochladen (wie oben beschrieben)
-4. Ggf. die AWS Batch Job-Definition aktualisieren, falls sich Umgebungsvariablen geändert haben
+4. Die AWS Batch-Jobs verwenden automatisch das neue Image, wenn sie mit dem `:latest` Tag konfiguriert sind
+
+## Untertitel-Generierung
+
+Das Skript enthält eine verbesserte Untertitelgenerierung mit folgenden Funktionen:
+
+- Beschränkung auf maximal 18 Zeichen pro Zeile für optimale Lesbarkeit
+- Intelligente Worttrennung, die Wörter grundsätzlich zusammenhält
+- Nur sehr lange Wörter (>27 Zeichen) werden mit Bindestrich getrennt
+- Anpassbare Anzeigedauer basierend auf Zeichenlänge und Wortanzahl
+- Formatierungsoptionen für Schriftart, Größe, Farbe und Position
+
+Anpassungen der Untertitel-Optionen können über die Umgebungsvariablen gesteuert werden:
+
+| Variable | Standard | Beschreibung |
+|----------|----------|-------------|
+| ADD_SUBTITLES | false | Aktiviert die Untertitel |
+| SUBTITLE_FONT_NAME | Arial | Schriftart |
+| SUBTITLE_FONT_SIZE | 24 | Schriftgröße |
+| SUBTITLE_PRIMARY_COLOR | #FFFFFF | Textfarbe (HEX) |
+| SUBTITLE_BACKGROUND_COLOR | #80000000 | Hintergrundfarbe (HEX mit Alpha) |
+| SUBTITLE_BORDER_STYLE | 4 | Rahmenstil (1-4) |
+| SUBTITLE_POSITION | bottom | Position (bottom, middle, top) |
 
 ## Wichtige Umgebungsvariablen
 
