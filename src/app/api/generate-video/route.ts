@@ -327,21 +327,49 @@ export async function POST(request: Request) {
                 console.log(`JSON string length: ${timestampsJson.length} characters`);
                 
                 // Prüfe auf Maximalgröße (AWS Batch Environment Variable Limit)
-                const MAX_ENV_SIZE = 32768; // 32 KB ist ein typisches Limit für Umgebungsvariablen
+                const MAX_ENV_SIZE = 30000; // 30 KB ist ein konservatives Limit für Umgebungsvariablen
                 
                 if (timestampsJson.length > MAX_ENV_SIZE) {
-                  console.warn(`WARNING: Timestamps JSON string is ${timestampsJson.length} bytes, which exceeds typical env var limit of ${MAX_ENV_SIZE} bytes. May be truncated.`);
-                  console.log('Consider using S3 to store and retrieve large timestamp data instead.');
+                  console.warn(`WARNING: Timestamps JSON string is ${timestampsJson.length} bytes, which exceeds env var limit of ${MAX_ENV_SIZE} bytes.`);
+                  console.log('Uploading timestamps to S3 instead of passing directly as env var.');
+                  
+                  // Hochladen der Timestamps als separate Datei nach S3
+                  try {
+                    const timestampS3Key = `timestamps/${voiceoverId}_timestamps.json`;
+                    
+                    // Hochladen zu S3
+                    const buffer = Buffer.from(timestampsJson);
+                    const s3Url = await uploadToS3(
+                      buffer,
+                      timestampS3Key,
+                      'application/json'
+                    );
+                    
+                    console.log(`Timestamps uploaded to S3: ${s3Url}`);
+                    
+                    // Nur den S3-Pfad als Umgebungsvariable übergeben
+                    additionalParams.WORD_TIMESTAMPS_PATH = timestampS3Key;
+                    console.log('Using S3 path for word timestamps:', timestampS3Key);
+                    
+                    // Für Debugging: Ausgabe der ersten paar Timestamps
+                    console.log('Sample timestamps (first 3):');
+                    voiceover.wordTimestamps.slice(0, 3).forEach((ts: any, i: number) => {
+                      console.log(`  ${i+1}: "${ts.word}" - ${ts.startTime}s to ${ts.endTime}s`);
+                    });
+                  } catch (s3Error) {
+                    console.error('Error uploading timestamps to S3:', s3Error);
+                    console.log('Falling back to simplified subtitle timing');
+                  }
+                } else {
+                  // Zeitstempel als JSON-String übergeben
+                  additionalParams.WORD_TIMESTAMPS = timestampsJson;
+                  
+                  // Für Debugging: Ausgabe der ersten paar Timestamps
+                  console.log('Sample timestamps (first 3):');
+                  voiceover.wordTimestamps.slice(0, 3).forEach((ts: any, i: number) => {
+                    console.log(`  ${i+1}: "${ts.word}" - ${ts.startTime}s to ${ts.endTime}s`);
+                  });
                 }
-                
-                // Zeitstempel als JSON-String übergeben
-                additionalParams.WORD_TIMESTAMPS = timestampsJson;
-                
-                // Für Debugging: Ausgabe der ersten paar Timestamps
-                console.log('Sample timestamps (first 3):');
-                voiceover.wordTimestamps.slice(0, 3).forEach((ts: any, i: number) => {
-                  console.log(`  ${i+1}: "${ts.word}" - ${ts.startTime}s to ${ts.endTime}s`);
-                });
               } else {
                 console.log('No word timestamps available for this voiceover, subtitles will use estimated timing');
               }

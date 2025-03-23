@@ -191,7 +191,7 @@ export async function POST(request: NextRequest) {
       // Erstelle Liste von sicheren Parameternamen, die direkt übergeben werden können
       const safeKeysToPassDirectly = [
         'USER_ID', 'PROJECT_ID', 'TITLE', 'TEMPLATE_DATA_PATH', 'TEMPLATE_DATA', 'VOICEOVER_URL',
-        'DEBUG', 'AWS_REGION', 'OUTPUT_KEY'
+        'DEBUG', 'AWS_REGION', 'OUTPUT_KEY', 'WORD_TIMESTAMPS', 'VOICEOVER_ID', 'VOICEOVER_KEY'
       ];
       
       // Filtere und verarbeite die Parameter

@@ -23,6 +23,7 @@ const fs = require('fs');
 const path = require('path');
 const https = require('https');
 const { S3Client, GetObjectCommand, PutObjectCommand, HeadObjectCommand } = require('@aws-sdk/client-s3');
+const { execSync } = require('child_process');
 
 // Für Node.js-Umgebungen ohne globales fetch
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
@@ -103,7 +104,7 @@ try {
     const templateDataStr = process.env.TEMPLATE_DATA.trim();
     console.log(`TEMPLATE_DATA length: ${templateDataStr.length}`);
     
-    TEMPLATE_DATA = JSON.parse(templateDataStr);
+      TEMPLATE_DATA = JSON.parse(templateDataStr);
     
     // Extra debug for voiceover
     console.log('DEBUG VOICEOVER INFO:');
@@ -748,35 +749,35 @@ async function generateFinalVideo() {
       
       // Wenn weder URL noch Key erfolgreich waren, versuche es mit der ID
       if (!voiceoverExists && TEMPLATE_DATA.voiceoverId) {
-        // Versuche verschiedene mögliche Pfade für die Voiceover-Datei
-        const possiblePaths = [
-          `audio/${TEMPLATE_DATA.voiceoverId}.mp3`,
-          `audio/voiceover_${TEMPLATE_DATA.voiceoverId}.mp3`,
-          `audio/${TEMPLATE_DATA.voiceoverId}`,
-          `voiceovers/${TEMPLATE_DATA.voiceoverId}.mp3`,
-          `voiceovers/voiceover_${TEMPLATE_DATA.voiceoverId}.mp3`
-        ];
-        
-        // Check if voiceover file exists in S3 before attempting to download
-        let existingVoiceoverKey = '';
-        
-        for (const voiceoverKey of possiblePaths) {
-          try {
-            console.log(`Checking if voiceover exists in S3: ${S3_BUCKET}/${voiceoverKey}`);
-            await s3Client.send(new HeadObjectCommand({
-              Bucket: S3_BUCKET,
-              Key: voiceoverKey
-            }));
-            voiceoverExists = true;
-            existingVoiceoverKey = voiceoverKey;
+      // Versuche verschiedene mögliche Pfade für die Voiceover-Datei
+      const possiblePaths = [
+        `audio/${TEMPLATE_DATA.voiceoverId}.mp3`,
+        `audio/voiceover_${TEMPLATE_DATA.voiceoverId}.mp3`,
+        `audio/${TEMPLATE_DATA.voiceoverId}`,
+        `voiceovers/${TEMPLATE_DATA.voiceoverId}.mp3`,
+        `voiceovers/voiceover_${TEMPLATE_DATA.voiceoverId}.mp3`
+      ];
+      
+      // Check if voiceover file exists in S3 before attempting to download
+      let existingVoiceoverKey = '';
+      
+      for (const voiceoverKey of possiblePaths) {
+        try {
+          console.log(`Checking if voiceover exists in S3: ${S3_BUCKET}/${voiceoverKey}`);
+          await s3Client.send(new HeadObjectCommand({
+            Bucket: S3_BUCKET,
+            Key: voiceoverKey
+          }));
+          voiceoverExists = true;
+          existingVoiceoverKey = voiceoverKey;
             voiceoverSource = `S3 path: ${voiceoverKey}`;
-            console.log(`Voiceover file found in S3: ${voiceoverKey}`);
-            break;
-          } catch (error) {
-            console.log(`Voiceover not found at ${voiceoverKey}`);
-          }
+          console.log(`Voiceover file found in S3: ${voiceoverKey}`);
+          break;
+        } catch (error) {
+          console.log(`Voiceover not found at ${voiceoverKey}`);
         }
-        
+      }
+      
         if (existingVoiceoverKey) {
           // Download the voiceover file
           try {
@@ -827,11 +828,11 @@ async function generateFinalVideo() {
         }
         
         if (existingVoiceoverKey) {
-          // Download the voiceover file
-          try {
-            console.log(`Downloading voiceover from S3: ${existingVoiceoverKey}`);
-            await downloadFromS3(existingVoiceoverKey, voiceoverPath);
-            console.log(`Successfully downloaded voiceover to ${voiceoverPath}`);
+      // Download the voiceover file
+      try {
+        console.log(`Downloading voiceover from S3: ${existingVoiceoverKey}`);
+        await downloadFromS3(existingVoiceoverKey, voiceoverPath);
+        console.log(`Successfully downloaded voiceover to ${voiceoverPath}`);
           } catch (error) {
             console.error(`Error downloading voiceover: ${error.message}`);
             voiceoverExists = false;
@@ -844,10 +845,10 @@ async function generateFinalVideo() {
         console.log('Continuing without voiceover');
         return concatenatedFile;
       }
-      
-      // Verify the voiceover file exists and has content
-      if (!fs.existsSync(voiceoverPath) || fs.statSync(voiceoverPath).size === 0) {
-        throw new Error(`Downloaded voiceover file is empty or does not exist: ${voiceoverPath}`);
+        
+        // Verify the voiceover file exists and has content
+        if (!fs.existsSync(voiceoverPath) || fs.statSync(voiceoverPath).size === 0) {
+          throw new Error(`Downloaded voiceover file is empty or does not exist: ${voiceoverPath}`);
       }
       
       console.log(`Using voiceover from ${voiceoverSource}`);
@@ -926,6 +927,7 @@ async function generateFinalVideo() {
             // Prüfe, ob wir Wort-Zeitstempel für die Synchronisation haben
             let wordTimestamps = null;
             
+            // Versuche zuerst, die Zeitstempel aus der Umgebungsvariable zu laden
             if (process.env.WORD_TIMESTAMPS) {
               // Detaillierte Debug-Informationen
               const timestampEnvSize = process.env.WORD_TIMESTAMPS.length;
@@ -974,7 +976,58 @@ async function generateFinalVideo() {
                 }
               } catch (timestampError) {
                 console.error('Error parsing word timestamps:', timestampError);
-                console.log('Will use fallback timing based on character count');
+                console.log('Will try WORD_TIMESTAMPS_PATH or fall back to character-based timing');
+                wordTimestamps = null;
+              }
+            } 
+            // Wenn keine direkten Timestamps gefunden wurden oder sie ungültig waren, versuche sie von S3 zu laden
+            else if (process.env.WORD_TIMESTAMPS_PATH) {
+              console.log(`No direct WORD_TIMESTAMPS found, but found WORD_TIMESTAMPS_PATH: ${process.env.WORD_TIMESTAMPS_PATH}`);
+              
+              try {
+                // S3-Datei herunterladen
+                console.log(`Downloading timestamps from S3: ${process.env.WORD_TIMESTAMPS_PATH}`);
+                
+                const s3BucketName = process.env.S3_BUCKET || '';
+                if (!s3BucketName) {
+                  throw new Error('S3_BUCKET environment variable not set');
+                }
+                
+                // Erstelle temporären Pfad für die heruntergeladene Datei
+                const localTimestampsPath = path.join(TEMP_DIR, 'timestamps.json');
+                
+                // Download der Datei mit AWS CLI
+                const downloadCmd = `aws s3 cp s3://${s3BucketName}/${process.env.WORD_TIMESTAMPS_PATH} ${localTimestampsPath} --region ${process.env.AWS_REGION || 'eu-central-1'}`;
+                console.log(`Running S3 download command: ${downloadCmd}`);
+                
+                try {
+                  execSync(downloadCmd, { stdio: 'inherit' });
+                  console.log(`Successfully downloaded timestamps file to ${localTimestampsPath}`);
+                  
+                  // Datei einlesen und parsen
+                  const timestampsContent = fs.readFileSync(localTimestampsPath, 'utf-8');
+                  console.log(`Timestamp file size: ${timestampsContent.length} bytes`);
+                  
+                  wordTimestamps = JSON.parse(timestampsContent);
+                  if (Array.isArray(wordTimestamps) && wordTimestamps.length > 0) {
+                    console.log(`Successfully loaded ${wordTimestamps.length} word timestamps from S3`);
+                    
+                    // Ausgabe einiger Beispiel-Timestamps
+                    console.log('First 3 timestamps from S3:');
+                    wordTimestamps.slice(0, Math.min(3, wordTimestamps.length)).forEach((ts, i) => {
+                      console.log(`  ${i+1}: "${ts.word}" - ${ts.startTime}s to ${ts.endTime}s`);
+                    });
+                  } else {
+                    console.error('Timestamps from S3 are not in the expected format (array)');
+                    wordTimestamps = null;
+                  }
+                } catch (execError) {
+                  console.error('Error downloading timestamps from S3:', execError.message);
+                  wordTimestamps = null;
+                }
+              } catch (s3Error) {
+                console.error('Error processing timestamps from S3:', s3Error);
+                console.log('Falling back to character-based timing');
                 wordTimestamps = null;
               }
             } else {
@@ -1090,6 +1143,7 @@ async function generateFinalVideo() {
       // Prüfe, ob wir Wort-Zeitstempel für die Synchronisation haben
       let wordTimestamps = null;
       
+      // Versuche zuerst, die Zeitstempel aus der Umgebungsvariable zu laden
       if (process.env.WORD_TIMESTAMPS) {
         // Detaillierte Debug-Informationen
         const timestampEnvSize = process.env.WORD_TIMESTAMPS.length;
@@ -1138,7 +1192,58 @@ async function generateFinalVideo() {
           }
         } catch (timestampError) {
           console.error('Error parsing word timestamps:', timestampError);
-          console.log('Will use fallback timing based on character count');
+          console.log('Will try WORD_TIMESTAMPS_PATH or fall back to character-based timing');
+          wordTimestamps = null;
+        }
+      } 
+      // Wenn keine direkten Timestamps gefunden wurden oder sie ungültig waren, versuche sie von S3 zu laden
+      else if (process.env.WORD_TIMESTAMPS_PATH) {
+        console.log(`No direct WORD_TIMESTAMPS found, but found WORD_TIMESTAMPS_PATH: ${process.env.WORD_TIMESTAMPS_PATH}`);
+        
+        try {
+          // S3-Datei herunterladen
+          console.log(`Downloading timestamps from S3: ${process.env.WORD_TIMESTAMPS_PATH}`);
+          
+          const s3BucketName = process.env.S3_BUCKET || '';
+          if (!s3BucketName) {
+            throw new Error('S3_BUCKET environment variable not set');
+          }
+          
+          // Erstelle temporären Pfad für die heruntergeladene Datei
+          const localTimestampsPath = path.join(TEMP_DIR, 'timestamps.json');
+          
+          // Download der Datei mit AWS CLI
+          const downloadCmd = `aws s3 cp s3://${s3BucketName}/${process.env.WORD_TIMESTAMPS_PATH} ${localTimestampsPath} --region ${process.env.AWS_REGION || 'eu-central-1'}`;
+          console.log(`Running S3 download command: ${downloadCmd}`);
+          
+          try {
+            execSync(downloadCmd, { stdio: 'inherit' });
+            console.log(`Successfully downloaded timestamps file to ${localTimestampsPath}`);
+            
+            // Datei einlesen und parsen
+            const timestampsContent = fs.readFileSync(localTimestampsPath, 'utf-8');
+            console.log(`Timestamp file size: ${timestampsContent.length} bytes`);
+            
+            wordTimestamps = JSON.parse(timestampsContent);
+            if (Array.isArray(wordTimestamps) && wordTimestamps.length > 0) {
+              console.log(`Successfully loaded ${wordTimestamps.length} word timestamps from S3`);
+              
+              // Ausgabe einiger Beispiel-Timestamps
+              console.log('First 3 timestamps from S3:');
+              wordTimestamps.slice(0, Math.min(3, wordTimestamps.length)).forEach((ts, i) => {
+                console.log(`  ${i+1}: "${ts.word}" - ${ts.startTime}s to ${ts.endTime}s`);
+              });
+            } else {
+              console.error('Timestamps from S3 are not in the expected format (array)');
+              wordTimestamps = null;
+            }
+          } catch (execError) {
+            console.error('Error downloading timestamps from S3:', execError.message);
+            wordTimestamps = null;
+          }
+        } catch (s3Error) {
+          console.error('Error processing timestamps from S3:', s3Error);
+          console.log('Falling back to character-based timing');
           wordTimestamps = null;
         }
       } else {
