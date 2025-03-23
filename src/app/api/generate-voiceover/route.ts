@@ -106,39 +106,15 @@ export async function POST(request: Request) {
       const timestampsUrl = `https://api.elevenlabs.io/v1/text-to-speech/${selectedVoiceId}/with-timestamps`;
       console.log(`Calling ElevenLabs with-timestamps API for precise word timestamps at: ${timestampsUrl}`);
       
-      // Zwei separate Anfragen - eine für die Audiodaten und eine für die präzisen Zeitstempel
-      const [audioResponse, timestampsResponse] = await Promise.all([
-        // Standard-Anfrage für Audiodaten
-        fetchWithTimeout(
-          apiUrl,
-          {
-            method: 'POST',
-            headers: {
-              'Accept': 'audio/mpeg',
-              'Content-Type': 'application/json',
-              'xi-api-key': ELEVENLABS_API_KEY
-            },
-            body: JSON.stringify({
-              text: script,
-              model_id: 'eleven_multilingual_v2',
-              voice_settings: {
-                stability: 0.35,
-                similarity_boost: 0.85,
-                style: 0.20,
-                use_speaker_boost: true
-              }
-            })
-          },
-          dynamicTimeout
-        ),
-        
-        // Anfrage für präzise Wort-Zeitstempel mit dem with-timestamps Endpunkt
-        fetchWithTimeout(
+      // Mit der with-timestamps API bekommen wir in einem Request sowohl Audio-Daten UND Timestamps
+      let timestampsResponse;
+      try {
+        timestampsResponse = await fetchWithTimeout(
           timestampsUrl,
           {
             method: 'POST',
             headers: {
-              'Accept': 'application/json',
+              'Accept': 'application/json', // Wichtig: application/json, nicht audio/mpeg
               'Content-Type': 'application/json',
               'xi-api-key': ELEVENLABS_API_KEY
             },
@@ -154,20 +130,23 @@ export async function POST(request: Request) {
             })
           },
           dynamicTimeout
-        )
-      ]);
+        );
+      } catch (timeoutError) {
+        console.error('Request timed out:', timeoutError);
+        throw new Error('Die Anfrage hat das Zeitlimit überschritten. Bitte versuche es mit einem kürzeren Text.');
+      }
 
-      // Fehlerbehandlung für die Audio-Antwort
-      if (!audioResponse.ok) {
-        let errorMessage = `ElevenLabs API error: ${audioResponse.status} - ${audioResponse.statusText}`;
+      // Fehlerbehandlung für die Antwort
+      if (!timestampsResponse.ok) {
+        let errorMessage = `ElevenLabs API error: ${timestampsResponse.status} - ${timestampsResponse.statusText}`;
         
         try {
-          const errorData = await audioResponse.json();
+          const errorData = await timestampsResponse.json();
           errorMessage = errorData.message || errorData.detail || errorMessage;
           console.error('ElevenLabs API error:', errorData);
         } catch (parseError) {
           try {
-            const errorText = await audioResponse.text();
+            const errorText = await timestampsResponse.text();
             errorMessage = errorText || errorMessage;
             console.error('ElevenLabs API error (text):', errorText);
           } catch (textError) {
@@ -178,121 +157,114 @@ export async function POST(request: Request) {
         throw new Error(errorMessage);
       }
 
-      // Parse der Antwort für Wort-Zeitstempel mit dem neuen Endpunkt
+      // Parse der Antwort für Audio-Daten und Wort-Zeitstempel
       let wordTimestamps = [];
+      let audioBase64;
       try {
-        if (timestampsResponse.ok) {
-          const timestampsData = await timestampsResponse.json();
-          console.log(`Received timestamps response with data`);
-          console.log('Response structure:', Object.keys(timestampsData).join(', '));
+        const responseData = await timestampsResponse.json();
+        console.log(`Received with-timestamps response with data`);
+        console.log('Response structure:', Object.keys(responseData).join(', '));
+        
+        // Die Audio-Daten kommen als Base64 in der JSON-Antwort
+        if (responseData.audio_base64) {
+          console.log('Found audio_base64 in response');
+          audioBase64 = responseData.audio_base64;
+        } else {
+          throw new Error('No audio data found in with-timestamps response');
+        }
+        
+        // DEBUGAUSGABE: Vollständige Antwortstruktur
+        console.log('Response structure sample:', 
+          JSON.stringify(responseData).substring(0, 500) + '...');
           
-          // Der with-timestamps Endpunkt gibt ein anderes Format zurück
-          if (timestampsData.alignment) {
-            // Log first to debug structure
-            console.log('Alignment data structure found. Converting to word timestamps...');
-            console.log('Sample alignment data:', JSON.stringify(timestampsData.alignment).substring(0, 200) + '...');
+        // Der with-timestamps Endpunkt gibt normalized_alignment und alignment zurück
+        // Wir verwenden bevorzugt normalized_alignment
+        const alignmentData = responseData.normalized_alignment || responseData.alignment;
+        
+        if (alignmentData) {
+          // Log first to debug structure
+          console.log('Alignment data structure found:', Object.keys(alignmentData).join(', '));
+          console.log('Sample alignment data:', 
+            JSON.stringify(alignmentData).substring(0, 200) + '...');
+          
+          // Im Alignment-Objekt haben wir character-level Timestamps
+          // Wir müssen diese zu Wort-Timestamps konvertieren
+          const characters = alignmentData.characters || [];
+          const startTimes = alignmentData.character_start_times_seconds || [];
+          const endTimes = alignmentData.character_end_times_seconds || [];
+          
+          console.log(`Character-level timestamps found: ${characters.length} characters`);
+          
+          // Konvertiere Zeichen-Level zu Wort-Level Timestamps
+          if (characters.length > 0 && characters.length === startTimes.length && characters.length === endTimes.length) {
+            // Gruppieren wir die Zeichen zu Wörtern
+            let currentWord = '';
+            let wordStart = 0;
+            let wordEnd = 0;
+            let inWord = false;
             
-            // Im Alignment-Objekt haben wir character-level Timestamps
-            // Wir müssen diese zu Wort-Timestamps konvertieren
-            const characters = timestampsData.alignment.characters || [];
-            const startTimes = timestampsData.alignment.character_start_times_seconds || [];
-            const endTimes = timestampsData.alignment.character_end_times_seconds || [];
-            
-            console.log(`Character-level timestamps found: ${characters.length} characters`);
-            
-            // Konvertiere Zeichen-Level zu Wort-Level Timestamps
-            if (characters.length > 0 && characters.length === startTimes.length && characters.length === endTimes.length) {
-              // Gruppieren wir die Zeichen zu Wörtern
-              let currentWord = '';
-              let wordStart = 0;
-              let wordEnd = 0;
-              let inWord = false;
+            for (let i = 0; i < characters.length; i++) {
+              const char = characters[i];
+              const startTime = startTimes[i];
+              const endTime = endTimes[i];
               
-              for (let i = 0; i < characters.length; i++) {
-                const char = characters[i];
-                const startTime = startTimes[i];
-                const endTime = endTimes[i];
-                
-                // Überspringe Leerzeichen zwischen Wörtern
-                if (char.trim() === '') {
-                  if (inWord) {
-                    // Wort endet
-                    wordTimestamps.push({
-                      word: currentWord,
-                      startTime: wordStart,
-                      endTime: wordEnd
-                    });
-                    
-                    // Zurücksetzen
-                    currentWord = '';
-                    inWord = false;
-                  }
-                  continue;
+              // Überspringe Leerzeichen zwischen Wörtern
+              if (char.trim() === '') {
+                if (inWord) {
+                  // Wort endet
+                  wordTimestamps.push({
+                    word: currentWord,
+                    startTime: wordStart,
+                    endTime: wordEnd
+                  });
+                  
+                  // Zurücksetzen
+                  currentWord = '';
+                  inWord = false;
                 }
-                
-                // Beginn eines neuen Wortes
-                if (!inWord) {
-                  inWord = true;
-                  wordStart = startTime;
-                }
-                
-                // Füge Buchstaben zum Wort hinzu
-                currentWord += char;
-                wordEnd = endTime;
+                continue;
               }
               
-              // Das letzte Wort, falls vorhanden
-              if (inWord && currentWord) {
-                wordTimestamps.push({
-                  word: currentWord,
-                  startTime: wordStart,
-                  endTime: wordEnd
-                });
+              // Beginn eines neuen Wortes
+              if (!inWord) {
+                inWord = true;
+                wordStart = startTime;
               }
               
-              console.log(`Extracted ${wordTimestamps.length} word timestamps from character-level alignment`);
+              // Füge Buchstaben zum Wort hinzu
+              currentWord += char;
+              wordEnd = endTime;
             }
-          } else if (timestampsData.words) {
-            // Alternative Struktur, falls die API direkt Wort-Timestamps zurückgibt
-            console.log('Word-level timestamps found directly.');
             
-            wordTimestamps = timestampsData.words.map((item: any) => ({
-              word: item.word,
-              startTime: item.start_time,
-              endTime: item.end_time
-            }));
+            // Das letzte Wort, falls vorhanden
+            if (inWord && currentWord) {
+              wordTimestamps.push({
+                word: currentWord,
+                startTime: wordStart,
+                endTime: wordEnd
+              });
+            }
             
-            console.log(`Extracted ${wordTimestamps.length} word timestamps directly from API response`);
-          } else {
-            console.warn('Unexpected response format from with-timestamps API. No alignment or words property found.');
-            console.log('Full response:', JSON.stringify(timestampsData));
+            console.log(`Extracted ${wordTimestamps.length} word timestamps from character-level alignment`);
+            console.log('First few timestamps:', wordTimestamps.slice(0, 3));
           }
         } else {
-          console.warn(`Failed to get timestamps response: ${timestampsResponse.status} - ${timestampsResponse.statusText}`);
-          // Versuche Fehlermeldung zu lesen
-          try {
-            const errorData = await timestampsResponse.json();
-            console.error('Timestamps API error:', errorData);
-          } catch (e) {
-            console.error('Could not parse timestamps error response');
-          }
+          console.warn('No alignment data found in response');
         }
-      } catch (timestampsError) {
-        console.error('Error processing timestamps response:', timestampsError);
+      } catch (parseError) {
+        console.error('Error processing timestamps response:', parseError);
         // Wir brechen nicht ab, wenn die Zeitstempel fehlschlagen - wir nutzen dann einfach keine
       }
 
       console.log(`Voiceover generated successfully from ElevenLabs with voice ID: ${selectedVoiceId}`);
       
       // Audiodaten als Buffer speichern
-      const audioBuffer = await audioResponse.arrayBuffer()
-      const buffer = Buffer.from(audioBuffer)
+      const buffer = Buffer.from(audioBase64, 'base64');
       
       console.log(`Audio data received. Size: ${buffer.length} bytes. Using voice ID: ${selectedVoiceId}`);
       
       // Für temporäre Kompatibilität mit dem Frontend auch base64 zurückgeben
-      const audioBase64 = buffer.toString('base64')
-      const dataUrl = `data:audio/mpeg;base64,${audioBase64}`
+      const dataUrl = `data:audio/mpeg;base64,${audioBase64}`;
       
       // Für Stimmentests sofort die Daten zurückgeben ohne S3-Upload oder DB-Eintrag
       if (isTest) {
