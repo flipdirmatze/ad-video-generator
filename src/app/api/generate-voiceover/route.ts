@@ -102,42 +102,76 @@ export async function POST(request: Request) {
       const dynamicTimeout = Math.min(55000, 30000 + (scriptLength * 10)); // Basiswert + 10ms pro Zeichen
       console.log(`Using dynamic timeout of ${dynamicTimeout/1000} seconds based on text length`);
       
-      // Verwende die Timeout-Funktion mit erhöhtem Timeout für die API-Anfrage
-      const response = await fetchWithTimeout(
-        apiUrl,
-        {
-          method: 'POST',
-          headers: {
-            'Accept': 'audio/mpeg',
-            'Content-Type': 'application/json',
-            'xi-api-key': ELEVENLABS_API_KEY
+      // Verwende detaillierte Antwort für Wort-Zeitstempel
+      const detailsUrl = `https://api.elevenlabs.io/v1/text-to-speech/${selectedVoiceId}/stream`;
+      console.log(`Calling ElevenLabs detailed API for word timestamps at: ${detailsUrl}`);
+      
+      // Zwei separate Anfragen - eine für die Audiodaten und eine für die detaillierten Zeitstempel
+      const [audioResponse, detailsResponse] = await Promise.all([
+        // Standard-Anfrage für Audiodaten
+        fetchWithTimeout(
+          apiUrl,
+          {
+            method: 'POST',
+            headers: {
+              'Accept': 'audio/mpeg',
+              'Content-Type': 'application/json',
+              'xi-api-key': ELEVENLABS_API_KEY
+            },
+            body: JSON.stringify({
+              text: script,
+              model_id: 'eleven_multilingual_v2',
+              voice_settings: {
+                stability: 0.35,
+                similarity_boost: 0.85,
+                style: 0.20,
+                use_speaker_boost: true
+              }
+            })
           },
-          body: JSON.stringify({
-            text: script,
-            model_id: 'eleven_multilingual_v2',
-            voice_settings: {
-              stability: 0.35,
-              similarity_boost: 0.85,
-              style: 0.20,
-              use_speaker_boost: true
-            }
-          })
-        },
-        dynamicTimeout
-      );
+          dynamicTimeout
+        ),
+        
+        // Detaillierte Anfrage für Wort-Zeitstempel
+        fetchWithTimeout(
+          detailsUrl,
+          {
+            method: 'POST',
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'application/json',
+              'xi-api-key': ELEVENLABS_API_KEY
+            },
+            body: JSON.stringify({
+              text: script,
+              model_id: 'eleven_multilingual_v2',
+              voice_settings: {
+                stability: 0.35,
+                similarity_boost: 0.85,
+                style: 0.20,
+                use_speaker_boost: true
+              },
+              output_format: "mp3_44100_128",
+              generation_config: {
+                return_detailed_response: true
+              }
+            })
+          },
+          dynamicTimeout
+        )
+      ]);
 
-      if (!response.ok) {
-        let errorMessage = `ElevenLabs API error: ${response.status} - ${response.statusText}`;
+      // Fehlerbehandlung für die Audio-Antwort
+      if (!audioResponse.ok) {
+        let errorMessage = `ElevenLabs API error: ${audioResponse.status} - ${audioResponse.statusText}`;
         
         try {
-          // Versuche, den Fehler als JSON zu parsen
-          const errorData = await response.json();
+          const errorData = await audioResponse.json();
           errorMessage = errorData.message || errorData.detail || errorMessage;
           console.error('ElevenLabs API error:', errorData);
         } catch (parseError) {
-          // Wenn die Antwort kein JSON ist, versuche den Text zu lesen
           try {
-            const errorText = await response.text();
+            const errorText = await audioResponse.text();
             errorMessage = errorText || errorMessage;
             console.error('ElevenLabs API error (text):', errorText);
           } catch (textError) {
@@ -148,10 +182,35 @@ export async function POST(request: Request) {
         throw new Error(errorMessage);
       }
 
+      // Parse der detaillierten Antwort für Wort-Zeitstempel
+      let wordTimestamps = [];
+      try {
+        if (detailsResponse.ok) {
+          const detailsData = await detailsResponse.json();
+          console.log(`Received detailed response with metadata`);
+          
+          if (detailsData.metadata && detailsData.metadata.word_timestamps) {
+            wordTimestamps = detailsData.metadata.word_timestamps.map((item: any) => ({
+              word: item.word,
+              startTime: item.start, // Startzeit in Sekunden
+              endTime: item.end      // Endzeit in Sekunden
+            }));
+            console.log(`Extracted ${wordTimestamps.length} word timestamps from ElevenLabs API`);
+          } else {
+            console.warn('No word timestamps found in the detailed response');
+          }
+        } else {
+          console.warn(`Failed to get detailed response: ${detailsResponse.status} - ${detailsResponse.statusText}`);
+        }
+      } catch (detailsError) {
+        console.error('Error processing detailed response:', detailsError);
+        // Wir brechen nicht ab, wenn die Zeitstempel fehlschlagen - wir nutzen dann einfach keine
+      }
+
       console.log(`Voiceover generated successfully from ElevenLabs with voice ID: ${selectedVoiceId}`);
       
       // Audiodaten als Buffer speichern
-      const audioBuffer = await response.arrayBuffer()
+      const audioBuffer = await audioResponse.arrayBuffer()
       const buffer = Buffer.from(audioBuffer)
       
       console.log(`Audio data received. Size: ${buffer.length} bytes. Using voice ID: ${selectedVoiceId}`);
@@ -166,7 +225,8 @@ export async function POST(request: Request) {
         return NextResponse.json({
           success: true,
           dataUrl,
-          voiceId: selectedVoiceId
+          voiceId: selectedVoiceId,
+          wordTimestamps: wordTimestamps.length > 0 ? wordTimestamps : undefined
         });
       }
       
@@ -206,11 +266,12 @@ export async function POST(request: Request) {
             size: buffer.length,
             voiceId: selectedVoiceId, // Speichere die verwendete Stimmen-ID
             isPublic: false,
+            wordTimestamps: wordTimestamps.length > 0 ? wordTimestamps : undefined,
             createdAt: new Date(),
             updatedAt: new Date()
           })
           
-          console.log(`Voiceover metadata saved to MongoDB. ID: ${voiceover._id}`);
+          console.log(`Voiceover metadata saved to MongoDB. ID: ${voiceover._id}. Word timestamps count: ${wordTimestamps.length}`);
           
           // Beide URLs zurückgeben - dataUrl für Frontend-Kompatibilität und s3Url für die Verarbeitung
           return NextResponse.json({
@@ -219,7 +280,8 @@ export async function POST(request: Request) {
             url: s3Url, // S3-URL für die neue Implementierung
             voiceoverId: voiceover._id,
             voiceId: selectedVoiceId, // Gib die verwendete Stimmen-ID zurück
-            fileName
+            fileName,
+            wordTimestampsCount: wordTimestamps.length
           })
         } catch (dbError) {
           console.error('MongoDB error when saving voiceover:', dbError);

@@ -24,6 +24,9 @@ const path = require('path');
 const https = require('https');
 const { S3Client, GetObjectCommand, PutObjectCommand, HeadObjectCommand } = require('@aws-sdk/client-s3');
 
+// Für Node.js-Umgebungen ohne globales fetch
+const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
+
 // Temporäre Verzeichnisse für Dateien
 const TEMP_DIR = '/tmp/video-processing';
 const INPUT_DIR = `${TEMP_DIR}/input`;
@@ -102,6 +105,13 @@ try {
     
     TEMPLATE_DATA = JSON.parse(templateDataStr);
     
+    // Extra debug for voiceover
+    console.log('DEBUG VOICEOVER INFO:');
+    console.log('- process.env.VOICEOVER_URL:', process.env.VOICEOVER_URL);
+    console.log('- process.env.VOICEOVER_KEY:', process.env.VOICEOVER_KEY);
+    console.log('- process.env.VOICEOVER_ID:', process.env.VOICEOVER_ID);
+    console.log('- TEMPLATE_DATA.voiceoverId:', TEMPLATE_DATA.voiceoverId);
+    
     // Check if TEMPLATE_DATA is a reference to S3
     if (TEMPLATE_DATA.type === 's3Path' && TEMPLATE_DATA.path) {
       console.log(`TEMPLATE_DATA contains S3 path reference: ${TEMPLATE_DATA.path}`);
@@ -125,6 +135,241 @@ try {
   console.error('Error parsing TEMPLATE_DATA:', error);
   console.error('First 100 characters of TEMPLATE_DATA:', process.env.TEMPLATE_DATA?.substring(0, 100));
   console.error('Job will continue but may fail later if template data is required');
+}
+
+/**
+ * Formatiert Zeit in Sekunden in das SRT-Format: [Stunden]:[Minuten]:[Sekunden],[Millisekunden]
+ */
+function formatTime(timeInSeconds) {
+  const hours = Math.floor(timeInSeconds / 3600);
+  const minutes = Math.floor((timeInSeconds % 3600) / 60);
+  const seconds = Math.floor(timeInSeconds % 60);
+  const milliseconds = Math.floor((timeInSeconds % 1) * 1000);
+  
+  return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')},${milliseconds.toString().padStart(3, '0')}`;
+}
+
+/**
+ * Erzeugt SRT-Untertitel aus dem gegebenen Text mit begrenzter Zeilenlänge
+ * und synchronisiert sie mit Wort-Zeitstempeln, wenn verfügbar
+ */
+function generateSrtContent(subtitleText, options = {}) {
+  console.log(`Generating subtitles for text (${subtitleText.length} chars)`);
+  
+  // Standardwerte für Optionen
+  const maxCharsPerLine = options.maxCharsPerLine || 18;
+  const wordTimestamps = options.wordTimestamps || null;
+  const wordSplitThreshold = Math.round(maxCharsPerLine * 1.5);
+  
+  // Versuche, Wort-Zeitstempel zu verwenden, wenn verfügbar
+  if (wordTimestamps && Array.isArray(wordTimestamps) && wordTimestamps.length > 0) {
+    console.log(`Using ${wordTimestamps.length} word timestamps for accurate subtitle timing`);
+    return generateSyncedSubtitles(subtitleText, wordTimestamps, maxCharsPerLine, wordSplitThreshold);
+  }
+  
+  // Wenn keine Zeitstempel verfügbar sind, verwende die vereinfachte Methode
+  console.log('No word timestamps available, using simplified fixed-duration subtitles');
+  
+  // Wir splitten den Text in Sätze
+  const sentences = subtitleText.match(/[^\.!\?]+[\.!\?]+/g) || [subtitleText];
+  
+  let srtContent = '';
+  let index = 1;
+  let currentTime = 0;
+  
+  // Feste Einstellungen für die vereinfachte Methode
+  const fixedDurationPerSubtitle = 2.5; // 2.5 Sekunden pro Untertitel
+  
+  for (const sentence of sentences) {
+    // Entferne Whitespace
+    const trimmedSentence = sentence.trim();
+    if (!trimmedSentence) continue;
+    
+    // Teile den Satz in kurze Phrasen auf, die in die Zeile passen
+    const words = trimmedSentence.split(/\s+/);
+    let currentLine = '';
+    let phrases = [];
+    
+    for (let i = 0; i < words.length; i++) {
+      const word = words[i];
+      
+      // Wenn das Wort alleine schon extrem lang ist, teile es auf
+      if (word.length > wordSplitThreshold) {
+        // Füge die aktuelle Zeile hinzu, falls vorhanden
+        if (currentLine) {
+          phrases.push(currentLine);
+          currentLine = '';
+        }
+        
+        // Teile das extrem lange Wort in Teilstücke
+        let remainingWord = word;
+        while (remainingWord.length > wordSplitThreshold) {
+          const chunk = remainingWord.substring(0, wordSplitThreshold);
+          phrases.push(chunk + '-');
+          remainingWord = remainingWord.substring(wordSplitThreshold);
+        }
+        
+        // Letzten Teil behalten für die nächste Zeile, wenn übrig
+        if (remainingWord.length > 0) {
+          currentLine = remainingWord;
+        }
+        continue;
+      }
+      
+      // Teste, ob das aktuelle Wort noch in die Zeile passt
+      const lineWithWord = currentLine ? `${currentLine} ${word}` : word;
+      
+      if (lineWithWord.length <= maxCharsPerLine) {
+        // Wort passt in aktuelle Zeile
+        currentLine = lineWithWord;
+      } else {
+        // Wort passt nicht mehr - speichere aktuelle Zeile und beginne neue
+        if (currentLine) {
+          phrases.push(currentLine);
+        }
+        currentLine = word;
+      }
+      
+      // Wenn das letzte Wort, füge es noch hinzu
+      if (i === words.length - 1 && currentLine) {
+        phrases.push(currentLine);
+      }
+    }
+    
+    // Erstelle SRT-Einträge für jede Phrase mit fester Dauer
+    for (let i = 0; i < phrases.length; i++) {
+      const startTime = currentTime;
+      const endTime = startTime + fixedDurationPerSubtitle;
+      
+      const startTimeFormatted = formatTime(startTime);
+      const endTimeFormatted = formatTime(endTime);
+      
+      srtContent += `${index}\n${startTimeFormatted} --> ${endTimeFormatted}\n${phrases[i]}\n\n`;
+      index++;
+      currentTime = endTime; // Nächster Untertitel beginnt, wenn der aktuelle endet
+    }
+  }
+  
+  return srtContent;
+}
+
+/**
+ * Generiert synchronisierte Untertitel mit ElevenLabs Wort-Zeitstempeln
+ */
+function generateSyncedSubtitles(subtitleText, wordTimestamps, maxCharsPerLine, wordSplitThreshold) {
+  console.log(`Generating synced subtitles using ${wordTimestamps.length} word timestamps`);
+  
+  // Sammle alle Wörter aus den Zeitstempeln
+  const words = wordTimestamps.map(ts => ({
+    word: ts.word,
+    startTime: ts.startTime,
+    endTime: ts.endTime,
+    duration: ts.endTime - ts.startTime
+  }));
+  
+  // Gruppiere Wörter in Phrasen, die nicht länger als maxCharsPerLine sind
+  let phrases = [];
+  let currentPhrase = {
+    text: '',
+    startTime: words[0]?.startTime || 0,
+    endTime: 0,
+    words: []
+  };
+  
+  // Durchlaufe alle Wörter und bilde Phrasen
+  words.forEach(wordObj => {
+    const { word, startTime, endTime } = wordObj;
+    
+    // Sehr lange Wörter müssen separat behandelt werden
+    if (word.length > wordSplitThreshold) {
+      // Wenn aktuelle Phrase nicht leer ist, speichern
+      if (currentPhrase.text) {
+        currentPhrase.endTime = wordObj.startTime; // Ende vor dem langen Wort
+        phrases.push(currentPhrase);
+      }
+      
+      // Teile das lange Wort in Teilstücke
+      let remainingWord = word;
+      let offset = 0;
+      const wordDuration = endTime - startTime;
+      const durationPerChar = wordDuration / word.length;
+      
+      while (remainingWord.length > 0) {
+        const chunkLength = Math.min(remainingWord.length, wordSplitThreshold);
+        const chunk = remainingWord.substring(0, chunkLength);
+        const chunkStartTime = startTime + (offset * durationPerChar);
+        const chunkEndTime = chunkStartTime + (chunkLength * durationPerChar);
+        
+        phrases.push({
+          text: chunk + (remainingWord.length > chunkLength ? '-' : ''),
+          startTime: chunkStartTime,
+          endTime: chunkEndTime,
+          words: [{ word: chunk, startTime: chunkStartTime, endTime: chunkEndTime }]
+        });
+        
+        offset += chunkLength;
+        remainingWord = remainingWord.substring(chunkLength);
+      }
+      
+      // Beginne neue leere Phrase
+      currentPhrase = {
+        text: '',
+        startTime: endTime,
+        endTime: 0,
+        words: []
+      };
+      return;
+    }
+    
+    // Normaler Fall: Prüfe, ob das Wort in die aktuelle Zeile passt
+    const potentialText = currentPhrase.text 
+      ? `${currentPhrase.text} ${word}`
+      : word;
+    
+    if (potentialText.length <= maxCharsPerLine) {
+      // Wort passt in aktuelle Phrase
+      currentPhrase.text = potentialText;
+      currentPhrase.endTime = endTime;
+      currentPhrase.words.push(wordObj);
+    } else {
+      // Wort passt nicht mehr, speichere aktuelle Phrase und beginne neue
+      if (currentPhrase.text) {
+        phrases.push(currentPhrase);
+      }
+      
+      // Beginne neue Phrase mit aktuellem Wort
+      currentPhrase = {
+        text: word,
+        startTime: startTime,
+        endTime: endTime,
+        words: [wordObj]
+      };
+    }
+  });
+  
+  // Füge letzte Phrase hinzu, wenn noch vorhanden
+  if (currentPhrase.text) {
+    phrases.push(currentPhrase);
+  }
+  
+  // Formatiere Phrasen als SRT
+  let srtContent = '';
+  phrases.forEach((phrase, index) => {
+    // Mindestanzeigedauer für sehr kurze Phrasen (1 Sekunde)
+    if (phrase.endTime - phrase.startTime < 1.0) {
+      phrase.endTime = phrase.startTime + 1.0;
+    }
+    
+    // Formatierte Zeitangaben
+    const startTimeFormatted = formatTime(phrase.startTime);
+    const endTimeFormatted = formatTime(phrase.endTime);
+    
+    // SRT-Eintrag hinzufügen
+    srtContent += `${index + 1}\n${startTimeFormatted} --> ${endTimeFormatted}\n${phrase.text}\n\n`;
+  });
+  
+  console.log(`Created ${phrases.length} synchronized subtitle entries`);
+  return srtContent;
 }
 
 /**
@@ -158,7 +403,7 @@ async function main() {
     // Lade Template-Daten aus S3, wenn ein Pfad angegeben ist
     const templateDataPath = process.env.TEMPLATE_DATA_PATH || (TEMPLATE_DATA?.type === 's3Path' ? TEMPLATE_DATA.path : null);
     
-    if (templateDataPath) {
+    if (templateDataPath && (!TEMPLATE_DATA || !TEMPLATE_DATA.segments || !Array.isArray(TEMPLATE_DATA.segments))) {
       try {
         console.log(`Loading template data from S3 path: ${templateDataPath}`);
         
@@ -173,8 +418,15 @@ async function main() {
         console.log(`Template data loaded from S3 successfully, contains ${TEMPLATE_DATA.segments ? TEMPLATE_DATA.segments.length : 0} segments`);
       } catch (error) {
         console.error('Error loading template data from S3:', error);
-        throw new Error(`Failed to load template data from S3: ${error.message}`);
+        console.log('Continuing with existing TEMPLATE_DATA from environment variable if available');
+        
+        // Only throw if we have no template data at all
+        if (!TEMPLATE_DATA || !TEMPLATE_DATA.segments || !Array.isArray(TEMPLATE_DATA.segments)) {
+          throw new Error(`Failed to load template data from S3 and no valid template data in environment: ${error.message}`);
+        }
       }
+    } else if (TEMPLATE_DATA && TEMPLATE_DATA.segments && Array.isArray(TEMPLATE_DATA.segments)) {
+      console.log(`Using TEMPLATE_DATA from environment variable, contains ${TEMPLATE_DATA.segments.length} segments`);
     }
     
     // Validiere Template-Daten für generate-final
@@ -414,11 +666,22 @@ async function generateFinalVideo() {
   // 6. Wenn ein Voiceover vorhanden ist, füge es hinzu
   const VOICEOVER_URL = process.env.VOICEOVER_URL || '';
   const VOICEOVER_KEY = process.env.VOICEOVER_KEY || '';
+  const VOICEOVER_ID = process.env.VOICEOVER_ID || (TEMPLATE_DATA && TEMPLATE_DATA.voiceoverId) || '';
   
-  if (TEMPLATE_DATA.voiceoverId || VOICEOVER_URL || VOICEOVER_KEY) {
+  console.log('DEBUG VOICEOVER CHECK:');
+  console.log('- VOICEOVER_URL:', VOICEOVER_URL);
+  console.log('- VOICEOVER_KEY:', VOICEOVER_KEY);
+  console.log('- VOICEOVER_ID:', VOICEOVER_ID);
+  console.log('- TEMPLATE_DATA.voiceoverId:', TEMPLATE_DATA && TEMPLATE_DATA.voiceoverId ? TEMPLATE_DATA.voiceoverId : 'not set');
+  
+  // Überprüfen aller Möglichkeiten für ein Voiceover
+  if (VOICEOVER_URL || VOICEOVER_KEY || VOICEOVER_ID || (TEMPLATE_DATA && TEMPLATE_DATA.voiceoverId)) {
     console.log(`Voiceover information found`);
-    if (TEMPLATE_DATA.voiceoverId) {
-      console.log(`Voiceover ID: ${TEMPLATE_DATA.voiceoverId}`);
+    if (TEMPLATE_DATA && TEMPLATE_DATA.voiceoverId) {
+      console.log(`Voiceover ID from template: ${TEMPLATE_DATA.voiceoverId}`);
+    }
+    if (VOICEOVER_ID) {
+      console.log(`Voiceover ID from env: ${VOICEOVER_ID}`);
     }
     if (VOICEOVER_URL) {
       console.log(`Direct Voiceover URL provided: ${VOICEOVER_URL}`);
@@ -492,6 +755,55 @@ async function generateFinalVideo() {
           `audio/${TEMPLATE_DATA.voiceoverId}`,
           `voiceovers/${TEMPLATE_DATA.voiceoverId}.mp3`,
           `voiceovers/voiceover_${TEMPLATE_DATA.voiceoverId}.mp3`
+        ];
+        
+        // Check if voiceover file exists in S3 before attempting to download
+        let existingVoiceoverKey = '';
+        
+        for (const voiceoverKey of possiblePaths) {
+          try {
+            console.log(`Checking if voiceover exists in S3: ${S3_BUCKET}/${voiceoverKey}`);
+            await s3Client.send(new HeadObjectCommand({
+              Bucket: S3_BUCKET,
+              Key: voiceoverKey
+            }));
+            voiceoverExists = true;
+            existingVoiceoverKey = voiceoverKey;
+            voiceoverSource = `S3 path: ${voiceoverKey}`;
+            console.log(`Voiceover file found in S3: ${voiceoverKey}`);
+            break;
+          } catch (error) {
+            console.log(`Voiceover not found at ${voiceoverKey}`);
+          }
+        }
+        
+        if (existingVoiceoverKey) {
+          // Download the voiceover file
+          try {
+            console.log(`Downloading voiceover from S3: ${existingVoiceoverKey}`);
+            await downloadFromS3(existingVoiceoverKey, voiceoverPath);
+            console.log(`Successfully downloaded voiceover to ${voiceoverPath}`);
+          } catch (error) {
+            console.error(`Error downloading voiceover: ${error.message}`);
+            voiceoverExists = false;
+          }
+        }
+      }
+      
+      // Zusätzliche Prüfung für VOICEOVER_ID aus der Umgebungsvariable
+      if (!voiceoverExists && VOICEOVER_ID && VOICEOVER_ID !== TEMPLATE_DATA.voiceoverId) {
+        console.log(`Trying additional paths with VOICEOVER_ID from environment: ${VOICEOVER_ID}`);
+        
+        // Versuche verschiedene mögliche Pfade für die Voiceover-Datei
+        const possiblePaths = [
+          `audio/${VOICEOVER_ID}.mp3`,
+          `audio/voiceover_${VOICEOVER_ID}.mp3`,
+          `audio/${VOICEOVER_ID}`,
+          `voiceovers/${VOICEOVER_ID}.mp3`,
+          `voiceovers/voiceover_${VOICEOVER_ID}.mp3`,
+          `uploads/${VOICEOVER_ID}.mp3`,
+          `uploads/voiceover_${VOICEOVER_ID}.mp3`,
+          `uploads/${VOICEOVER_ID}`
         ];
         
         // Check if voiceover file exists in S3 before attempting to download
@@ -611,47 +923,32 @@ async function generateFinalVideo() {
           const srtFile = path.join(TEMP_DIR, 'subtitles.srt');
           
           try {
-            // Generiere einfachen SRT-Inhalt aus dem Text
-            // Wir splitten den Text in Sätze und erzeugen für jeden Satz einen Untertitel
-            const sentences = subtitleText.match(/[^\.!\?]+[\.!\?]+/g) || [subtitleText];
+            // Prüfe, ob wir Wort-Zeitstempel für die Synchronisation haben
+            let wordTimestamps = null;
             
-            let srtContent = '';
-            let index = 1;
-            let startTime = 0;
-            
-            // Durschnittliche Anzahl von Wörtern, die pro Sekunde gesprochen werden (anpassbar)
-            const wordsPerSecond = 3; 
-            
-            for (const sentence of sentences) {
-              // Entferne Whitespace und zähle Wörter
-              const trimmedSentence = sentence.trim();
-              if (!trimmedSentence) continue;
-              
-              const wordCount = trimmedSentence.split(/\s+/).length;
-              const duration = Math.max(1, wordCount / wordsPerSecond); // Mindestens 1 Sekunde
-              
-              // Format: [Stunden]:[Minuten]:[Sekunden],[Millisekunden]
-              const formatTime = (timeInSeconds) => {
-                const hours = Math.floor(timeInSeconds / 3600);
-                const minutes = Math.floor((timeInSeconds % 3600) / 60);
-                const seconds = Math.floor(timeInSeconds % 60);
-                const milliseconds = Math.floor((timeInSeconds % 1) * 1000);
-                
-                return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')},${milliseconds.toString().padStart(3, '0')}`;
-              };
-              
-              const startTimeFormatted = formatTime(startTime);
-              const endTimeFormatted = formatTime(startTime + duration);
-              
-              srtContent += `${index}\n${startTimeFormatted} --> ${endTimeFormatted}\n${trimmedSentence}\n\n`;
-              
-              startTime += duration;
-              index++;
+            if (process.env.WORD_TIMESTAMPS) {
+              try {
+                console.log('Found WORD_TIMESTAMPS environment variable');
+                wordTimestamps = JSON.parse(process.env.WORD_TIMESTAMPS);
+                console.log(`Parsed ${wordTimestamps.length} word timestamps for subtitle synchronization`);
+              } catch (timestampError) {
+                console.error('Error parsing word timestamps:', timestampError);
+                console.log('Will use fallback timing based on character count');
+              }
+            } else {
+              console.log('No word timestamps provided, using character-based timing');
             }
+            
+            // Generiere SRT-Inhalt mit unserer Helper-Funktion
+            const srtContent = generateSrtContent(subtitleText, {
+              maxCharsPerLine: 18,
+              charsPerSecond: 10,
+              wordTimestamps: wordTimestamps
+            });
             
             // Schreibe SRT-Datei
             fs.writeFileSync(srtFile, srtContent);
-            console.log(`Created SRT file with ${index-1} subtitle entries`);
+            console.log(`Created SRT file for subtitles`);
             
             // Setze Positionsparameter je nach gewählter Position
             let positionParam = '';
@@ -748,55 +1045,32 @@ async function generateFinalVideo() {
     const srtFile = path.join(TEMP_DIR, 'subtitles.srt');
     
     try {
-      // Generiere einfachen SRT-Inhalt aus dem Text
-      // Wir splitten den Text in Sätze und erzeugen für jeden Satz einen Untertitel
-      const sentences = subtitleText.match(/[^\.!\?]+[\.!\?]+/g) || [subtitleText];
+      // Prüfe, ob wir Wort-Zeitstempel für die Synchronisation haben
+      let wordTimestamps = null;
       
-      let srtContent = '';
-      let index = 1;
-      let startTime = 0;
-      
-      // Durschnittliche Anzahl von Wörtern, die pro Sekunde gesprochen werden (anpassbar)
-      const wordsPerSecond = 3; 
-      
-      for (const sentence of sentences) {
-        // Entferne Whitespace und zähle Wörter
-        const trimmedSentence = sentence.trim();
-        if (!trimmedSentence) continue;
-        
-        const wordCount = trimmedSentence.split(/\s+/).length;
-        const duration = Math.max(1, wordCount / wordsPerSecond); // Mindestens 1 Sekunde
-        
-        // Format: [Stunden]:[Minuten]:[Sekunden],[Millisekunden]
-        const formatTime = (timeInSeconds) => {
-          const hours = Math.floor(timeInSeconds / 3600);
-          const minutes = Math.floor((timeInSeconds % 3600) / 60);
-          const seconds = Math.floor(timeInSeconds % 60);
-          const milliseconds = Math.floor((timeInSeconds % 1) * 1000);
-          
-          return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')},${milliseconds.toString().padStart(3, '0')}`;
-        };
-        
-        const startTimeFormatted = formatTime(startTime);
-        const endTimeFormatted = formatTime(startTime + duration);
-        
-        srtContent += `${index}\n${startTimeFormatted} --> ${endTimeFormatted}\n${trimmedSentence}\n\n`;
-        
-        startTime += duration;
-        index++;
+      if (process.env.WORD_TIMESTAMPS) {
+        try {
+          console.log('Found WORD_TIMESTAMPS environment variable');
+          wordTimestamps = JSON.parse(process.env.WORD_TIMESTAMPS);
+          console.log(`Parsed ${wordTimestamps.length} word timestamps for subtitle synchronization`);
+        } catch (timestampError) {
+          console.error('Error parsing word timestamps:', timestampError);
+          console.log('Will use fallback timing based on character count');
+        }
+      } else {
+        console.log('No word timestamps provided, using character-based timing');
       }
+      
+      // Generiere SRT-Inhalt mit unserer Helper-Funktion
+      const srtContent = generateSrtContent(subtitleText, {
+        maxCharsPerLine: 18,
+        charsPerSecond: 10,
+        wordTimestamps: wordTimestamps
+      });
       
       // Schreibe SRT-Datei
       fs.writeFileSync(srtFile, srtContent);
-      console.log(`Created SRT file with ${index-1} subtitle entries`);
-      
-      // Setze Positionsparameter je nach gewählter Position
-      let positionParam = '';
-      if (position === 'top') {
-        positionParam = ',MarginV=60';
-      } else if (position === 'middle') {
-        positionParam = ',MarginV=30';
-      }
+      console.log(`Created SRT file for subtitles`);
       
       // Erstelle neues Video mit Untertiteln
       const subtitledFile = path.join(OUTPUT_DIR, 'final_with_subtitles.mp4');
