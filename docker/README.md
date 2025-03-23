@@ -2,6 +2,16 @@
 
 Diese Dokumentation beschreibt das Docker-Setup für die Video-Verarbeitungs-Pipeline des Ad-Video-Generators. Dieses Docker-Image wird mit AWS Batch verwendet, um Videos zu verarbeiten, Voiceovers hinzuzufügen und Untertitel zu generieren.
 
+## ⚠️ WICHTIG: Plattform-Kompatibilität
+
+**Das Docker-Image MUSS mit expliziter Plattform-Angabe `--platform linux/amd64` gebaut werden!**
+
+```bash
+docker buildx build --platform linux/amd64 -t video-processor -f docker/Dockerfile .
+```
+
+Ohne diese Plattform-Angabe wird das Image für die lokale Architektur (z.B. Apple Silicon) gebaut und der AWS Batch-Job schlägt mit dem Fehler `CannotPullContainerError: image Manifest does not contain descriptor matching platform 'linux/amd64'` fehl.
+
 ## Architektur-Übersicht
 
 Die Verarbeitungspipeline verwendet:
@@ -39,6 +49,9 @@ Das Verarbeitungsskript (`process-video.js`) bietet:
 1. **Videosegmentierung und -verkettung**: Schneidet und verbindet Videosegmente
 2. **Voiceover-Integration**: Fügt Audiovoiceover zu Videos hinzu
 3. **Untertitelerstellung**: Generiert und fügt Untertitel basierend auf dem Voiceover-Text hinzu
+   - Limitiert auf 18 Zeichen pro Zeile für optimale Lesbarkeit
+   - Verwendet entweder präzise Wort-Zeitstempel oder eine feste Anzeigedauer von 2,5 Sekunden pro Untertitel
+   - Intelligente Worttrennung mit Bindestrich für extrem lange Wörter
 4. **Callback-Mechanismus**: Benachrichtigt die Anwendung über den Verarbeitungsfortschritt
 
 ## Docker-Image bauen und aktualisieren
