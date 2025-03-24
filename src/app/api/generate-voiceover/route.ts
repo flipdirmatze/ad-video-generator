@@ -165,6 +165,11 @@ export async function POST(request: Request) {
         console.log(`Received with-timestamps response with data`);
         console.log('Response structure:', Object.keys(responseData).join(', '));
         
+        // *** DEBUG LOGGING - VOLLE RESPONSE ***
+        console.log('RAW RESPONSE SAMPLE (first 2000 chars):');
+        console.log(JSON.stringify(responseData).substring(0, 2000));
+        console.log('END OF RAW RESPONSE SAMPLE');
+        
         // Die Audio-Daten kommen als Base64 in der JSON-Antwort
         if (responseData.audio_base64) {
           console.log('Found audio_base64 in response');
@@ -183,9 +188,8 @@ export async function POST(request: Request) {
         
         if (alignmentData) {
           // Log first to debug structure
-          console.log('Alignment data structure found:', Object.keys(alignmentData).join(', '));
-          console.log('Sample alignment data:', 
-            JSON.stringify(alignmentData).substring(0, 200) + '...');
+          console.log('*** FULL ALIGNMENT DATA STRUCTURE: ***');
+          console.log(JSON.stringify(alignmentData, null, 2).substring(0, 1000) + '...');
           
           // Im Alignment-Objekt haben wir character-level Timestamps
           // Wir müssen diese zu Wort-Timestamps konvertieren

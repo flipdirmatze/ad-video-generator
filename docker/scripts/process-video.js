@@ -927,6 +927,17 @@ async function generateFinalVideo() {
             // Prüfe, ob wir Wort-Zeitstempel für die Synchronisation haben
             let wordTimestamps = null;
             
+            // **** ENVIORNMENT VARS DEBUGGING ****
+            console.log('\n\n==== ENVIRONMENT VARS FOR TIMESTAMPS DEBUGGING ====');
+            console.log('WORD_TIMESTAMPS exists:', !!process.env.WORD_TIMESTAMPS);
+            console.log('WORD_TIMESTAMPS_PATH exists:', !!process.env.WORD_TIMESTAMPS_PATH);
+            
+            // Liste alle Umgebungsvariablen mit "TIME", "STAMP", "WORD" oder "VOICE" im Namen auf
+            const relevantVars = Object.keys(process.env)
+              .filter(key => key.includes('TIME') || key.includes('STAMP') || key.includes('WORD') || key.includes('VOICE'));
+            console.log('All relevant environment variables:', relevantVars);
+            console.log('==== END OF ENVIRONMENT VARS DEBUGGING ====\n\n');
+            
             // Versuche zuerst, die Zeitstempel aus der Umgebungsvariable zu laden
             if (process.env.WORD_TIMESTAMPS) {
               // Detaillierte Debug-Informationen
@@ -1142,6 +1153,17 @@ async function generateFinalVideo() {
     try {
       // Prüfe, ob wir Wort-Zeitstempel für die Synchronisation haben
       let wordTimestamps = null;
+      
+      // **** ENVIORNMENT VARS DEBUGGING ****
+      console.log('\n\n==== ENVIRONMENT VARS FOR TIMESTAMPS DEBUGGING ====');
+      console.log('WORD_TIMESTAMPS exists:', !!process.env.WORD_TIMESTAMPS);
+      console.log('WORD_TIMESTAMPS_PATH exists:', !!process.env.WORD_TIMESTAMPS_PATH);
+      
+      // Liste alle Umgebungsvariablen mit "TIME", "STAMP", "WORD" oder "VOICE" im Namen auf
+      const relevantVars = Object.keys(process.env)
+        .filter(key => key.includes('TIME') || key.includes('STAMP') || key.includes('WORD') || key.includes('VOICE'));
+      console.log('All relevant environment variables:', relevantVars);
+      console.log('==== END OF ENVIRONMENT VARS DEBUGGING ====\n\n');
       
       // Versuche zuerst, die Zeitstempel aus der Umgebungsvariable zu laden
       if (process.env.WORD_TIMESTAMPS) {

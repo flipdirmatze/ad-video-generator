@@ -203,9 +203,9 @@ export async function POST(request: Request) {
       const videoSegments = segments.map(segment => ({
         videoId: segment.videoId,
         url: getS3Url(segment.videoKey),
-        startTime: segment.startTime,
-        duration: segment.duration,
-        position: segment.position
+            startTime: segment.startTime,
+            duration: segment.duration,
+            position: segment.position
       }));
 
       // Verwende den ersten Videoclip als Eingabevideo für AWS Batch
@@ -313,6 +313,10 @@ export async function POST(request: Request) {
               if (voiceover.wordTimestamps && voiceover.wordTimestamps.length > 0) {
                 console.log(`Found ${voiceover.wordTimestamps.length} word timestamps for accurate subtitle synchronization`);
                 
+                // *** EXTREME DEBUG LOGGING ***
+                console.log('VOICEOVER OBJECT STRUCTURE:');
+                console.log(JSON.stringify(voiceover, null, 2).substring(0, 1000) + '...');
+                
                 // Detaillierte Debug-Ausgabe
                 console.log(`Type of wordTimestamps: ${typeof voiceover.wordTimestamps}`);
                 console.log(`Is array: ${Array.isArray(voiceover.wordTimestamps)}`);
@@ -325,6 +329,10 @@ export async function POST(request: Request) {
                 // Konvertiere zu JSON-String
                 const timestampsJson = JSON.stringify(voiceover.wordTimestamps);
                 console.log(`JSON string length: ${timestampsJson.length} characters`);
+                
+                // *** DEBUG: ORIGINAL TIMESTAMPS JSON SAMPLE ***
+                console.log('TIMESTAMPS JSON SAMPLE (first 500 chars):');
+                console.log(timestampsJson.substring(0, 500));
                 
                 // Prüfe auf Maximalgröße (AWS Batch Environment Variable Limit)
                 const MAX_ENV_SIZE = 30000; // 30 KB ist ein konservatives Limit für Umgebungsvariablen
@@ -421,7 +429,7 @@ export async function POST(request: Request) {
         jobId: batchResponse.jobId,
         outputPath: outputKey
       });
-      
+
       // Erfolgsantwort senden
       return NextResponse.json({
         success: true,
@@ -444,7 +452,7 @@ export async function POST(request: Request) {
     }
   } catch (error) {
     console.error('Error in video generation process:', error);
-    return NextResponse.json({
+    return NextResponse.json({ 
       error: 'Video generation failed',
       message: error instanceof Error ? error.message : 'Unknown error',
       details: error instanceof Error && error.stack ? error.stack : 'No stack trace available'
