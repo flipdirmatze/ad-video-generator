@@ -318,6 +318,29 @@ export async function POST(request: Request) {
               timestampsCount: voiceover.wordTimestamps ? voiceover.wordTimestamps.length : 0
             });
             
+            // DEBUG: Untersuche das Voiceover-Objekt genauer
+            console.log('VOICEOVER PROPERTIES:', Object.keys(voiceover));
+            console.log('VOICEOVER DOCUMENT STRUCTURE:');
+            try {
+              const voiceoverDoc = voiceover.toObject ? voiceover.toObject() : voiceover;
+              console.log(JSON.stringify(voiceoverDoc, null, 2).substring(0, 1000) + '...');
+              
+              console.log('DETAILED TIMESTAMP INFO:');
+              console.log('wordTimestamps exists:', 'wordTimestamps' in voiceoverDoc);
+              if ('wordTimestamps' in voiceoverDoc) {
+                console.log('wordTimestamps type:', typeof voiceoverDoc.wordTimestamps);
+                console.log('wordTimestamps is array:', Array.isArray(voiceoverDoc.wordTimestamps));
+                if (Array.isArray(voiceoverDoc.wordTimestamps)) {
+                  console.log('wordTimestamps length:', voiceoverDoc.wordTimestamps.length);
+                  if (voiceoverDoc.wordTimestamps.length > 0) {
+                    console.log('First timestamp:', JSON.stringify(voiceoverDoc.wordTimestamps[0]));
+                  }
+                }
+              }
+            } catch (debugError) {
+              console.error('Error during debug output:', debugError);
+            }
+            
             if (voiceover.path) {
               // Pass both the direct S3 URL and the file path for maximum compatibility
               additionalParams.VOICEOVER_URL = getS3Url(voiceover.path);

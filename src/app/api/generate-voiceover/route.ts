@@ -324,6 +324,24 @@ export async function POST(request: Request) {
           
           console.log(`Voiceover metadata saved to MongoDB. ID: ${voiceover._id}. Word timestamps count: ${wordTimestamps.length}`);
           
+          // CRITICAL TEST: Check if timestamps were properly saved to MongoDB
+          try {
+            const savedVoiceover = await Voiceover.findById(voiceoverId).lean();
+            console.log('CRITICAL TEST - Retrieved voiceover from DB:');
+            if (savedVoiceover) {
+              console.log('- Has wordTimestamps field:', !!(savedVoiceover as any).wordTimestamps);
+              console.log('- wordTimestamps is array:', Array.isArray((savedVoiceover as any).wordTimestamps));
+              console.log('- wordTimestamps length:', (savedVoiceover as any).wordTimestamps ? (savedVoiceover as any).wordTimestamps.length : 0);
+              if ((savedVoiceover as any).wordTimestamps && (savedVoiceover as any).wordTimestamps.length > 0) {
+                console.log('- First timestamp:', JSON.stringify((savedVoiceover as any).wordTimestamps[0]));
+              }
+            } else {
+              console.log('CRITICAL TEST - No voiceover found in database!');
+            }
+          } catch (testError) {
+            console.error('CRITICAL TEST ERROR:', testError);
+          }
+          
           // Beide URLs zurückgeben - dataUrl für Frontend-Kompatibilität und s3Url für die Verarbeitung
           return NextResponse.json({
             success: true,
