@@ -3,7 +3,9 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import dbConnect from '@/lib/mongoose';
 import ProjectModel from '@/models/Project';
+import UserModel from '@/models/User';
 import VideoModel from '@/models/Video';
+import Voiceover from '@/models/Voiceover';
 import { generateUniqueFileName, getS3Url } from '@/lib/storage';
 import { Types } from 'mongoose';
 import { NextRequest } from 'next/server';
@@ -289,15 +291,31 @@ export async function POST(request: Request) {
       if (voiceoverId) {
         try {
           console.log(`Finding voiceover with ID: ${voiceoverId}`);
-          // Hole die Voiceover-Datei aus der Datenbank
-          const voiceover = await mongoose.model('Voiceover').findById(voiceoverId);
+          
+          // Stelle sicher, dass die DB-Verbindung hergestellt ist
+          await dbConnect();
+          
+          // Prüfe, ob das Voiceover-Modell existiert
+          console.log('Verfügbare Mongoose-Modelle:', Object.keys(mongoose.models).join(', '));
+          if (!mongoose.models.Voiceover) {
+            console.error('Voiceover-Modell ist nicht registriert, importiere es explizit');
+            // Stelle sicher, dass wir das importierte Voiceover-Modell verwenden
+          }
+          
+          // Hole die Voiceover-Datei aus der Datenbank - direkt über das importierte Modell
+          console.log('Suche Voiceover mit ID:', voiceoverId);
+          const voiceover = await Voiceover.findById(voiceoverId);
+          
+          console.log('Voiceover-Abfrageergebnis:', voiceover ? 'gefunden' : 'nicht gefunden');
           
           if (voiceover) {
             console.log('Voiceover found:', {
               id: voiceover._id,
               name: voiceover.name,
               path: voiceover.path,
-              url: voiceover.url
+              url: voiceover.url,
+              hasTimestamps: voiceover.wordTimestamps && voiceover.wordTimestamps.length > 0,
+              timestampsCount: voiceover.wordTimestamps ? voiceover.wordTimestamps.length : 0
             });
             
             if (voiceover.path) {
