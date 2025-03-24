@@ -317,7 +317,7 @@ export async function POST(request: Request) {
             size: buffer.length,
             voiceId: selectedVoiceId, // Speichere die verwendete Stimmen-ID
             isPublic: false,
-            wordTimestamps: wordTimestamps.length > 0 ? wordTimestamps : undefined,
+            wordTimestamps: wordTimestamps.length > 0 ? wordTimestamps : [], // Use empty array instead of undefined
             createdAt: new Date(),
             updatedAt: new Date()
           })
