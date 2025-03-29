@@ -154,103 +154,77 @@ function formatTime(timeInSeconds) {
  * Erzeugt SRT-Untertitel aus dem gegebenen Text mit begrenzter Zeilenlänge
  * und synchronisiert sie mit Wort-Zeitstempeln, wenn verfügbar
  */
-function generateSrtContent(subtitleText, options = {}) {
-  console.log(`Generating subtitles for text (${subtitleText.length} chars)`);
-  
-  // Standardwerte für Optionen
-  const maxCharsPerLine = options.maxCharsPerLine || 18;
-  const wordTimestamps = options.wordTimestamps || null;
-  const wordSplitThreshold = Math.round(maxCharsPerLine * 1.5);
-  
-  // Versuche, Wort-Zeitstempel zu verwenden, wenn verfügbar
-  if (wordTimestamps && Array.isArray(wordTimestamps) && wordTimestamps.length > 0) {
-    console.log(`Using ${wordTimestamps.length} word timestamps for accurate subtitle timing`);
-    return generateSyncedSubtitles(subtitleText, wordTimestamps, maxCharsPerLine, wordSplitThreshold);
-  }
-  
-  // Wenn keine Zeitstempel verfügbar sind, verwende die vereinfachte Methode
-  console.log('No word timestamps available, using simplified fixed-duration subtitles');
-  
-  // Wir splitten den Text in Sätze
-  const sentences = subtitleText.match(/[^\.!\?]+[\.!\?]+/g) || [subtitleText];
-  
+function generateSrtContent(subtitleText, duration, wordTimestamps = null) {
+  const MAX_CHARS_PER_LINE = 18;
+  const charsPerSecond = 15; // Durchschnittliche Lesegeschwindigkeit
+
   let srtContent = '';
-  let index = 1;
-  let currentTime = 0;
-  
-  // Feste Einstellungen für die vereinfachte Methode
-  const fixedDurationPerSubtitle = 2.5; // 2.5 Sekunden pro Untertitel
-  
-  for (const sentence of sentences) {
-    // Entferne Whitespace
-    const trimmedSentence = sentence.trim();
-    if (!trimmedSentence) continue;
+  let srtIndex = 1;
+
+  if (wordTimestamps && wordTimestamps.length > 0) {
+    // Wir haben Wort-Timestamps zur Verfügung, verwenden wir diese für präzise Untertitel
+    console.log(`Generiere SRT mit ${wordTimestamps.length} Wort-Timestamps`);
     
-    // Teile den Satz in kurze Phrasen auf, die in die Zeile passen
-    const words = trimmedSentence.split(/\s+/);
-    let currentLine = '';
-    let phrases = [];
-    
-    for (let i = 0; i < words.length; i++) {
-      const word = words[i];
+    // Hier verarbeiten wir jeweils ein Wort pro Eintrag, um sicherzustellen, dass nur eine Zeile gleichzeitig erscheint
+    wordTimestamps.forEach((timestamp, index) => {
+      const { word, startTime, endTime } = timestamp;
       
-      // Wenn das Wort alleine schon extrem lang ist, teile es auf
-      if (word.length > wordSplitThreshold) {
-        // Füge die aktuelle Zeile hinzu, falls vorhanden
-        if (currentLine) {
-          phrases.push(currentLine);
-          currentLine = '';
-        }
-        
-        // Teile das extrem lange Wort in Teilstücke
-        let remainingWord = word;
-        while (remainingWord.length > wordSplitThreshold) {
-          const chunk = remainingWord.substring(0, wordSplitThreshold);
-          phrases.push(chunk + '-');
-          remainingWord = remainingWord.substring(wordSplitThreshold);
-        }
-        
-        // Letzten Teil behalten für die nächste Zeile, wenn übrig
-        if (remainingWord.length > 0) {
-          currentLine = remainingWord;
-        }
-        continue;
-      }
-      
-      // Teste, ob das aktuelle Wort noch in die Zeile passt
-      const lineWithWord = currentLine ? `${currentLine} ${word}` : word;
-      
-      if (lineWithWord.length <= maxCharsPerLine) {
-        // Wort passt in aktuelle Zeile
-        currentLine = lineWithWord;
-      } else {
-        // Wort passt nicht mehr - speichere aktuelle Zeile und beginne neue
-        if (currentLine) {
-          phrases.push(currentLine);
-        }
-        currentLine = word;
-      }
-      
-      // Wenn das letzte Wort, füge es noch hinzu
-      if (i === words.length - 1 && currentLine) {
-        phrases.push(currentLine);
-      }
-    }
-    
-    // Erstelle SRT-Einträge für jede Phrase mit fester Dauer
-    for (let i = 0; i < phrases.length; i++) {
-      const startTime = currentTime;
-      const endTime = startTime + fixedDurationPerSubtitle;
-      
+      // Formatiere die Start- und Endzeit
       const startTimeFormatted = formatTime(startTime);
       const endTimeFormatted = formatTime(endTime);
       
-      srtContent += `${index}\n${startTimeFormatted} --> ${endTimeFormatted}\n${phrases[i]}\n\n`;
-      index++;
-      currentTime = endTime; // Nächster Untertitel beginnt, wenn der aktuelle endet
-    }
+      // Erstelle den SRT-Eintrag für dieses einzelne Wort
+      srtContent += `${srtIndex}\n`;
+      srtContent += `${startTimeFormatted} --> ${endTimeFormatted}\n`;
+      srtContent += `${word}\n\n`;
+      
+      srtIndex++;
+    });
+  } else {
+    // Keine Timestamps vorhanden, verwenden wir zeichenbasierte Zeitschätzung
+    console.log('Keine Wort-Timestamps verfügbar, verwende zeichenbasierte Zeitschätzung');
+    
+    // In Sätze aufteilen
+    const sentences = subtitleText.match(/[^\.!\?]+[\.!\?]+/g) || [subtitleText];
+    
+    // Verarbeite jeden Satz einzeln
+    sentences.forEach(sentence => {
+      // Entferne führende und abschließende Leerzeichen
+      const trimmedSentence = sentence.trim();
+      
+      // Berechne die Anzeigedauer basierend auf der Zeichenanzahl
+      const charCount = trimmedSentence.length;
+      const sentenceDuration = charCount / charsPerSecond;
+      
+      // Teile den Satz in Wörter auf
+      const words = trimmedSentence.split(/\s+/);
+      
+      // Verarbeite jedes Wort als separaten Untertitel
+      let currentPosition = 0;
+      
+      words.forEach(word => {
+        // Berechne die Dauer dieses Wortes basierend auf der Zeichenanzahl
+        const wordCharCount = word.length;
+        const wordDuration = Math.max(0.3, wordCharCount / charsPerSecond); // Mindestens 0,3 Sekunden pro Wort
+        
+        const startTime = currentPosition;
+        const endTime = currentPosition + wordDuration;
+        
+        // Formatiere die Zeiten für SRT
+        const startTimeFormatted = formatTime(startTime);
+        const endTimeFormatted = formatTime(endTime);
+        
+        // Erstelle den SRT-Eintrag
+        srtContent += `${srtIndex}\n`;
+        srtContent += `${startTimeFormatted} --> ${endTimeFormatted}\n`;
+        srtContent += `${word}\n\n`;
+        
+        srtIndex++;
+        currentPosition += wordDuration;
+      });
+    });
   }
-  
+
   return srtContent;
 }
 
@@ -1046,11 +1020,7 @@ async function generateFinalVideo() {
             }
             
             // Generiere SRT-Inhalt mit unserer Helper-Funktion
-            const srtContent = generateSrtContent(subtitleText, {
-              maxCharsPerLine: 18,
-              charsPerSecond: 10,
-              wordTimestamps: wordTimestamps
-            });
+            const srtContent = generateSrtContent(subtitleText, 2.5, wordTimestamps);
             
             // Schreibe SRT-Datei
             fs.writeFileSync(srtFile, srtContent);
@@ -1273,11 +1243,7 @@ async function generateFinalVideo() {
       }
       
       // Generiere SRT-Inhalt mit unserer Helper-Funktion
-      const srtContent = generateSrtContent(subtitleText, {
-        maxCharsPerLine: 18,
-        charsPerSecond: 10,
-        wordTimestamps: wordTimestamps
-      });
+      const srtContent = generateSrtContent(subtitleText, 2.5, wordTimestamps);
       
       // Schreibe SRT-Datei
       fs.writeFileSync(srtFile, srtContent);
