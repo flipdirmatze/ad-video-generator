@@ -155,7 +155,7 @@ function formatTime(timeInSeconds) {
  * und synchronisiert sie mit Wort-Zeitstempeln, wenn verfügbar
  */
 function generateSrtContent(subtitleText, duration, wordTimestamps = null) {
-  const MAX_CHARS_PER_LINE = 18;
+  const MAX_CHARS_PER_LINE = 25; // Maximale Zeichen pro Zeile erhöht
   const charsPerSecond = 15; // Durchschnittliche Lesegeschwindigkeit
 
   let srtContent = '';
@@ -165,18 +165,65 @@ function generateSrtContent(subtitleText, duration, wordTimestamps = null) {
     // Wir haben Wort-Timestamps zur Verfügung, verwenden wir diese für präzise Untertitel
     console.log(`Generiere SRT mit ${wordTimestamps.length} Wort-Timestamps`);
     
-    // Hier verarbeiten wir jeweils ein Wort pro Eintrag, um sicherzustellen, dass nur eine Zeile gleichzeitig erscheint
-    wordTimestamps.forEach((timestamp, index) => {
+    // Gruppiere Wörter in Phrasen, die nicht länger als MAX_CHARS_PER_LINE sind
+    let phrases = [];
+    let currentPhrase = {
+      text: '',
+      startTime: wordTimestamps[0]?.startTime || 0,
+      endTime: 0,
+      words: []
+    };
+    
+    // Durchlaufe alle Wörter und bilde Phrasen
+    wordTimestamps.forEach(timestamp => {
       const { word, startTime, endTime } = timestamp;
       
-      // Formatiere die Start- und Endzeit
-      const startTimeFormatted = formatTime(startTime);
-      const endTimeFormatted = formatTime(endTime);
+      // Prüfe, ob das Wort in die aktuelle Zeile passt
+      const potentialText = currentPhrase.text 
+        ? `${currentPhrase.text} ${word}`
+        : word;
       
-      // Erstelle den SRT-Eintrag für dieses einzelne Wort
+      if (potentialText.length <= MAX_CHARS_PER_LINE) {
+        // Wort passt in aktuelle Phrase
+        currentPhrase.text = potentialText;
+        currentPhrase.endTime = endTime;
+        currentPhrase.words.push(timestamp);
+      } else {
+        // Wort passt nicht mehr, speichere aktuelle Phrase und beginne neue
+        if (currentPhrase.text) {
+          phrases.push(currentPhrase);
+        }
+        
+        // Beginne neue Phrase mit aktuellem Wort
+        currentPhrase = {
+          text: word,
+          startTime: startTime,
+          endTime: endTime,
+          words: [timestamp]
+        };
+      }
+    });
+    
+    // Füge letzte Phrase hinzu, wenn noch vorhanden
+    if (currentPhrase.text) {
+      phrases.push(currentPhrase);
+    }
+    
+    // Formatiere Phrasen als SRT
+    phrases.forEach((phrase, index) => {
+      // Mindestanzeigedauer für sehr kurze Phrasen (0.7 Sekunden)
+      if (phrase.endTime - phrase.startTime < 0.7) {
+        phrase.endTime = phrase.startTime + 0.7;
+      }
+      
+      // Formatierte Zeitangaben
+      const startTimeFormatted = formatTime(phrase.startTime);
+      const endTimeFormatted = formatTime(phrase.endTime);
+      
+      // Erstelle den SRT-Eintrag für diese Phrase
       srtContent += `${srtIndex}\n`;
       srtContent += `${startTimeFormatted} --> ${endTimeFormatted}\n`;
-      srtContent += `${word}\n\n`;
+      srtContent += `${phrase.text}\n\n`;
       
       srtIndex++;
     });
@@ -188,27 +235,52 @@ function generateSrtContent(subtitleText, duration, wordTimestamps = null) {
     const sentences = subtitleText.match(/[^\.!\?]+[\.!\?]+/g) || [subtitleText];
     
     // Verarbeite jeden Satz einzeln
+    let currentPosition = 0;
     sentences.forEach(sentence => {
       // Entferne führende und abschließende Leerzeichen
       const trimmedSentence = sentence.trim();
-      
-      // Berechne die Anzeigedauer basierend auf der Zeichenanzahl
-      const charCount = trimmedSentence.length;
-      const sentenceDuration = charCount / charsPerSecond;
+      if (!trimmedSentence) return;
       
       // Teile den Satz in Wörter auf
       const words = trimmedSentence.split(/\s+/);
       
-      // Verarbeite jedes Wort als separaten Untertitel
-      let currentPosition = 0;
+      // Gruppiere Wörter in Phrasen
+      let currentPhrase = '';
+      let phrases = [];
       
-      words.forEach(word => {
-        // Berechne die Dauer dieses Wortes basierend auf der Zeichenanzahl
-        const wordCharCount = word.length;
-        const wordDuration = Math.max(0.3, wordCharCount / charsPerSecond); // Mindestens 0,3 Sekunden pro Wort
+      for (let i = 0; i < words.length; i++) {
+        const word = words[i];
+        
+        // Prüfe, ob das Wort in die aktuelle Zeile passt
+        const potentialPhrase = currentPhrase 
+          ? `${currentPhrase} ${word}`
+          : word;
+        
+        if (potentialPhrase.length <= MAX_CHARS_PER_LINE) {
+          // Wort passt in aktuelle Phrase
+          currentPhrase = potentialPhrase;
+        } else {
+          // Wort passt nicht mehr, speichere aktuelle Phrase und beginne neue
+          if (currentPhrase) {
+            phrases.push(currentPhrase);
+          }
+          currentPhrase = word;
+        }
+        
+        // Wenn das letzte Wort, füge es noch hinzu
+        if (i === words.length - 1 && currentPhrase) {
+          phrases.push(currentPhrase);
+        }
+      }
+      
+      // Verarbeite jede Phrase als separaten Untertitel
+      phrases.forEach(phrase => {
+        // Berechne die Dauer dieser Phrase basierend auf der Zeichenanzahl
+        const charCount = phrase.length;
+        const phraseDuration = Math.max(0.7, charCount / charsPerSecond); // Mindestens 0.7 Sekunden pro Phrase
         
         const startTime = currentPosition;
-        const endTime = currentPosition + wordDuration;
+        const endTime = currentPosition + phraseDuration;
         
         // Formatiere die Zeiten für SRT
         const startTimeFormatted = formatTime(startTime);
@@ -217,10 +289,10 @@ function generateSrtContent(subtitleText, duration, wordTimestamps = null) {
         // Erstelle den SRT-Eintrag
         srtContent += `${srtIndex}\n`;
         srtContent += `${startTimeFormatted} --> ${endTimeFormatted}\n`;
-        srtContent += `${word}\n\n`;
+        srtContent += `${phrase}\n\n`;
         
         srtIndex++;
-        currentPosition += wordDuration;
+        currentPosition += phraseDuration;
       });
     });
   }
