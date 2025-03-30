@@ -1123,10 +1123,12 @@ async function generateFinalVideo() {
               forceStyleParam += `,BackColour=${backgroundColorFFmpeg}`;
             } else {
               console.log('Using transparent background for subtitles (no background)');
+              // Bei transparentem Hintergrund setzen wir eine schwarze Outline für bessere Lesbarkeit
+              forceStyleParam += `,Outline=2,OutlineColour=&H000000,BorderStyle=3`;
             }
             
             // Füge die restlichen Parameter hinzu
-            forceStyleParam += `,BorderStyle=${borderStyle}${positionParam}'`;
+            forceStyleParam += `,BorderStyle=${backgroundColor === '#00000000' ? '3' : borderStyle}${positionParam}'`;
             
             console.log(`Using FFmpeg subtitle filter: ${forceStyleParam}`);
             
@@ -1355,15 +1357,17 @@ async function generateFinalVideo() {
         forceStyleParam += `,BackColour=${backgroundColorFFmpeg}`;
       } else {
         console.log('Using transparent background for subtitles (no background)');
+        // Bei transparentem Hintergrund setzen wir eine schwarze Outline für bessere Lesbarkeit
+        forceStyleParam += `,Outline=2,OutlineColour=&H000000,BorderStyle=3`;
       }
       
       // Füge die restlichen Parameter hinzu
-      forceStyleParam += `,BorderStyle=${borderStyle}${positionParam}'`;
+      forceStyleParam += `,BorderStyle=${backgroundColor === '#00000000' ? '3' : borderStyle}${positionParam}'`;
       
       console.log(`Using FFmpeg subtitle filter: ${forceStyleParam}`);
       
       await runFFmpeg([
-        '-i', concatenatedFile,
+        '-i', finalFile,
         '-vf', forceStyleParam,
         '-c:a', 'copy',
         '-y',
