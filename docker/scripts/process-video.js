@@ -1121,14 +1121,16 @@ async function generateFinalVideo() {
             // Füge Hintergrundfarbe nur hinzu, wenn nicht transparent
             if (backgroundColor !== '#00000000') {
               forceStyleParam += `,BackColour=${backgroundColorFFmpeg}`;
+              // BorderStyle hier nur hinzufügen, wenn KEIN transparenter Hintergrund
+              forceStyleParam += `,BorderStyle=${borderStyle}`;
             } else {
               console.log('Using transparent background for subtitles (no background)');
-              // Bei transparentem Hintergrund setzen wir eine schwarze Outline für bessere Lesbarkeit
-              forceStyleParam += `,Outline=2,OutlineColour=&H000000,BorderStyle=3`;
+              // Bei transparentem Hintergrund setzen wir spezielle Outline-Parameter
+              forceStyleParam += `,OutlineColour=&H000000,Outline=2,BorderStyle=3,Shadow=1,ShadowColour=&H000000`;
             }
             
-            // Füge die restlichen Parameter hinzu
-            forceStyleParam += `,BorderStyle=${backgroundColor === '#00000000' ? '3' : borderStyle}${positionParam}'`;
+            // Füge Positionsparameter hinzu
+            forceStyleParam += `${positionParam}'`;
             
             console.log(`Using FFmpeg subtitle filter: ${forceStyleParam}`);
             
@@ -1355,14 +1357,16 @@ async function generateFinalVideo() {
       // Füge Hintergrundfarbe nur hinzu, wenn nicht transparent
       if (backgroundColor !== '#00000000') {
         forceStyleParam += `,BackColour=${backgroundColorFFmpeg}`;
+        // BorderStyle hier nur hinzufügen, wenn KEIN transparenter Hintergrund
+        forceStyleParam += `,BorderStyle=${borderStyle}`;
       } else {
         console.log('Using transparent background for subtitles (no background)');
-        // Bei transparentem Hintergrund setzen wir eine schwarze Outline für bessere Lesbarkeit
-        forceStyleParam += `,Outline=2,OutlineColour=&H000000,BorderStyle=3`;
+        // Bei transparentem Hintergrund setzen wir spezielle Outline-Parameter
+        forceStyleParam += `,OutlineColour=&H000000,Outline=2,BorderStyle=3,Shadow=1,ShadowColour=&H000000`;
       }
       
-      // Füge die restlichen Parameter hinzu
-      forceStyleParam += `,BorderStyle=${backgroundColor === '#00000000' ? '3' : borderStyle}${positionParam}'`;
+      // Füge Positionsparameter hinzu
+      forceStyleParam += `${positionParam}'`;
       
       console.log(`Using FFmpeg subtitle filter: ${forceStyleParam}`);
       
