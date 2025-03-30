@@ -278,12 +278,22 @@ export async function POST(request: Request) {
       // Set subtitle options if enabled
       if (addSubtitles && subtitleOptions) {
         console.log('Adding subtitle options to batch parameters');
+        console.log('SUBTITLE OPTIONS DEBUG:', {
+          fontName: subtitleOptions.fontName,
+          fontSize: subtitleOptions.fontSize,
+          primaryColor: subtitleOptions.primaryColor,
+          backgroundColor: subtitleOptions.backgroundColor,
+          transparentCheck: subtitleOptions.backgroundColor === '#00000000',
+          position: subtitleOptions.position,
+          borderStyle: subtitleOptions.borderStyle
+        });
         additionalParams.ADD_SUBTITLES = 'true';
         additionalParams.SUBTITLE_TEXT = voiceoverText || '';
         additionalParams.SUBTITLE_FONT_NAME = subtitleOptions.fontName || 'Arial';
         additionalParams.SUBTITLE_FONT_SIZE = subtitleOptions.fontSize || 24;
         additionalParams.SUBTITLE_PRIMARY_COLOR = subtitleOptions.primaryColor || '#FFFFFF';
-        additionalParams.SUBTITLE_BACKGROUND_COLOR = subtitleOptions.backgroundColor || '#80000000';
+        additionalParams.SUBTITLE_BACKGROUND_COLOR = subtitleOptions.backgroundColor || '#00000000';
+        additionalParams.SUBTITLE_BORDER_STYLE = subtitleOptions.borderStyle || 3;
         additionalParams.SUBTITLE_POSITION = subtitleOptions.position || 'bottom';
       }
 

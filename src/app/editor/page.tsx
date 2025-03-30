@@ -204,10 +204,10 @@ export default function EditorPage() {
     fontName: 'Arial',
     fontSize: 24,
     primaryColor: '#FFFFFF',
-    backgroundColor: '#80000000',
+    backgroundColor: '#00000000',
     borderStyle: 4,
     position: 'bottom',
-    transparentBackground: false
+    transparentBackground: true
   })
   
   // Content states

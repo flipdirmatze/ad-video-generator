@@ -1111,7 +1111,19 @@ async function generateFinalVideo() {
             
             // Debug-Ausgabe für transparente Hintergrundfarbe
             console.log(`DEBUG: backgroundColor = "${backgroundColor}", backgroundColorFFmpeg = "${backgroundColorFFmpeg}"`);
-            if (backgroundColor === '#00000000') {
+            console.log(`DEBUG: Full backgroundColor check: 
+              - backgroundColor === '#00000000': ${backgroundColor === '#00000000'}
+              - backgroundColor.includes('00000000'): ${backgroundColor.includes('00000000')}
+              - backgroundColor.toLowerCase().includes('00000000'): ${backgroundColor.toLowerCase().includes('00000000')}
+            `);
+            
+            // Verfeinerte Prüfung auf transparenten Hintergrund
+            const hasTransparentBg = 
+              backgroundColor === '#00000000' || 
+              backgroundColor.toLowerCase().includes('00000000') ||
+              backgroundColor === 'transparent';
+              
+            if (hasTransparentBg) {
               console.log('DEBUG: Transparenter Hintergrund (kein Hintergrund) wird verwendet');
             }
             
@@ -1119,7 +1131,7 @@ async function generateFinalVideo() {
             let forceStyleParam = `subtitles=${srtFile.replace(/\\/g, '/')}:force_style='FontName=${fontName},FontSize=${fontSize},PrimaryColour=${primaryColorFFmpeg}`;
             
             // Füge Hintergrundfarbe nur hinzu, wenn nicht transparent
-            if (backgroundColor !== '#00000000') {
+            if (!hasTransparentBg) {
               forceStyleParam += `,BackColour=${backgroundColorFFmpeg}`;
               // BorderStyle hier nur hinzufügen, wenn KEIN transparenter Hintergrund
               forceStyleParam += `,BorderStyle=${borderStyle}`;
@@ -1347,7 +1359,19 @@ async function generateFinalVideo() {
       
       // Debug-Ausgabe für transparente Hintergrundfarbe
       console.log(`DEBUG: backgroundColor = "${backgroundColor}", backgroundColorFFmpeg = "${backgroundColorFFmpeg}"`);
-      if (backgroundColor === '#00000000') {
+      console.log(`DEBUG: Full backgroundColor check: 
+        - backgroundColor === '#00000000': ${backgroundColor === '#00000000'}
+        - backgroundColor.includes('00000000'): ${backgroundColor.includes('00000000')}
+        - backgroundColor.toLowerCase().includes('00000000'): ${backgroundColor.toLowerCase().includes('00000000')}
+      `);
+      
+      // Verfeinerte Prüfung auf transparenten Hintergrund
+      const hasTransparentBg = 
+        backgroundColor === '#00000000' || 
+        backgroundColor.toLowerCase().includes('00000000') ||
+        backgroundColor === 'transparent';
+        
+      if (hasTransparentBg) {
         console.log('DEBUG: Transparenter Hintergrund (kein Hintergrund) wird verwendet');
       }
       
@@ -1355,7 +1379,7 @@ async function generateFinalVideo() {
       let forceStyleParam = `subtitles=${srtFile.replace(/\\/g, '/')}:force_style='FontName=${fontName},FontSize=${fontSize},PrimaryColour=${primaryColorFFmpeg}`;
       
       // Füge Hintergrundfarbe nur hinzu, wenn nicht transparent
-      if (backgroundColor !== '#00000000') {
+      if (!hasTransparentBg) {
         forceStyleParam += `,BackColour=${backgroundColorFFmpeg}`;
         // BorderStyle hier nur hinzufügen, wenn KEIN transparenter Hintergrund
         forceStyleParam += `,BorderStyle=${borderStyle}`;
