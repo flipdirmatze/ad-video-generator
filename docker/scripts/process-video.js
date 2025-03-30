@@ -155,17 +155,18 @@ function formatTime(timeInSeconds) {
  * und synchronisiert sie mit Wort-Zeitstempeln, wenn verfügbar
  */
 function generateSrtContent(subtitleText, duration, wordTimestamps = null) {
-  const MAX_CHARS_PER_LINE = 25; // Maximale Zeichen pro Zeile erhöht
+  const MAX_CHARS_PER_LINE = 32; // Optimale Zeichenlänge für gute Lesbarkeit
+  const MIN_DURATION = 0.8; // Minimale Dauer für einen Untertitel in Sekunden
   const charsPerSecond = 15; // Durchschnittliche Lesegeschwindigkeit
 
   let srtContent = '';
   let srtIndex = 1;
 
   if (wordTimestamps && wordTimestamps.length > 0) {
-    // Wir haben Wort-Timestamps zur Verfügung, verwenden wir diese für präzise Untertitel
+    // Präzise Untertitel mit Wort-Timestamps
     console.log(`Generiere SRT mit ${wordTimestamps.length} Wort-Timestamps`);
     
-    // Gruppiere Wörter in Phrasen, die nicht länger als MAX_CHARS_PER_LINE sind
+    // Wir gruppieren Wörter in sinnvolle Phrasen für bessere Lesbarkeit
     let phrases = [];
     let currentPhrase = {
       text: '',
@@ -174,20 +175,40 @@ function generateSrtContent(subtitleText, duration, wordTimestamps = null) {
       words: []
     };
     
-    // Durchlaufe alle Wörter und bilde Phrasen
-    wordTimestamps.forEach(timestamp => {
+    // Durchlaufe alle Wörter und bilde optimale Phrasen
+    wordTimestamps.forEach((timestamp, index) => {
       const { word, startTime, endTime } = timestamp;
+      
+      // Spezialfall: Satzzeichen wie Punkte, Fragezeichen, etc. führen zu einem Phrasenende
+      const isPunctuation = /^[.!?;:]$/.test(word);
+      const isEndOfStatement = word.endsWith('.') || word.endsWith('!') || word.endsWith('?') || word.endsWith(';');
       
       // Prüfe, ob das Wort in die aktuelle Zeile passt
       const potentialText = currentPhrase.text 
-        ? `${currentPhrase.text} ${word}`
+        ? `${currentPhrase.text} ${word}` 
         : word;
       
-      if (potentialText.length <= MAX_CHARS_PER_LINE) {
+      if (potentialText.length <= MAX_CHARS_PER_LINE && !isPunctuation) {
         // Wort passt in aktuelle Phrase
         currentPhrase.text = potentialText;
         currentPhrase.endTime = endTime;
         currentPhrase.words.push(timestamp);
+        
+        // Wenn dieses Wort ein Satzende markiert oder wir das Ende erreicht haben,
+        // schließen wir die aktuelle Phrase ab
+        if (isEndOfStatement || index === wordTimestamps.length - 1) {
+          if (currentPhrase.text) {
+            phrases.push(currentPhrase);
+          }
+          
+          // Starte eine neue Phrase für den nächsten Satz
+          currentPhrase = {
+            text: '',
+            startTime: index < wordTimestamps.length - 1 ? wordTimestamps[index + 1].startTime : endTime,
+            endTime: endTime,
+            words: []
+          };
+        }
       } else {
         // Wort passt nicht mehr, speichere aktuelle Phrase und beginne neue
         if (currentPhrase.text) {
@@ -209,11 +230,13 @@ function generateSrtContent(subtitleText, duration, wordTimestamps = null) {
       phrases.push(currentPhrase);
     }
     
-    // Formatiere Phrasen als SRT
+    // Formatiere Phrasen als SRT mit begrenzter Mindestdauer für bessere Lesbarkeit
     phrases.forEach((phrase, index) => {
-      // Mindestanzeigedauer für sehr kurze Phrasen (0.7 Sekunden)
-      if (phrase.endTime - phrase.startTime < 0.7) {
-        phrase.endTime = phrase.startTime + 0.7;
+      // Stelle sicher, dass jede Phrase mindestens MIN_DURATION lang angezeigt wird
+      if (phrase.endTime - phrase.startTime < MIN_DURATION) {
+        // Neue Endzeit berechnen, dabei Überlappungen mit der nächsten Phrase vermeiden
+        const nextStartTime = phrases[index + 1]?.startTime || (phrase.endTime + MIN_DURATION);
+        phrase.endTime = Math.min(phrase.startTime + MIN_DURATION, nextStartTime - 0.01);
       }
       
       // Formatierte Zeitangaben
@@ -227,6 +250,8 @@ function generateSrtContent(subtitleText, duration, wordTimestamps = null) {
       
       srtIndex++;
     });
+    
+    console.log(`Generierte ${phrases.length} optimierte Untertitel-Segmente`);
   } else {
     // Keine Timestamps vorhanden, verwenden wir zeichenbasierte Zeitschätzung
     console.log('Keine Wort-Timestamps verfügbar, verwende zeichenbasierte Zeitschaetzung');
@@ -277,7 +302,7 @@ function generateSrtContent(subtitleText, duration, wordTimestamps = null) {
       phrases.forEach(phrase => {
         // Berechne die Dauer dieser Phrase basierend auf der Zeichenanzahl
         const charCount = phrase.length;
-        const phraseDuration = Math.max(0.7, charCount / charsPerSecond); // Mindestens 0.7 Sekunden pro Phrase
+        const phraseDuration = Math.max(MIN_DURATION, charCount / charsPerSecond); // Mindestens MIN_DURATION Sekunden pro Phrase
         
         const startTime = currentPosition;
         const endTime = currentPosition + phraseDuration;
@@ -311,42 +336,45 @@ function convertSrtToAss(srtContent, fontName, fontSize, primaryColor, backgroun
   let primaryColorAss = primaryColor.replace('&H00', '&H');
   let backgroundColorAss = backgroundColor;
   
-  // ASS-Header erzeugen
+  // ASS-Header erzeugen mit höherer Auflösung für bessere Qualität
   let assContent = `[Script Info]
 ScriptType: v4.00+
-PlayResX: 1280
-PlayResY: 720
+PlayResX: 1920
+PlayResY: 1080
 ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 `;
 
-  // Style-Definition
-  // BorderStyle: 1=Outline+Shadow, 3=Box
-  // Für transparenten Hintergrund verwenden wir BorderStyle=1 (Outline+Shadow)
-  // Für Box-Hintergrund verwenden wir BorderStyle=3
-  // BackColour ist die Hintergrundfarbe
-  // OutlineColour ist die Farbe des Rahmens um den Text
-  // Format: A B G R (hexadezimal) für ASS-Farben
+  // Style-Definition für optimale Lesbarkeit
+  // Bei transparenten Hintergründen benötigen wir eine dickere, aber subtilere Outline
+  // und einen sanfteren Schatten für bessere Lesbarkeit auf allen Hintergründen
   
-  // Für transparenten Hintergrund:
-  // - Setzen wir BackColour auf &H00FFFFFF (komplett transparent)
-  // - Verwenden BorderStyle=1 (Outline+Shadow)
-  // - Erhöhen Outline und Shadow für bessere Lesbarkeit
+  // Bold-Parameter für bessere Lesbarkeit (1=true, 0=false)
+  let boldParam = 1;
   
-  let outlineSize = hasTransparentBg ? 3 : 1;
-  let shadowSize = hasTransparentBg ? 3 : 1;
-  let assBackColor = hasTransparentBg ? "&H00FFFFFF" : backgroundColorAss;
-  let assBorderStyle = hasTransparentBg ? 1 : 3;  // 1=Outline, 3=Box
+  // Optimierte Parameter für transparenten Hintergrund
+  let outlineSize = hasTransparentBg ? 2.2 : 0.5;  // Dickere Outline bei transparentem Hintergrund
+  let shadowSize = hasTransparentBg ? 1.2 : 0.2;   // Leichter Schatten bei transparentem Hintergrund
+  let assBackColor = hasTransparentBg ? "&H00FFFFFF" : backgroundColorAss; // Vollständig transparent
+  let assBorderStyle = 1; // Immer Outline+Shadow für konsistentes Aussehen
   
-  assContent += `Style: Default,${fontName},${fontSize},${primaryColorAss},${primaryColorAss},&H000000,${assBackColor},0,0,0,0,100,100,0,0,${assBorderStyle},${outlineSize},${shadowSize},2,20,20,20,1
+  // MarginV - Abstand vom unteren/oberen Rand in Pixeln
+  // Höherer Wert für mehr Abstand bei "bottom" position
+  let marginV = 30;
+  
+  // Alignment: 2=bottom, 8=top, 5=middle; wir verwenden immer bottom für bessere Lesbarkeit
+  let alignmentValue = 2;
+  
+  assContent += `Style: Default,${fontName},${fontSize},${primaryColorAss},${primaryColorAss},&H000000,${assBackColor},${boldParam},0,0,0,100,100,0,0,${assBorderStyle},${outlineSize},${shadowSize},${alignmentValue},20,20,${marginV},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 `;
 
-  // SRT-Parser 
+  // SRT-Parser mit verbesserter Zeitgenauigkeit
+  // Wir behalten die exakten Zeitstempel bei, ohne Verschiebung
   const srtLines = srtContent.split("\n");
   let lineIndex = 0;
   let eventId = 1;
@@ -377,7 +405,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
       continue;
     }
     
-    // Konvertiere SRT-Zeitformat zu ASS-Zeitformat (Komma zu Punkt)
+    // Konvertiere SRT-Zeitformat zu ASS-Zeitformat (Komma zu Punkt) ohne Verschiebung
     const startTime = timeMatch[1].replace(',', '.');
     const endTime = timeMatch[2].replace(',', '.');
     
