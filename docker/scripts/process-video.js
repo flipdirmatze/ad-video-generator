@@ -229,7 +229,7 @@ function generateSrtContent(subtitleText, duration, wordTimestamps = null) {
     });
   } else {
     // Keine Timestamps vorhanden, verwenden wir zeichenbasierte Zeitschätzung
-    console.log('Keine Wort-Timestamps verfügbar, verwende zeichenbasierte Zeitschätzung');
+    console.log('Keine Wort-Timestamps verfügbar, verwende zeichenbasierte Zeitschaetzung');
     
     // In Sätze aufteilen
     const sentences = subtitleText.match(/[^\.!\?]+[\.!\?]+/g) || [subtitleText];
@@ -1109,7 +1109,24 @@ async function generateFinalVideo() {
             // Erstelle neues Video mit Untertiteln
             const subtitledFile = path.join(OUTPUT_DIR, 'final_with_subtitles.mp4');
             
-            const forceStyleParam = `subtitles=${srtFile.replace(/\\/g, '/')}:force_style='FontName=${fontName},FontSize=${fontSize},PrimaryColour=${primaryColorFFmpeg},BackColour=${backgroundColorFFmpeg},BorderStyle=${borderStyle}${positionParam}'`;
+            // Debug-Ausgabe für transparente Hintergrundfarbe
+            console.log(`DEBUG: backgroundColor = "${backgroundColor}", backgroundColorFFmpeg = "${backgroundColorFFmpeg}"`);
+            if (backgroundColor === '#00000000') {
+              console.log('DEBUG: Transparenter Hintergrund (kein Hintergrund) wird verwendet');
+            }
+            
+            // Erstelle den FFmpeg-Kommando-String mit korrekter Behandlung transparenter Hintergründe
+            let forceStyleParam = `subtitles=${srtFile.replace(/\\/g, '/')}:force_style='FontName=${fontName},FontSize=${fontSize},PrimaryColour=${primaryColorFFmpeg}`;
+            
+            // Füge Hintergrundfarbe nur hinzu, wenn nicht transparent
+            if (backgroundColor !== '#00000000') {
+              forceStyleParam += `,BackColour=${backgroundColorFFmpeg}`;
+            } else {
+              console.log('Using transparent background for subtitles (no background)');
+            }
+            
+            // Füge die restlichen Parameter hinzu
+            forceStyleParam += `,BorderStyle=${borderStyle}${positionParam}'`;
             
             console.log(`Using FFmpeg subtitle filter: ${forceStyleParam}`);
             
@@ -1324,7 +1341,24 @@ async function generateFinalVideo() {
       // Erstelle neues Video mit Untertiteln
       const subtitledFile = path.join(OUTPUT_DIR, 'final_with_subtitles.mp4');
       
-      const forceStyleParam = `subtitles=${srtFile.replace(/\\/g, '/')}:force_style='FontName=${fontName},FontSize=${fontSize},PrimaryColour=${primaryColorFFmpeg},BackColour=${backgroundColorFFmpeg},BorderStyle=${borderStyle}${positionParam}'`;
+      // Debug-Ausgabe für transparente Hintergrundfarbe
+      console.log(`DEBUG: backgroundColor = "${backgroundColor}", backgroundColorFFmpeg = "${backgroundColorFFmpeg}"`);
+      if (backgroundColor === '#00000000') {
+        console.log('DEBUG: Transparenter Hintergrund (kein Hintergrund) wird verwendet');
+      }
+      
+      // Erstelle den FFmpeg-Kommando-String mit korrekter Behandlung transparenter Hintergründe
+      let forceStyleParam = `subtitles=${srtFile.replace(/\\/g, '/')}:force_style='FontName=${fontName},FontSize=${fontSize},PrimaryColour=${primaryColorFFmpeg}`;
+      
+      // Füge Hintergrundfarbe nur hinzu, wenn nicht transparent
+      if (backgroundColor !== '#00000000') {
+        forceStyleParam += `,BackColour=${backgroundColorFFmpeg}`;
+      } else {
+        console.log('Using transparent background for subtitles (no background)');
+      }
+      
+      // Füge die restlichen Parameter hinzu
+      forceStyleParam += `,BorderStyle=${borderStyle}${positionParam}'`;
       
       console.log(`Using FFmpeg subtitle filter: ${forceStyleParam}`);
       
