@@ -301,6 +301,105 @@ function generateSrtContent(subtitleText, duration, wordTimestamps = null) {
 }
 
 /**
+ * Konvertiert SRT-Untertitel in das ASS-Format mit benutzerdefinierten Styles
+ * ASS bietet bessere Kontrolle für transparente Hintergründe
+ */
+function convertSrtToAss(srtContent, fontName, fontSize, primaryColor, backgroundColor, borderStyle, hasTransparentBg) {
+  console.log('Converting SRT to ASS format for better transparency control');
+  
+  // Entferne das &H-Präfix für die ASS-Datei
+  let primaryColorAss = primaryColor.replace('&H00', '&H');
+  let backgroundColorAss = backgroundColor;
+  
+  // ASS-Header erzeugen
+  let assContent = `[Script Info]
+ScriptType: v4.00+
+PlayResX: 1280
+PlayResY: 720
+ScaledBorderAndShadow: yes
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+`;
+
+  // Style-Definition
+  // BorderStyle: 1=Outline+Shadow, 3=Box
+  // Für transparenten Hintergrund verwenden wir BorderStyle=1 (Outline+Shadow)
+  // Für Box-Hintergrund verwenden wir BorderStyle=3
+  // BackColour ist die Hintergrundfarbe
+  // OutlineColour ist die Farbe des Rahmens um den Text
+  // Format: A B G R (hexadezimal) für ASS-Farben
+  
+  // Für transparenten Hintergrund:
+  // - Setzen wir BackColour auf &H00FFFFFF (komplett transparent)
+  // - Verwenden BorderStyle=1 (Outline+Shadow)
+  // - Erhöhen Outline und Shadow für bessere Lesbarkeit
+  
+  let outlineSize = hasTransparentBg ? 3 : 1;
+  let shadowSize = hasTransparentBg ? 3 : 1;
+  let assBackColor = hasTransparentBg ? "&H00FFFFFF" : backgroundColorAss;
+  let assBorderStyle = hasTransparentBg ? 1 : 3;  // 1=Outline, 3=Box
+  
+  assContent += `Style: Default,${fontName},${fontSize},${primaryColorAss},${primaryColorAss},&H000000,${assBackColor},0,0,0,0,100,100,0,0,${assBorderStyle},${outlineSize},${shadowSize},2,20,20,20,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+`;
+
+  // SRT-Parser 
+  const srtLines = srtContent.split("\n");
+  let lineIndex = 0;
+  let eventId = 1;
+  
+  while (lineIndex < srtLines.length) {
+    // Überspringe leere Zeilen
+    if (!srtLines[lineIndex].trim()) {
+      lineIndex++;
+      continue;
+    }
+    
+    // Wir erwarten, dass jeder Eintrag mit einer Nummer beginnt
+    if (!/^\d+$/.test(srtLines[lineIndex].trim())) {
+      lineIndex++;
+      continue;
+    }
+    
+    lineIndex++; // Zur Zeitstempelzeile
+    
+    if (lineIndex >= srtLines.length) break;
+    
+    // Format: 00:00:00,000 --> 00:00:00,000
+    const timeLine = srtLines[lineIndex].trim();
+    const timeMatch = timeLine.match(/(\d+:\d+:\d+,\d+)\s+-->\s+(\d+:\d+:\d+,\d+)/);
+    
+    if (!timeMatch) {
+      lineIndex++;
+      continue;
+    }
+    
+    // Konvertiere SRT-Zeitformat zu ASS-Zeitformat (Komma zu Punkt)
+    const startTime = timeMatch[1].replace(',', '.');
+    const endTime = timeMatch[2].replace(',', '.');
+    
+    lineIndex++; // Zur Textzeile
+    
+    let text = "";
+    // Lese alle Textzeilen bis zur nächsten leeren Zeile
+    while (lineIndex < srtLines.length && srtLines[lineIndex].trim() !== "") {
+      text += (text ? "\\N" : "") + srtLines[lineIndex].trim();
+      lineIndex++;
+    }
+    
+    // ASS-Ereigniszeile erzeugen
+    assContent += `Dialogue: 0,${startTime},${endTime},Default,,0,0,0,,${text}\n`;
+    
+    eventId++;
+  }
+  
+  return assContent;
+}
+
+/**
  * Generiert synchronisierte Untertitel mit ElevenLabs Wort-Zeitstempeln
  */
 function generateSyncedSubtitles(subtitleText, wordTimestamps, maxCharsPerLine, wordSplitThreshold) {
@@ -415,7 +514,6 @@ function generateSyncedSubtitles(subtitleText, wordTimestamps, maxCharsPerLine, 
     srtContent += `${index + 1}\n${startTimeFormatted} --> ${endTimeFormatted}\n${phrase.text}\n\n`;
   });
   
-  console.log(`Created ${phrases.length} synchronized subtitle entries`);
   return srtContent;
 }
 
@@ -926,7 +1024,7 @@ async function generateFinalVideo() {
           throw new Error(`Final file with voiceover is empty or does not exist: ${finalFile}`);
         }
         
-        // 7. Wenn Untertitel erwünscht sind und ein Text vorhanden ist, füge sie hinzu
+        // 7. Wenn Untertitel erwünscht sind, aber kein Voiceover vorhanden ist
         if (ADD_SUBTITLES && (SUBTITLE_TEXT || TEMPLATE_DATA.voiceoverText)) {
           console.log('Adding subtitles to video...');
           
@@ -1091,77 +1189,41 @@ async function generateFinalVideo() {
               console.log('No word timestamps provided, using character-based timing');
             }
             
-            // Generiere SRT-Inhalt mit unserer Helper-Funktion
+            // Generiere SRT-Inhalt
             const srtContent = generateSrtContent(subtitleText, 2.5, wordTimestamps);
             
             // Schreibe SRT-Datei
             fs.writeFileSync(srtFile, srtContent);
             console.log(`Created SRT file for subtitles`);
             
-            // Setze Positionsparameter je nach gewählter Position
-            let positionParam = '';
-            if (position === 'top') {
-              positionParam = ',MarginV=60';
-            } else if (position === 'middle') {
-              positionParam = ',MarginV=30';
-            }
+            // Konvertiere SRT zu ASS für bessere Transparenzkontrolle
+            const assFile = path.join(TEMP_DIR, 'subtitles.ass');
+            const assContent = convertSrtToAss(
+              srtContent, 
+              fontName, 
+              fontSize, 
+              primaryColorFFmpeg, 
+              backgroundColorFFmpeg, 
+              borderStyle,
+              backgroundColor === '#00000000' || backgroundColor.toLowerCase().includes('00000000') || backgroundColor === 'transparent'
+            );
+            fs.writeFileSync(assFile, assContent);
+            console.log(`Converted SRT to ASS format for better transparency support`);
             
-            // Erstelle neues Video mit Untertiteln
+            // Erstelle neues Video mit ASS-Untertiteln
             const subtitledFile = path.join(OUTPUT_DIR, 'final_with_subtitles.mp4');
             
-            // Debug-Ausgabe für transparente Hintergrundfarbe
-            console.log(`DEBUG: backgroundColor = "${backgroundColor}", backgroundColorFFmpeg = "${backgroundColorFFmpeg}"`);
-            console.log(`DEBUG: Full backgroundColor check: 
-              - backgroundColor === '#00000000': ${backgroundColor === '#00000000'}
-              - backgroundColor.includes('00000000'): ${backgroundColor.includes('00000000')}
-              - backgroundColor.toLowerCase().includes('00000000'): ${backgroundColor.toLowerCase().includes('00000000')}
-            `);
+            console.log(`Using ASS subtitles for better transparency control`);
             
-            // Verfeinerte Prüfung auf transparenten Hintergrund
-            const hasTransparentBg = 
-              backgroundColor === '#00000000' || 
-              backgroundColor.toLowerCase().includes('00000000') ||
-              backgroundColor === 'transparent';
-              
-            if (hasTransparentBg) {
-              console.log('DEBUG: Transparenter Hintergrund (kein Hintergrund) wird verwendet');
-            }
-            
-            // Erstelle den FFmpeg-Kommando-String mit korrekter Behandlung transparenter Hintergründe
-            let forceStyleParam = `subtitles=${srtFile.replace(/\\/g, '/')}:force_style='FontName=${fontName},FontSize=${fontSize},PrimaryColour=${primaryColorFFmpeg}`;
-            
-            // Füge Hintergrundfarbe nur hinzu, wenn nicht transparent
-            if (!hasTransparentBg) {
-              forceStyleParam += `,BackColour=${backgroundColorFFmpeg}`;
-              // BorderStyle hier nur hinzufügen, wenn KEIN transparenter Hintergrund
-              forceStyleParam += `,BorderStyle=${borderStyle}`;
-            } else {
-              console.log('Using transparent background for subtitles (no background)');
-              // Bei transparentem Hintergrund setzen wir spezielle Outline-Parameter
-              // Erhöhe die Outline und Schatten-Werte für bessere Sichtbarkeit
-              forceStyleParam += `,OutlineColour=&H000000,Outline=3,BorderStyle=3,Shadow=2,ShadowColour=&H000000`;
-            }
-            
-            // Füge Positionsparameter hinzu
-            forceStyleParam += `${positionParam}'`;
-            
-            console.log(`Using FFmpeg subtitle filter: ${forceStyleParam}`);
-            
+            // Verwende ass-Filter anstelle von subtitles-Filter für ASS-Dateien
             await runFFmpeg([
               '-i', finalFile,
-              '-filter_complex', forceStyleParam,
+              '-vf', `ass=${assFile.replace(/\\/g, '/')}`,
               '-c:v', 'libx264',
               '-c:a', 'copy',
               '-y',
               subtitledFile
             ]);
-            
-            console.log('Successfully added subtitles to video');
-            
-            // Verify the subtitled file exists and has content
-            if (!fs.existsSync(subtitledFile) || fs.statSync(subtitledFile).size === 0) {
-              throw new Error(`Final file with subtitles is empty or does not exist: ${subtitledFile}`);
-            }
             
             return subtitledFile;
           } catch (subtitleError) {
@@ -1349,69 +1411,41 @@ async function generateFinalVideo() {
         console.log('No word timestamps provided, using character-based timing');
       }
       
-      // Generiere SRT-Inhalt mit unserer Helper-Funktion
+      // Generiere SRT-Inhalt
       const srtContent = generateSrtContent(subtitleText, 2.5, wordTimestamps);
       
       // Schreibe SRT-Datei
       fs.writeFileSync(srtFile, srtContent);
       console.log(`Created SRT file for subtitles`);
       
-      // Erstelle neues Video mit Untertiteln
+      // Konvertiere SRT zu ASS für bessere Transparenzkontrolle
+      const assFile = path.join(TEMP_DIR, 'subtitles.ass');
+      const assContent = convertSrtToAss(
+        srtContent, 
+        fontName, 
+        fontSize, 
+        primaryColorFFmpeg, 
+        backgroundColorFFmpeg, 
+        borderStyle,
+        backgroundColor === '#00000000' || backgroundColor.toLowerCase().includes('00000000') || backgroundColor === 'transparent'
+      );
+      fs.writeFileSync(assFile, assContent);
+      console.log(`Converted SRT to ASS format for better transparency support`);
+      
+      // Erstelle neues Video mit ASS-Untertiteln
       const subtitledFile = path.join(OUTPUT_DIR, 'final_with_subtitles.mp4');
       
-      // Debug-Ausgabe für transparente Hintergrundfarbe
-      console.log(`DEBUG: backgroundColor = "${backgroundColor}", backgroundColorFFmpeg = "${backgroundColorFFmpeg}"`);
-      console.log(`DEBUG: Full backgroundColor check: 
-        - backgroundColor === '#00000000': ${backgroundColor === '#00000000'}
-        - backgroundColor.includes('00000000'): ${backgroundColor.includes('00000000')}
-        - backgroundColor.toLowerCase().includes('00000000'): ${backgroundColor.toLowerCase().includes('00000000')}
-      `);
+      console.log(`Using ASS subtitles for better transparency control`);
       
-      // Verfeinerte Prüfung auf transparenten Hintergrund
-      const hasTransparentBg = 
-        backgroundColor === '#00000000' || 
-        backgroundColor.toLowerCase().includes('00000000') ||
-        backgroundColor === 'transparent';
-        
-      if (hasTransparentBg) {
-        console.log('DEBUG: Transparenter Hintergrund (kein Hintergrund) wird verwendet');
-      }
-      
-      // Erstelle den FFmpeg-Kommando-String mit korrekter Behandlung transparenter Hintergründe
-      let forceStyleParam = `subtitles=${srtFile.replace(/\\/g, '/')}:force_style='FontName=${fontName},FontSize=${fontSize},PrimaryColour=${primaryColorFFmpeg}`;
-      
-      // Füge Hintergrundfarbe nur hinzu, wenn nicht transparent
-      if (!hasTransparentBg) {
-        forceStyleParam += `,BackColour=${backgroundColorFFmpeg}`;
-        // BorderStyle hier nur hinzufügen, wenn KEIN transparenter Hintergrund
-        forceStyleParam += `,BorderStyle=${borderStyle}`;
-      } else {
-        console.log('Using transparent background for subtitles (no background)');
-        // Bei transparentem Hintergrund setzen wir spezielle Outline-Parameter
-        // Erhöhe die Outline und Schatten-Werte für bessere Sichtbarkeit
-        forceStyleParam += `,OutlineColour=&H000000,Outline=3,BorderStyle=3,Shadow=2,ShadowColour=&H000000`;
-      }
-      
-      // Füge Positionsparameter hinzu
-      forceStyleParam += `${positionParam}'`;
-      
-      console.log(`Using FFmpeg subtitle filter: ${forceStyleParam}`);
-      
+      // Verwende ass-Filter anstelle von subtitles-Filter für ASS-Dateien
       await runFFmpeg([
         '-i', finalFile,
-        '-filter_complex', forceStyleParam,
+        '-vf', `ass=${assFile.replace(/\\/g, '/')}`,
         '-c:v', 'libx264',
         '-c:a', 'copy',
         '-y',
         subtitledFile
       ]);
-      
-      console.log('Successfully added subtitles to video');
-      
-      // Verify the subtitled file exists and has content
-      if (!fs.existsSync(subtitledFile) || fs.statSync(subtitledFile).size === 0) {
-        throw new Error(`Final file with subtitles is empty or does not exist: ${subtitledFile}`);
-      }
       
       return subtitledFile;
     } catch (subtitleError) {
