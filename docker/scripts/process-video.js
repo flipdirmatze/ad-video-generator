@@ -155,188 +155,146 @@ function formatTime(timeInSeconds) {
  * und synchronisiert sie mit Wort-Zeitstempeln, wenn verfügbar
  */
 function generateSrtContent(subtitleText, duration, wordTimestamps = null) {
-  // Maximale Zeichenlänge pro Zeile erhöht für bessere Lesbarkeit
+  console.log(`Generating subtitles with precise timestamps`);
+  console.log(`Have word timestamps: ${wordTimestamps ? 'YES' : 'NO'}, count: ${wordTimestamps ? wordTimestamps.length : 0}`);
+  
+  // Maximale Zeichenlänge pro Zeile
   const MAX_CHARS_PER_LINE = 40;
   // Minimale Dauer für einen Untertitel in Sekunden
-  const MIN_DURATION = 0.8;
-  // Durchschnittliche Lesegeschwindigkeit
-  const charsPerSecond = 15;
-
-  console.log(`Generating subtitles with ${wordTimestamps ? wordTimestamps.length : 0} word timestamps`);
-
+  const MIN_DURATION = 0.7;
+  
   let srtContent = '';
   let srtIndex = 1;
-
+  
   // Wenn Zeitstempel vorhanden sind, verwende diese für präzise Synchronisation
   if (wordTimestamps && wordTimestamps.length > 0) {
     console.log(`Using ${wordTimestamps.length} word timestamps for precise subtitle synchronization`);
     
-    // Überprüfe die Struktur der ersten paar Zeitstempel für bessere Diagnose
-    if (wordTimestamps.length > 0) {
-      console.log("Sample timestamps structure:");
-      console.log(JSON.stringify(wordTimestamps.slice(0, 3), null, 2));
-    }
+    // Debug: Zeige die ersten paar Timestamps an
+    console.log('First few word timestamps:');
+    wordTimestamps.slice(0, Math.min(5, wordTimestamps.length)).forEach((ts, i) => {
+      console.log(`  ${i+1}: "${ts.word}" - ${ts.startTime.toFixed(3)}s to ${ts.endTime.toFixed(3)}s`);
+    });
     
-    // WICHTIG: Wir müssen sicherstellen, dass jedes Wort seinen eigenen Zeitstempel behält
-    // Wir sammeln die Wörter je nach maximaler Zeilenlänge, aber behalten die exakten Zeitstempel bei
-    
-    let currentLine = "";
-    let currentLineWords = [];
+    // Einfacher Text-Split Ansatz - direkt Zeilen bilden
+    let words = [];
+    let currentLine = '';
+    let currentStartTime = 0;
+    let currentEndTime = 0;
     let lines = [];
     
-    // Durchlaufe alle Wort-Zeitstempel und bilde optimale Zeilen
     for (let i = 0; i < wordTimestamps.length; i++) {
-      const timestamp = wordTimestamps[i];
-      const { word, startTime, endTime } = timestamp;
+      const { word, startTime, endTime } = wordTimestamps[i];
       
-      // Prüfe, ob dieses Wort die aktuelle Zeile beenden würde (Punkt, Ausrufezeichen, etc.)
-      const isEndOfSentence = /[.!?;:]$/.test(word);
+      // Setze Start-Zeit beim ersten Wort einer neuen Zeile
+      if (currentLine === '') {
+        currentStartTime = startTime;
+      }
+      
+      // Setze End-Zeit beim jedem Wort (aktualisiert sich fortlaufend)
+      currentEndTime = endTime;
       
       // Prüfe, ob das Wort in die aktuelle Zeile passt
-      const potentialLine = currentLine ? `${currentLine} ${word}` : word;
-      
-      if (potentialLine.length <= MAX_CHARS_PER_LINE) {
-        // Wort passt in aktuelle Zeile, füge es hinzu
-        currentLine = potentialLine;
-        currentLineWords.push(timestamp);
-        
-        // Wenn es ein Satzende ist oder wir das letzte Wort erreicht haben, beende die aktuelle Zeile
-        if (isEndOfSentence || i === wordTimestamps.length - 1) {
-          if (currentLineWords.length > 0) {
-            lines.push({
-              text: currentLine,
-              startTime: currentLineWords[0].startTime,
-              endTime: currentLineWords[currentLineWords.length - 1].endTime
-            });
-            
-            // Beginne eine neue Zeile
-            currentLine = "";
-            currentLineWords = [];
-          }
-        }
+      if ((currentLine + ' ' + word).trim().length <= MAX_CHARS_PER_LINE) {
+        // Wort passt in die Zeile - füge es hinzu
+        currentLine = (currentLine + ' ' + word).trim();
+        words.push(word);
       } else {
-        // Wort passt nicht mehr in aktuelle Zeile, beende die Zeile und beginne eine neue
-        if (currentLineWords.length > 0) {
+        // Zeile ist voll - speichere sie und beginne eine neue
+        if (currentLine) {
           lines.push({
             text: currentLine,
-            startTime: currentLineWords[0].startTime,
-            endTime: currentLineWords[currentLineWords.length - 1].endTime
+            startTime: currentStartTime,
+            endTime: currentEndTime
           });
         }
         
-        // Beginne eine neue Zeile mit diesem Wort
+        // Beginne neue Zeile mit aktuellem Wort
         currentLine = word;
-        currentLineWords = [timestamp];
-        
-        // Wenn es das letzte Wort ist, füge es direkt als eigene Zeile hinzu
-        if (i === wordTimestamps.length - 1) {
+        currentStartTime = startTime;
+        currentEndTime = endTime;
+        words = [word];
+      }
+      
+      // Prüfe, ob das Wort ein Satzende bezeichnet oder ob es das letzte Wort ist
+      const isEndOfSentence = /[.!?]$/.test(word);
+      const isLastWord = i === wordTimestamps.length - 1;
+      
+      if (isEndOfSentence || isLastWord) {
+        // Speichere die aktuelle Zeile, wenn wir am Ende eines Satzes oder des Textes sind
+        if (currentLine) {
           lines.push({
-            text: word,
-            startTime: startTime,
-            endTime: endTime
+            text: currentLine,
+            startTime: currentStartTime,
+            endTime: currentEndTime
           });
         }
+        
+        // Beginne mit einer neuen Zeile
+        currentLine = '';
       }
     }
     
-    console.log(`Created ${lines.length} subtitle lines with precise timestamps`);
+    console.log(`Created ${lines.length} subtitle lines`);
     
-    // Stelle sicher, dass die Zeitstempel korrekt sind und keine sehr kurzen Untertitel erzeugt werden
+    // Jetzt formatiere die Linien als SRT
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       
       // Stelle sicher, dass jeder Untertitel eine Mindestdauer hat
       let displayDuration = line.endTime - line.startTime;
       if (displayDuration < MIN_DURATION) {
-        // Berechne eine neue Endzeit, aber vermeide Überlappungen mit dem nächsten Untertitel
         const nextStartTime = (i < lines.length - 1) ? lines[i + 1].startTime : (line.endTime + MIN_DURATION);
-        line.endTime = Math.min(line.startTime + MIN_DURATION, nextStartTime);
+        line.endTime = Math.min(line.startTime + MIN_DURATION, nextStartTime - 0.01);
       }
       
-      // Formatierte Zeitangaben für SRT
+      // Formatiere die Zeiten im SRT-Format
       const startTimeFormatted = formatTime(line.startTime);
       const endTimeFormatted = formatTime(line.endTime);
       
       // Füge den SRT-Eintrag hinzu
-      srtContent += `${srtIndex}\n`;
-      srtContent += `${startTimeFormatted} --> ${endTimeFormatted}\n`;
-      srtContent += `${line.text}\n\n`;
-      
+      srtContent += `${srtIndex}\n${startTimeFormatted} --> ${endTimeFormatted}\n${line.text}\n\n`;
       srtIndex++;
     }
-    
-    return srtContent;
   } else {
-    // Keine Zeitstempel vorhanden, verwende zeichenbasierte Schätzung
-    console.log('No word timestamps available, using character-based timing estimation');
+    // Keine Zeitstempel - verwende einfache Split-Strategie
+    console.log('No word timestamps available - using simple splitting strategy');
     
-    // In Sätze aufteilen
-    const sentences = subtitleText.match(/[^\.!\?]+[\.!\?]+/g) || [subtitleText];
+    // Teile in Sätze und dann in Zeilen auf
+    const sentences = subtitleText.split(/(?<=[.!?])\s+/);
+    let currentTime = 0;
+    const timePerChar = duration / subtitleText.length;
     
-    // Verarbeite jeden Satz einzeln
-    let currentPosition = 0;
-    sentences.forEach(sentence => {
-      // Entferne führende und abschließende Leerzeichen
-      const trimmedSentence = sentence.trim();
-      if (!trimmedSentence) return;
+    for (const sentence of sentences) {
+      if (!sentence.trim()) continue;
       
-      // Teile den Satz in Wörter auf
-      const words = trimmedSentence.split(/\s+/);
-      
-      // Gruppiere Wörter in Phrasen
-      let currentPhrase = '';
-      let phrases = [];
-      
-      for (let i = 0; i < words.length; i++) {
-        const word = words[i];
+      // Teile in Zeilen bei maximaler Länge
+      let remainingSentence = sentence;
+      while (remainingSentence.length > 0) {
+        const lineLength = Math.min(remainingSentence.length, MAX_CHARS_PER_LINE);
+        const line = remainingSentence.substring(0, lineLength);
+        remainingSentence = remainingSentence.substring(lineLength).trim();
         
-        // Prüfe, ob das Wort in die aktuelle Zeile passt
-        const potentialPhrase = currentPhrase 
-          ? `${currentPhrase} ${word}`
-          : word;
+        const lineStart = currentTime;
+        const lineDuration = Math.max(MIN_DURATION, line.length * timePerChar);
+        currentTime += lineDuration;
         
-        if (potentialPhrase.length <= MAX_CHARS_PER_LINE) {
-          // Wort passt in aktuelle Phrase
-          currentPhrase = potentialPhrase;
-        } else {
-          // Wort passt nicht mehr, speichere aktuelle Phrase und beginne neue
-          if (currentPhrase) {
-            phrases.push(currentPhrase);
-          }
-          currentPhrase = word;
-        }
+        // Formatiere die Zeiten im SRT-Format
+        const startTimeFormatted = formatTime(lineStart);
+        const endTimeFormatted = formatTime(currentTime);
         
-        // Wenn das letzte Wort, füge es noch hinzu
-        if (i === words.length - 1 && currentPhrase) {
-          phrases.push(currentPhrase);
-        }
-      }
-      
-      // Verarbeite jede Phrase als separaten Untertitel
-      phrases.forEach(phrase => {
-        // Berechne die Dauer dieser Phrase basierend auf der Zeichenanzahl
-        const charCount = phrase.length;
-        const phraseDuration = Math.max(MIN_DURATION, charCount / charsPerSecond); // Mindestens MIN_DURATION Sekunden pro Phrase
-        
-        const startTime = currentPosition;
-        const endTime = currentPosition + phraseDuration;
-        
-        // Formatiere die Zeiten für SRT
-        const startTimeFormatted = formatTime(startTime);
-        const endTimeFormatted = formatTime(endTime);
-        
-        // Erstelle den SRT-Eintrag
-        srtContent += `${srtIndex}\n`;
-        srtContent += `${startTimeFormatted} --> ${endTimeFormatted}\n`;
-        srtContent += `${phrase}\n\n`;
-        
+        // Füge den SRT-Eintrag hinzu
+        srtContent += `${srtIndex}\n${startTimeFormatted} --> ${endTimeFormatted}\n${line}\n\n`;
         srtIndex++;
-        currentPosition += phraseDuration;
-      });
-    });
-
-    return srtContent;
+      }
+    }
   }
+  
+  console.log('Generated SRT content successfully');
+  console.log('SRT content preview:');
+  console.log(srtContent.split('\n\n').slice(0, 3).join('\n\n'));
+  
+  return srtContent;
 }
 
 /**
@@ -1236,36 +1194,56 @@ async function generateFinalVideo() {
             
             // Schreibe SRT-Datei
             fs.writeFileSync(srtFile, srtContent);
-            console.log(`Created SRT file for subtitles`);
+            console.log(`Created SRT file for subtitles at ${srtFile}`);
+            console.log('SRT file stats:', fs.statSync(srtFile).size, 'bytes');
             
-            // Konvertiere SRT zu ASS für bessere Transparenzkontrolle
-            const assFile = path.join(TEMP_DIR, 'subtitles.ass');
-            const assContent = convertSrtToAss(
-              srtContent, 
-              fontName, 
-              fontSize, 
-              primaryColorFFmpeg, 
-              backgroundColorFFmpeg, 
-              borderStyle,
-              backgroundColor === '#00000000' || backgroundColor.toLowerCase().includes('00000000') || backgroundColor === 'transparent'
-            );
-            fs.writeFileSync(assFile, assContent);
-            console.log(`Converted SRT to ASS format for better transparency support`);
+            // Setze Positionsparameter je nach gewählter Position
+            let positionParam = '';
+            if (position === 'top') {
+              positionParam = '10';
+            } else if (position === 'middle') {
+              positionParam = '50';
+            } else {
+              positionParam = '90'; // default: bottom
+            }
             
-            // Erstelle neues Video mit ASS-Untertiteln
+            // Überprüfe transparent Background
+            const hasTransparentBg = 
+              backgroundColor === '#00000000' || 
+              backgroundColor.toLowerCase().includes('00000000') ||
+              backgroundColor === 'transparent';
+              
+            console.log(`Using subtitle position: ${position} (param: ${positionParam})`);
+            console.log(`Background is transparent: ${hasTransparentBg}`);
+            
+            // Erstelle neues Video mit Untertiteln
             const subtitledFile = path.join(OUTPUT_DIR, 'final_with_subtitles.mp4');
             
-            console.log(`Using ASS subtitles for better transparency control`);
+            // Verbesserte FFmpeg-Parameter für Untertitel
+            const subtitleParams = hasTransparentBg 
+              ? `subtitles=${srtFile.replace(/\\/g, '/')}:force_style='FontName=${fontName},FontSize=${fontSize},PrimaryColour=${primaryColorFFmpeg},OutlineColour=&H000000,Outline=1,Shadow=1,BorderStyle=1,ShadowColour=&H000000,Alignment=2,MarginV=${positionParam}'` 
+              : `subtitles=${srtFile.replace(/\\/g, '/')}:force_style='FontName=${fontName},FontSize=${fontSize},PrimaryColour=${primaryColorFFmpeg},BackColour=${backgroundColorFFmpeg},BorderStyle=${borderStyle},Alignment=2,MarginV=${positionParam}'`;
             
-            // Verwende ass-Filter anstelle von subtitles-Filter für ASS-Dateien
+            console.log(`Using FFmpeg subtitle filter: ${subtitleParams}`);
+            
+            // Verwende -vf für Videofilter
             await runFFmpeg([
               '-i', finalFile,
-              '-vf', `ass=${assFile.replace(/\\/g, '/')}`,
+              '-vf', subtitleParams,
               '-c:v', 'libx264',
+              '-preset', 'medium',
+              '-crf', '23',
               '-c:a', 'copy',
               '-y',
               subtitledFile
             ]);
+            
+            console.log(`Successfully added subtitles to video: ${subtitledFile}`);
+            
+            // Verify the file exists
+            if (!fs.existsSync(subtitledFile) || fs.statSync(subtitledFile).size === 0) {
+              throw new Error(`Subtitled file is empty or does not exist: ${subtitledFile}`);
+            }
             
             return subtitledFile;
           } catch (subtitleError) {
@@ -1458,36 +1436,56 @@ async function generateFinalVideo() {
       
       // Schreibe SRT-Datei
       fs.writeFileSync(srtFile, srtContent);
-      console.log(`Created SRT file for subtitles`);
+      console.log(`Created SRT file for subtitles at ${srtFile}`);
+      console.log('SRT file stats:', fs.statSync(srtFile).size, 'bytes');
       
-      // Konvertiere SRT zu ASS für bessere Transparenzkontrolle
-      const assFile = path.join(TEMP_DIR, 'subtitles.ass');
-      const assContent = convertSrtToAss(
-        srtContent, 
-        fontName, 
-        fontSize, 
-        primaryColorFFmpeg, 
-        backgroundColorFFmpeg, 
-        borderStyle,
-        backgroundColor === '#00000000' || backgroundColor.toLowerCase().includes('00000000') || backgroundColor === 'transparent'
-      );
-      fs.writeFileSync(assFile, assContent);
-      console.log(`Converted SRT to ASS format for better transparency support`);
+      // Setze Positionsparameter je nach gewählter Position
+      let positionParam = '';
+      if (position === 'top') {
+        positionParam = '10';
+      } else if (position === 'middle') {
+        positionParam = '50';
+      } else {
+        positionParam = '90'; // default: bottom
+      }
       
-      // Erstelle neues Video mit ASS-Untertiteln
+      // Überprüfe transparent Background
+      const hasTransparentBg = 
+        backgroundColor === '#00000000' || 
+        backgroundColor.toLowerCase().includes('00000000') ||
+        backgroundColor === 'transparent';
+        
+      console.log(`Using subtitle position: ${position} (param: ${positionParam})`);
+      console.log(`Background is transparent: ${hasTransparentBg}`);
+      
+      // Erstelle neues Video mit Untertiteln
       const subtitledFile = path.join(OUTPUT_DIR, 'final_with_subtitles.mp4');
       
-      console.log(`Using ASS subtitles for better transparency control`);
+      // Verbesserte FFmpeg-Parameter für Untertitel
+      const subtitleParams = hasTransparentBg 
+        ? `subtitles=${srtFile.replace(/\\/g, '/')}:force_style='FontName=${fontName},FontSize=${fontSize},PrimaryColour=${primaryColorFFmpeg},OutlineColour=&H000000,Outline=1,Shadow=1,BorderStyle=1,ShadowColour=&H000000,Alignment=2,MarginV=${positionParam}'` 
+        : `subtitles=${srtFile.replace(/\\/g, '/')}:force_style='FontName=${fontName},FontSize=${fontSize},PrimaryColour=${primaryColorFFmpeg},BackColour=${backgroundColorFFmpeg},BorderStyle=${borderStyle},Alignment=2,MarginV=${positionParam}'`;
       
-      // Verwende ass-Filter anstelle von subtitles-Filter für ASS-Dateien
+      console.log(`Using FFmpeg subtitle filter: ${subtitleParams}`);
+      
+      // Verwende -vf für Videofilter
       await runFFmpeg([
         '-i', finalFile,
-        '-vf', `ass=${assFile.replace(/\\/g, '/')}`,
+        '-vf', subtitleParams,
         '-c:v', 'libx264',
+        '-preset', 'medium',
+        '-crf', '23',
         '-c:a', 'copy',
         '-y',
         subtitledFile
       ]);
+      
+      console.log(`Successfully added subtitles to video: ${subtitledFile}`);
+      
+      // Verify the file exists
+      if (!fs.existsSync(subtitledFile) || fs.statSync(subtitledFile).size === 0) {
+        throw new Error(`Subtitled file is empty or does not exist: ${subtitledFile}`);
+      }
       
       return subtitledFile;
     } catch (subtitleError) {
