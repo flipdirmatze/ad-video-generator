@@ -158,10 +158,12 @@ function generateSrtContent(subtitleText, duration, wordTimestamps = null) {
   console.log(`Generating subtitles with precise timestamps`);
   console.log(`Have word timestamps: ${wordTimestamps ? 'YES' : 'NO'}, count: ${wordTimestamps ? wordTimestamps.length : 0}`);
   
-  // Reduziere die maximale Zeichenlänge pro Zeile für kürzere Zeilen
-  const MAX_CHARS_PER_LINE = 25;
+  // Optimale Zeichenlänge pro Zeile für einzeilige Untertitel
+  const MAX_CHARS_PER_LINE = 30;
   // Minimale Dauer für einen Untertitel in Sekunden
-  const MIN_DURATION = 0.7;
+  const MIN_DURATION = 0.8;
+  // Pause zwischen zwei Untertiteln in Sekunden (verhindert Überlappungen)
+  const SUBTITLE_GAP = 0.1;
   
   let srtContent = '';
   let srtIndex = 1;
@@ -244,8 +246,17 @@ function generateSrtContent(subtitleText, duration, wordTimestamps = null) {
       // Stelle sicher, dass jeder Untertitel eine Mindestdauer hat
       let displayDuration = line.endTime - line.startTime;
       if (displayDuration < MIN_DURATION) {
-        const nextStartTime = (i < lines.length - 1) ? lines[i + 1].startTime : (line.endTime + MIN_DURATION);
-        line.endTime = Math.min(line.startTime + MIN_DURATION, nextStartTime - 0.01);
+        line.endTime = line.startTime + MIN_DURATION;
+      }
+      
+      // Wichtig: Stelle sicher, dass sich Untertitel nicht überlappen
+      // Wenn der nächste Untertitel existiert, füge eine kleine Pause hinzu
+      if (i < lines.length - 1) {
+        // Wenn der aktuelle Untertitel zu nah am nächsten ist, kürze ihn
+        if (lines[i + 1].startTime < line.endTime + SUBTITLE_GAP) {
+          // Setze Ende des aktuellen Untertitels vor Beginn des nächsten mit Abstand
+          line.endTime = Math.max(line.startTime + 0.5, lines[i + 1].startTime - SUBTITLE_GAP);
+        }
       }
       
       // Formatiere die Zeiten im SRT-Format
@@ -257,7 +268,7 @@ function generateSrtContent(subtitleText, duration, wordTimestamps = null) {
       srtIndex++;
     }
   } else {
-    // Code für den Fall ohne Zeitstempel bleibt unverändert
+    // Code für den Fall ohne Zeitstempel - zeichenbasierte Strategie
     console.log('No word timestamps available - using simple splitting strategy');
     
     const sentences = subtitleText.split(/(?<=[.!?])\s+/);
@@ -276,11 +287,13 @@ function generateSrtContent(subtitleText, duration, wordTimestamps = null) {
         
         const lineStart = currentTime;
         const lineDuration = Math.max(MIN_DURATION, line.length * timePerChar);
-        currentTime += lineDuration;
+        
+        // Füge eine kleine Pause zwischen Untertiteln ein
+        currentTime += lineDuration + SUBTITLE_GAP;
         
         // Formatiere die Zeiten im SRT-Format
         const startTimeFormatted = formatTime(lineStart);
-        const endTimeFormatted = formatTime(currentTime);
+        const endTimeFormatted = formatTime(currentTime - SUBTITLE_GAP); // Ende ohne Pause
         
         // Füge den SRT-Eintrag hinzu
         srtContent += `${srtIndex}\n${startTimeFormatted} --> ${endTimeFormatted}\n${line}\n\n`;
@@ -1220,8 +1233,8 @@ async function generateFinalVideo() {
             const subtitledFile = path.join(OUTPUT_DIR, 'final_with_subtitles.mp4');
             
             // Verbesserte FFmpeg-Parameter für Untertitel mit angepasster Schriftgröße
-            // Hier verwenden wir statt der Umgebungsvariable einen vernünftigeren Standardwert wenn nötig
-            const actualFontSize = (fontSize && parseInt(fontSize) > 0) ? parseInt(fontSize) : 20;
+            // Reduziere die Schriftgröße deutlich für bessere Lesbarkeit
+            const actualFontSize = 16; // Feste kleinere Schriftgröße statt einer variablen
             console.log(`Using font size: ${actualFontSize}`);
             
             const subtitleParams = hasTransparentBg 
@@ -1467,8 +1480,8 @@ async function generateFinalVideo() {
       const subtitledFile = path.join(OUTPUT_DIR, 'final_with_subtitles.mp4');
       
       // Verbesserte FFmpeg-Parameter für Untertitel mit angepasster Schriftgröße
-      // Hier verwenden wir statt der Umgebungsvariable einen vernünftigeren Standardwert wenn nötig
-      const actualFontSize = (fontSize && parseInt(fontSize) > 0) ? parseInt(fontSize) : 20;
+      // Reduziere die Schriftgröße deutlich für bessere Lesbarkeit
+      const actualFontSize = 16; // Feste kleinere Schriftgröße statt einer variablen
       console.log(`Using font size: ${actualFontSize}`);
       
       const subtitleParams = hasTransparentBg 
