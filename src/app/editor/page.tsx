@@ -206,7 +206,8 @@ export default function EditorPage() {
     primaryColor: '#FFFFFF',
     backgroundColor: '#80000000',
     borderStyle: 4,
-    position: 'bottom'
+    position: 'bottom',
+    transparentBackground: false
   })
   
   // Content states
@@ -1496,13 +1497,35 @@ export default function EditorPage() {
                                 </label>
                                 <div className="flex items-center mt-1">
                                   <input
-                                    type="color"
-                                    id="subtitleBgColor"
-                                    value={subtitleOptions.backgroundColor.substring(0, 7)}
-                                    onChange={(e) => setSubtitleOptions({...subtitleOptions, backgroundColor: e.target.value + '80'})}
-                                    className="h-8 w-8 rounded border border-gray-600"
+                                    type="checkbox"
+                                    id="transparentBg"
+                                    checked={subtitleOptions.transparentBackground}
+                                    onChange={(e) => {
+                                      const isTransparent = e.target.checked;
+                                      setSubtitleOptions({
+                                        ...subtitleOptions, 
+                                        transparentBackground: isTransparent,
+                                        backgroundColor: isTransparent ? '#00000000' : '#00000080'
+                                      });
+                                    }}
+                                    className="mr-2 checkbox checkbox-xs"
                                   />
-                                  <div className="text-xs text-white/50 ml-2">(mit 50% Transparenz)</div>
+                                  <label htmlFor="transparentBg" className="text-xs cursor-pointer mr-3">
+                                    Kein Hintergrund
+                                  </label>
+                                  
+                                  {!subtitleOptions.transparentBackground && (
+                                    <>
+                                      <input
+                                        type="color"
+                                        id="subtitleBgColor"
+                                        value={subtitleOptions.backgroundColor.substring(0, 7)}
+                                        onChange={(e) => setSubtitleOptions({...subtitleOptions, backgroundColor: e.target.value + '80'})}
+                                        className="h-8 w-8 rounded border border-gray-600"
+                                      />
+                                      <div className="text-xs text-white/50 ml-2">(mit 50% Transparenz)</div>
+                                    </>
+                                  )}
                                 </div>
                               </div>
                               
@@ -1532,8 +1555,9 @@ export default function EditorPage() {
                                   fontFamily: subtitleOptions.fontName,
                                   fontSize: `${subtitleOptions.fontSize}px`,
                                   color: subtitleOptions.primaryColor,
-                                  backgroundColor: subtitleOptions.backgroundColor.substring(0, 7) + '80',
-                                  borderRadius: subtitleOptions.borderStyle === 4 ? '4px' : '0'
+                                  backgroundColor: subtitleOptions.transparentBackground ? 'transparent' : (subtitleOptions.backgroundColor.substring(0, 7) + '80'),
+                                  borderRadius: subtitleOptions.borderStyle === 4 ? '4px' : '0',
+                                  textShadow: subtitleOptions.transparentBackground ? '0px 0px 3px #000, 0px 0px 2px #000' : 'none'
                                 }}
                               >
                                 Beispieltext für Untertitel
