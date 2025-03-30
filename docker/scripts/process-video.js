@@ -1138,7 +1138,8 @@ async function generateFinalVideo() {
             } else {
               console.log('Using transparent background for subtitles (no background)');
               // Bei transparentem Hintergrund setzen wir spezielle Outline-Parameter
-              forceStyleParam += `,OutlineColour=&H000000,Outline=2,BorderStyle=3,Shadow=1,ShadowColour=&H000000`;
+              // Erhöhe die Outline und Schatten-Werte für bessere Sichtbarkeit
+              forceStyleParam += `,OutlineColour=&H000000,Outline=3,BorderStyle=3,Shadow=2,ShadowColour=&H000000`;
             }
             
             // Füge Positionsparameter hinzu
@@ -1148,7 +1149,8 @@ async function generateFinalVideo() {
             
             await runFFmpeg([
               '-i', finalFile,
-              '-vf', forceStyleParam,
+              '-filter_complex', forceStyleParam,
+              '-c:v', 'libx264',
               '-c:a', 'copy',
               '-y',
               subtitledFile
@@ -1386,7 +1388,8 @@ async function generateFinalVideo() {
       } else {
         console.log('Using transparent background for subtitles (no background)');
         // Bei transparentem Hintergrund setzen wir spezielle Outline-Parameter
-        forceStyleParam += `,OutlineColour=&H000000,Outline=2,BorderStyle=3,Shadow=1,ShadowColour=&H000000`;
+        // Erhöhe die Outline und Schatten-Werte für bessere Sichtbarkeit
+        forceStyleParam += `,OutlineColour=&H000000,Outline=3,BorderStyle=3,Shadow=2,ShadowColour=&H000000`;
       }
       
       // Füge Positionsparameter hinzu
@@ -1396,7 +1399,8 @@ async function generateFinalVideo() {
       
       await runFFmpeg([
         '-i', finalFile,
-        '-vf', forceStyleParam,
+        '-filter_complex', forceStyleParam,
+        '-c:v', 'libx264',
         '-c:a', 'copy',
         '-y',
         subtitledFile
