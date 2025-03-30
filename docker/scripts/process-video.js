@@ -158,8 +158,8 @@ function generateSrtContent(subtitleText, duration, wordTimestamps = null) {
   console.log(`Generating subtitles with precise timestamps`);
   console.log(`Have word timestamps: ${wordTimestamps ? 'YES' : 'NO'}, count: ${wordTimestamps ? wordTimestamps.length : 0}`);
   
-  // Maximale Zeichenlänge pro Zeile
-  const MAX_CHARS_PER_LINE = 40;
+  // Reduziere die maximale Zeichenlänge pro Zeile für kürzere Zeilen
+  const MAX_CHARS_PER_LINE = 25;
   // Minimale Dauer für einen Untertitel in Sekunden
   const MIN_DURATION = 0.7;
   
@@ -257,10 +257,9 @@ function generateSrtContent(subtitleText, duration, wordTimestamps = null) {
       srtIndex++;
     }
   } else {
-    // Keine Zeitstempel - verwende einfache Split-Strategie
+    // Code für den Fall ohne Zeitstempel bleibt unverändert
     console.log('No word timestamps available - using simple splitting strategy');
     
-    // Teile in Sätze und dann in Zeilen auf
     const sentences = subtitleText.split(/(?<=[.!?])\s+/);
     let currentTime = 0;
     const timePerChar = duration / subtitleText.length;
@@ -1200,11 +1199,12 @@ async function generateFinalVideo() {
             // Setze Positionsparameter je nach gewählter Position
             let positionParam = '';
             if (position === 'top') {
-              positionParam = '10';
+              positionParam = '15';
             } else if (position === 'middle') {
               positionParam = '50';
             } else {
-              positionParam = '90'; // default: bottom
+              // Position "bottom" bedeutet eigentlich "lower-third" (unteres Drittel)
+              positionParam = '70';
             }
             
             // Überprüfe transparent Background
@@ -1219,10 +1219,14 @@ async function generateFinalVideo() {
             // Erstelle neues Video mit Untertiteln
             const subtitledFile = path.join(OUTPUT_DIR, 'final_with_subtitles.mp4');
             
-            // Verbesserte FFmpeg-Parameter für Untertitel
+            // Verbesserte FFmpeg-Parameter für Untertitel mit angepasster Schriftgröße
+            // Hier verwenden wir statt der Umgebungsvariable einen vernünftigeren Standardwert wenn nötig
+            const actualFontSize = (fontSize && parseInt(fontSize) > 0) ? parseInt(fontSize) : 20;
+            console.log(`Using font size: ${actualFontSize}`);
+            
             const subtitleParams = hasTransparentBg 
-              ? `subtitles=${srtFile.replace(/\\/g, '/')}:force_style='FontName=${fontName},FontSize=${fontSize},PrimaryColour=${primaryColorFFmpeg},OutlineColour=&H000000,Outline=1,Shadow=1,BorderStyle=1,ShadowColour=&H000000,Alignment=2,MarginV=${positionParam}'` 
-              : `subtitles=${srtFile.replace(/\\/g, '/')}:force_style='FontName=${fontName},FontSize=${fontSize},PrimaryColour=${primaryColorFFmpeg},BackColour=${backgroundColorFFmpeg},BorderStyle=${borderStyle},Alignment=2,MarginV=${positionParam}'`;
+              ? `subtitles=${srtFile.replace(/\\/g, '/')}:force_style='FontName=${fontName},FontSize=${actualFontSize},PrimaryColour=${primaryColorFFmpeg},OutlineColour=&H000000,Outline=1,Shadow=1,BorderStyle=1,ShadowColour=&H000000,Alignment=2,MarginV=${positionParam}'` 
+              : `subtitles=${srtFile.replace(/\\/g, '/')}:force_style='FontName=${fontName},FontSize=${actualFontSize},PrimaryColour=${primaryColorFFmpeg},BackColour=${backgroundColorFFmpeg},BorderStyle=${borderStyle},Alignment=2,MarginV=${positionParam}'`;
             
             console.log(`Using FFmpeg subtitle filter: ${subtitleParams}`);
             
@@ -1442,11 +1446,12 @@ async function generateFinalVideo() {
       // Setze Positionsparameter je nach gewählter Position
       let positionParam = '';
       if (position === 'top') {
-        positionParam = '10';
+        positionParam = '15';
       } else if (position === 'middle') {
         positionParam = '50';
       } else {
-        positionParam = '90'; // default: bottom
+        // Position "bottom" bedeutet eigentlich "lower-third" (unteres Drittel)
+        positionParam = '70';
       }
       
       // Überprüfe transparent Background
@@ -1461,10 +1466,14 @@ async function generateFinalVideo() {
       // Erstelle neues Video mit Untertiteln
       const subtitledFile = path.join(OUTPUT_DIR, 'final_with_subtitles.mp4');
       
-      // Verbesserte FFmpeg-Parameter für Untertitel
+      // Verbesserte FFmpeg-Parameter für Untertitel mit angepasster Schriftgröße
+      // Hier verwenden wir statt der Umgebungsvariable einen vernünftigeren Standardwert wenn nötig
+      const actualFontSize = (fontSize && parseInt(fontSize) > 0) ? parseInt(fontSize) : 20;
+      console.log(`Using font size: ${actualFontSize}`);
+      
       const subtitleParams = hasTransparentBg 
-        ? `subtitles=${srtFile.replace(/\\/g, '/')}:force_style='FontName=${fontName},FontSize=${fontSize},PrimaryColour=${primaryColorFFmpeg},OutlineColour=&H000000,Outline=1,Shadow=1,BorderStyle=1,ShadowColour=&H000000,Alignment=2,MarginV=${positionParam}'` 
-        : `subtitles=${srtFile.replace(/\\/g, '/')}:force_style='FontName=${fontName},FontSize=${fontSize},PrimaryColour=${primaryColorFFmpeg},BackColour=${backgroundColorFFmpeg},BorderStyle=${borderStyle},Alignment=2,MarginV=${positionParam}'`;
+        ? `subtitles=${srtFile.replace(/\\/g, '/')}:force_style='FontName=${fontName},FontSize=${actualFontSize},PrimaryColour=${primaryColorFFmpeg},OutlineColour=&H000000,Outline=1,Shadow=1,BorderStyle=1,ShadowColour=&H000000,Alignment=2,MarginV=${positionParam}'` 
+        : `subtitles=${srtFile.replace(/\\/g, '/')}:force_style='FontName=${fontName},FontSize=${actualFontSize},PrimaryColour=${primaryColorFFmpeg},BackColour=${backgroundColorFFmpeg},BorderStyle=${borderStyle},Alignment=2,MarginV=${positionParam}'`;
       
       console.log(`Using FFmpeg subtitle filter: ${subtitleParams}`);
       
