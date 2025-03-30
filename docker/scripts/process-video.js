@@ -155,106 +155,120 @@ function formatTime(timeInSeconds) {
  * und synchronisiert sie mit Wort-Zeitstempeln, wenn verfügbar
  */
 function generateSrtContent(subtitleText, duration, wordTimestamps = null) {
-  const MAX_CHARS_PER_LINE = 32; // Optimale Zeichenlänge für gute Lesbarkeit
-  const MIN_DURATION = 0.8; // Minimale Dauer für einen Untertitel in Sekunden
-  const charsPerSecond = 15; // Durchschnittliche Lesegeschwindigkeit
+  // Maximale Zeichenlänge pro Zeile erhöht für bessere Lesbarkeit
+  const MAX_CHARS_PER_LINE = 40;
+  // Minimale Dauer für einen Untertitel in Sekunden
+  const MIN_DURATION = 0.8;
+  // Durchschnittliche Lesegeschwindigkeit
+  const charsPerSecond = 15;
+
+  console.log(`Generating subtitles with ${wordTimestamps ? wordTimestamps.length : 0} word timestamps`);
 
   let srtContent = '';
   let srtIndex = 1;
 
+  // Wenn Zeitstempel vorhanden sind, verwende diese für präzise Synchronisation
   if (wordTimestamps && wordTimestamps.length > 0) {
-    // Präzise Untertitel mit Wort-Timestamps
-    console.log(`Generiere SRT mit ${wordTimestamps.length} Wort-Timestamps`);
+    console.log(`Using ${wordTimestamps.length} word timestamps for precise subtitle synchronization`);
     
-    // Wir gruppieren Wörter in sinnvolle Phrasen für bessere Lesbarkeit
-    let phrases = [];
-    let currentPhrase = {
-      text: '',
-      startTime: wordTimestamps[0]?.startTime || 0,
-      endTime: 0,
-      words: []
-    };
-    
-    // Durchlaufe alle Wörter und bilde optimale Phrasen
-    wordTimestamps.forEach((timestamp, index) => {
-      const { word, startTime, endTime } = timestamp;
-      
-      // Spezialfall: Satzzeichen wie Punkte, Fragezeichen, etc. führen zu einem Phrasenende
-      const isPunctuation = /^[.!?;:]$/.test(word);
-      const isEndOfStatement = word.endsWith('.') || word.endsWith('!') || word.endsWith('?') || word.endsWith(';');
-      
-      // Prüfe, ob das Wort in die aktuelle Zeile passt
-      const potentialText = currentPhrase.text 
-        ? `${currentPhrase.text} ${word}` 
-        : word;
-      
-      if (potentialText.length <= MAX_CHARS_PER_LINE && !isPunctuation) {
-        // Wort passt in aktuelle Phrase
-        currentPhrase.text = potentialText;
-        currentPhrase.endTime = endTime;
-        currentPhrase.words.push(timestamp);
-        
-        // Wenn dieses Wort ein Satzende markiert oder wir das Ende erreicht haben,
-        // schließen wir die aktuelle Phrase ab
-        if (isEndOfStatement || index === wordTimestamps.length - 1) {
-          if (currentPhrase.text) {
-            phrases.push(currentPhrase);
-          }
-          
-          // Starte eine neue Phrase für den nächsten Satz
-          currentPhrase = {
-            text: '',
-            startTime: index < wordTimestamps.length - 1 ? wordTimestamps[index + 1].startTime : endTime,
-            endTime: endTime,
-            words: []
-          };
-        }
-      } else {
-        // Wort passt nicht mehr, speichere aktuelle Phrase und beginne neue
-        if (currentPhrase.text) {
-          phrases.push(currentPhrase);
-        }
-        
-        // Beginne neue Phrase mit aktuellem Wort
-        currentPhrase = {
-          text: word,
-          startTime: startTime,
-          endTime: endTime,
-          words: [timestamp]
-        };
-      }
-    });
-    
-    // Füge letzte Phrase hinzu, wenn noch vorhanden
-    if (currentPhrase.text) {
-      phrases.push(currentPhrase);
+    // Überprüfe die Struktur der ersten paar Zeitstempel für bessere Diagnose
+    if (wordTimestamps.length > 0) {
+      console.log("Sample timestamps structure:");
+      console.log(JSON.stringify(wordTimestamps.slice(0, 3), null, 2));
     }
     
-    // Formatiere Phrasen als SRT mit begrenzter Mindestdauer für bessere Lesbarkeit
-    phrases.forEach((phrase, index) => {
-      // Stelle sicher, dass jede Phrase mindestens MIN_DURATION lang angezeigt wird
-      if (phrase.endTime - phrase.startTime < MIN_DURATION) {
-        // Neue Endzeit berechnen, dabei Überlappungen mit der nächsten Phrase vermeiden
-        const nextStartTime = phrases[index + 1]?.startTime || (phrase.endTime + MIN_DURATION);
-        phrase.endTime = Math.min(phrase.startTime + MIN_DURATION, nextStartTime - 0.01);
+    // WICHTIG: Wir müssen sicherstellen, dass jedes Wort seinen eigenen Zeitstempel behält
+    // Wir sammeln die Wörter je nach maximaler Zeilenlänge, aber behalten die exakten Zeitstempel bei
+    
+    let currentLine = "";
+    let currentLineWords = [];
+    let lines = [];
+    
+    // Durchlaufe alle Wort-Zeitstempel und bilde optimale Zeilen
+    for (let i = 0; i < wordTimestamps.length; i++) {
+      const timestamp = wordTimestamps[i];
+      const { word, startTime, endTime } = timestamp;
+      
+      // Prüfe, ob dieses Wort die aktuelle Zeile beenden würde (Punkt, Ausrufezeichen, etc.)
+      const isEndOfSentence = /[.!?;:]$/.test(word);
+      
+      // Prüfe, ob das Wort in die aktuelle Zeile passt
+      const potentialLine = currentLine ? `${currentLine} ${word}` : word;
+      
+      if (potentialLine.length <= MAX_CHARS_PER_LINE) {
+        // Wort passt in aktuelle Zeile, füge es hinzu
+        currentLine = potentialLine;
+        currentLineWords.push(timestamp);
+        
+        // Wenn es ein Satzende ist oder wir das letzte Wort erreicht haben, beende die aktuelle Zeile
+        if (isEndOfSentence || i === wordTimestamps.length - 1) {
+          if (currentLineWords.length > 0) {
+            lines.push({
+              text: currentLine,
+              startTime: currentLineWords[0].startTime,
+              endTime: currentLineWords[currentLineWords.length - 1].endTime
+            });
+            
+            // Beginne eine neue Zeile
+            currentLine = "";
+            currentLineWords = [];
+          }
+        }
+      } else {
+        // Wort passt nicht mehr in aktuelle Zeile, beende die Zeile und beginne eine neue
+        if (currentLineWords.length > 0) {
+          lines.push({
+            text: currentLine,
+            startTime: currentLineWords[0].startTime,
+            endTime: currentLineWords[currentLineWords.length - 1].endTime
+          });
+        }
+        
+        // Beginne eine neue Zeile mit diesem Wort
+        currentLine = word;
+        currentLineWords = [timestamp];
+        
+        // Wenn es das letzte Wort ist, füge es direkt als eigene Zeile hinzu
+        if (i === wordTimestamps.length - 1) {
+          lines.push({
+            text: word,
+            startTime: startTime,
+            endTime: endTime
+          });
+        }
+      }
+    }
+    
+    console.log(`Created ${lines.length} subtitle lines with precise timestamps`);
+    
+    // Stelle sicher, dass die Zeitstempel korrekt sind und keine sehr kurzen Untertitel erzeugt werden
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      
+      // Stelle sicher, dass jeder Untertitel eine Mindestdauer hat
+      let displayDuration = line.endTime - line.startTime;
+      if (displayDuration < MIN_DURATION) {
+        // Berechne eine neue Endzeit, aber vermeide Überlappungen mit dem nächsten Untertitel
+        const nextStartTime = (i < lines.length - 1) ? lines[i + 1].startTime : (line.endTime + MIN_DURATION);
+        line.endTime = Math.min(line.startTime + MIN_DURATION, nextStartTime);
       }
       
-      // Formatierte Zeitangaben
-      const startTimeFormatted = formatTime(phrase.startTime);
-      const endTimeFormatted = formatTime(phrase.endTime);
+      // Formatierte Zeitangaben für SRT
+      const startTimeFormatted = formatTime(line.startTime);
+      const endTimeFormatted = formatTime(line.endTime);
       
-      // Erstelle den SRT-Eintrag für diese Phrase
+      // Füge den SRT-Eintrag hinzu
       srtContent += `${srtIndex}\n`;
       srtContent += `${startTimeFormatted} --> ${endTimeFormatted}\n`;
-      srtContent += `${phrase.text}\n\n`;
+      srtContent += `${line.text}\n\n`;
       
       srtIndex++;
-    });
+    }
     
-    console.log(`Generierte ${phrases.length} optimierte Untertitel-Segmente`);
+    return srtContent;
   } else {
-    // Keine Timestamps vorhanden, verwenden wir zeichenbasierte Zeitschätzung
-    console.log('Keine Wort-Timestamps verfügbar, verwende zeichenbasierte Zeitschaetzung');
+    // Keine Zeitstempel vorhanden, verwende zeichenbasierte Schätzung
+    console.log('No word timestamps available, using character-based timing estimation');
     
     // In Sätze aufteilen
     const sentences = subtitleText.match(/[^\.!\?]+[\.!\?]+/g) || [subtitleText];
@@ -320,9 +334,9 @@ function generateSrtContent(subtitleText, duration, wordTimestamps = null) {
         currentPosition += phraseDuration;
       });
     });
-  }
 
-  return srtContent;
+    return srtContent;
+  }
 }
 
 /**
