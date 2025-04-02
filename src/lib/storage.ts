@@ -160,6 +160,22 @@ export function getS3Url(key: string): string {
 }
 
 /**
+ * Generiert einen öffentlichen S3-URL für eine Datei
+ * Verwendet jetzt signierte URLs für autorisierten Zugriff
+ */
+export async function getS3UrlSigned(key: string): Promise<string> {
+  try {
+    // Generate a signed URL that works for 1 day
+    return await getSignedDownloadUrl(key, 86400); 
+  } catch (error) {
+    console.error(`Failed to generate signed URL for ${key}:`, error);
+    // Fallback to the direct URL (which will likely fail with 403)
+    const region = process.env.AWS_REGION || 'eu-central-1';
+    return `https://${bucketName}.s3.${region}.amazonaws.com/${key}`;
+  }
+}
+
+/**
  * Listet Dateien in einem S3-Bucket-Ordner auf
  */
 export async function listFiles(
@@ -244,4 +260,4 @@ export async function getSignedVideoUrl(key: string, expiresIn: number = 3600): 
     console.error(`Error generating signed URL for ${fullKey}:`, error);
     throw error;
   }
-} 
+}

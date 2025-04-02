@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
-import { uploadToS3 } from '@/lib/storage';
+import { uploadToS3, getS3UrlSigned } from '@/lib/storage';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import dbConnect from '@/lib/mongoose';
@@ -68,10 +68,14 @@ export async function POST(request: Request) {
         
         console.log(`[${requestId}] Video document created successfully: ${video._id}`);
         
+        // Generate a signed URL for the video
+        const signedUrl = await getS3UrlSigned(video.path);
+        
         return NextResponse.json({
           success: true,
           videoId: video.id,
-          key: video.path
+          key: video.path,
+          url: signedUrl
         });
       } catch (unknownError) {
         console.error(`[${requestId}] Error creating video document:`, unknownError);
@@ -161,10 +165,14 @@ export async function POST(request: Request) {
         
         console.log(`[${requestId}] Video document created successfully: ${video._id}`);
         
+        // Generate a signed URL for the video
+        const signedUrl = await getS3UrlSigned(video.path);
+        
         return NextResponse.json({
           success: true,
           videoId: video.id,
-          key: video.path
+          key: video.path,
+          url: signedUrl
         });
       } catch (unknownError) {
         console.error(`[${requestId}] Error creating video document:`, unknownError);
