@@ -334,18 +334,22 @@ export default function VoiceoverPage() {
         throw new Error('Die Antwort des Servers konnte nicht verarbeitet werden');
       }
       
-      if (!data.success) {
+      if (!data.success && !data.voiceover) {
         throw new Error(data.error || 'Failed to generate voiceover')
       }
       
-      console.log('Received data from API, voice used:', data.voiceId);
+      console.log('Received data from API:', data);
+      
+      // Check if we have a voiceover object in the response
+      const voiceoverResponse = data.voiceover || {};
+      const voiceId = voiceoverResponse.voiceId || selectedVoice;
       
       // Neue Datenstruktur mit allen relevanten Informationen
       const newVoiceoverData: VoiceoverData = {
-        dataUrl: data.dataUrl || data.url, // Fallback für Kompatibilität
-        url: data.url,
-        voiceoverId: data.voiceoverId || 'local',
-        fileName: data.fileName || 'voiceover.mp3'
+        dataUrl: voiceoverResponse.dataUrl || data.dataUrl || '',  // Immediate playback
+        url: voiceoverResponse.url || data.url || '', // S3 URL
+        voiceoverId: voiceoverResponse.id || data.voiceoverId || 'local',
+        fileName: voiceoverResponse.name || data.fileName || 'voiceover.mp3'
       };
       
       // Bestehenden Audioplayer zurücksetzen
@@ -358,19 +362,19 @@ export default function VoiceoverPage() {
       setVoiceoverData(newVoiceoverData);
       
       // Bei jeder Generierung die aktuelle Stimmen-ID speichern
-      localStorage.setItem('selectedVoiceId', currentVoiceId);
+      localStorage.setItem('selectedVoiceId', voiceId);
       
       // Als JSON in localStorage speichern mit Stimmen-ID
       const voiceoverDataWithVoice = {
         ...newVoiceoverData,
-        voiceId: currentVoiceId
+        voiceId
       };
       localStorage.setItem('voiceoverData', JSON.stringify(voiceoverDataWithVoice));
       // Auch das Script speichern
       localStorage.setItem('voiceoverScript', script);
       
       // Workflow-Status speichern mit der aktuellen Stimmen-ID
-      await saveWorkflowState(data.voiceoverId, script, currentVoiceId);
+      await saveWorkflowState(newVoiceoverData.voiceoverId, script, voiceId);
       
       // Automatisch abspielen nach der Generierung
       const newAudio = new Audio(newVoiceoverData.dataUrl);

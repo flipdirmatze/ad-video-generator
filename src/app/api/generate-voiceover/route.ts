@@ -300,6 +300,9 @@ export async function POST(request: Request) {
         // Benutzer-ID für Mandantentrennung abrufen
         const userId = session.user.id;
         
+        // Create a proper S3 path with user ID for tenant isolation
+        const s3Path = `users/${userId}/audio/${fileName}`;
+        
         const s3Url = await uploadToS3(
           buffer,
           fileName, 
@@ -318,7 +321,7 @@ export async function POST(request: Request) {
             name: fileName,
             text: script,
             url: s3Url,
-            path: `users/${session.user.id}/audio/${fileName}`, // Korrekter Pfad mit Benutzer-ID
+            path: s3Path, // Store the correct path with user ID
             size: buffer.length,
             voiceId: selectedVoiceId, // Speichere die verwendete Stimmen-ID
             isPublic: false,
@@ -347,14 +350,17 @@ export async function POST(request: Request) {
             console.error('CRITICAL TEST ERROR:', testError);
           }
           
-          // Rückgabe des Voiceover-Objekts
+          // Rückgabe des Voiceover-Objekts mit signierten URLs
           return NextResponse.json({ 
+            success: true,
             voiceover: {
               id: voiceover._id,
               text: voiceover.text,
               voiceId: voiceover.voiceId,
-              modelId: 'eleven_multilingual_v2',
-              audioUrl: voiceover.url,
+              modelId: 'eleven_multilingual_v2', 
+              path: voiceover.path,
+              url: voiceover.url, // This is the S3 URL
+              dataUrl: `data:audio/mpeg;base64,${audioBase64}`, // For immediate playback
               createdAt: voiceover.createdAt,
               wordTimestampsCount: wordTimestamps.length
             }
