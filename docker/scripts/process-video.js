@@ -96,46 +96,197 @@ console.log(`Initialized S3 client with region: ${AWS_REGION}`);
 // Log the actual callback URL we're using
 console.log(`Using callback URL: ${BATCH_CALLBACK_URL}`);
 
-// Parse TEMPLATE_DATA with improved error handling
-let TEMPLATE_DATA = null;
-try {
-  if (process.env.TEMPLATE_DATA) {
-    // Trim any whitespace that might cause JSON parsing issues
-    const templateDataStr = process.env.TEMPLATE_DATA.trim();
-    console.log(`TEMPLATE_DATA length: ${templateDataStr.length}`);
-    
-      TEMPLATE_DATA = JSON.parse(templateDataStr);
-    
-    // Extra debug for voiceover
-    console.log('DEBUG VOICEOVER INFO:');
-    console.log('- process.env.VOICEOVER_URL:', process.env.VOICEOVER_URL);
-    console.log('- process.env.VOICEOVER_KEY:', process.env.VOICEOVER_KEY);
-    console.log('- process.env.VOICEOVER_ID:', process.env.VOICEOVER_ID);
-    console.log('- TEMPLATE_DATA.voiceoverId:', TEMPLATE_DATA.voiceoverId);
-    
-    // Check if TEMPLATE_DATA is a reference to S3
-    if (TEMPLATE_DATA.type === 's3Path' && TEMPLATE_DATA.path) {
-      console.log(`TEMPLATE_DATA contains S3 path reference: ${TEMPLATE_DATA.path}`);
-      
-      // We'll load the actual data from S3 path in the main function
-      if (TEMPLATE_DATA.segments && Array.isArray(TEMPLATE_DATA.segments)) {
-        console.log(`TEMPLATE_DATA already contains ${TEMPLATE_DATA.segments.length} segments`);
-      } else {
-        console.log(`TEMPLATE_DATA is S3 reference, will load full data later`);
-      }
-    } else {
-      console.log(`TEMPLATE_DATA parsed successfully, contains ${TEMPLATE_DATA.segments ? TEMPLATE_DATA.segments.length : 0} segments`);
-    }
-  } else if (process.env.TEMPLATE_DATA_PATH) {
-    console.log(`Loading template data from S3 path: ${process.env.TEMPLATE_DATA_PATH}`);
-    // Template-Daten werden später in der main-Funktion aus S3 geladen
-  } else {
-    console.warn('No TEMPLATE_DATA or TEMPLATE_DATA_PATH provided, some features may not work correctly');
+/**
+ * Hilfsfunktion, um benutzerspezifische S3-Pfade zu generieren
+ * Unterstützt sowohl die neue strukturierte Pfadkonvention als auch Legacy-Pfade
+ */
+function generateUserScopedPath(baseFolder, fileName, userId = USER_ID) {
+  // Wenn kein Benutzer angegeben ist, verwende den Legacy-Pfad
+  if (!userId) {
+    console.log(`Generiere Legacy-Pfad: ${baseFolder}/${fileName}`);
+    return `${baseFolder}/${fileName}`;
   }
-} catch (error) {
-  console.error('Error parsing TEMPLATE_DATA:', error);
-  console.error('First 100 characters of TEMPLATE_DATA:', process.env.TEMPLATE_DATA?.substring(0, 100));
-  console.error('Job will continue but may fail later if template data is required');
+
+  // Sonst generiere einen mandantengetrennten Pfad
+  const userScopedPath = `users/${userId}/${baseFolder}/${fileName}`;
+  console.log(`Generiere mandantengetrennten Pfad: ${userScopedPath}`);
+  return userScopedPath;
+}
+
+/**
+ * Analysiert einen S3-Schlüssel und bestimmt, ob es ein Legacy- oder benutzerbasierter Pfad ist
+ * Gibt den korrekten Pfad für die neue Struktur zurück
+ */
+function normalizeS3Key(key, targetFolder, userId = USER_ID) {
+  // Prüfe, ob der Pfad bereits die korrekte Benutzerstruktur hat
+  if (key.startsWith(`users/`)) {
+    console.log(`Pfad bereits im richtigen Format: ${key}`);
+    return key;
+  }
+
+  // Prüfe, ob der Pfad eine vollständige URL ist und extrahiere den Key
+  if (key.startsWith('http')) {
+    // Extrahiere den Key aus der URL
+    // z.B. https://bucket.s3.region.amazonaws.com/final/video.mp4 -> final/video.mp4
+    const urlParts = key.split('amazonaws.com/');
+    if (urlParts.length > 1) {
+      key = urlParts[1];
+      console.log(`Extrahierter S3-Key aus URL: ${key}`);
+    }
+  }
+
+  // Extrahiere den Dateinamen aus dem Pfad
+  const fileName = key.split('/').pop();
+  
+  // Bestimme den Basisordner aus dem Pfad oder verwende den übergebenen targetFolder
+  let baseFolder = targetFolder;
+  if (!baseFolder) {
+    // Versuche, den Basisordner aus dem Pfad zu extrahieren
+    const pathParts = key.split('/');
+    if (pathParts.length > 1) {
+      baseFolder = pathParts[0];
+    }
+  }
+
+  // Wenn wir keinen Basisordner haben, verwende einen Standardwert
+  if (!baseFolder) {
+    baseFolder = 'uploads';
+    console.warn(`Kein Basisordner gefunden, verwende Standard: ${baseFolder}`);
+  }
+
+  // Generiere den neuen Pfad
+  return generateUserScopedPath(baseFolder, fileName, userId);
+}
+
+/**
+ * Lädt eine Datei von S3 herunter und speichert sie lokal
+ */
+async function downloadFileFromS3(s3Key, localPath) {
+  console.log(`Downloading file from S3: ${s3Key} to ${localPath}`);
+  
+  // Stelle sicher, dass das Verzeichnis existiert
+  const dirPath = path.dirname(localPath);
+  if (!fs.existsSync(dirPath)) {
+    fs.mkdirSync(dirPath, { recursive: true });
+  }
+  
+  try {
+    // Zuerst versuchen wir, die Datei direkt mit dem angegebenen Schlüssel herunterzuladen
+    await downloadFile(s3Key, localPath);
+    console.log(`Successfully downloaded file from S3: ${s3Key}`);
+    return true;
+  } catch (error) {
+    console.warn(`Could not download using direct key: ${s3Key}. Error: ${error.message}`);
+    
+    // Wenn der direkte Download fehlschlägt, versuche mit dem normalisierten Pfad
+    try {
+      // Bestimme den Ordner aus dem Schlüssel
+      const folder = s3Key.split('/')[0]; // z.B. 'uploads', 'processed', etc.
+      const fileName = s3Key.split('/').pop(); // Der Dateiname
+      
+      // Versuche verschiedene Pfadvarianten
+      const possiblePaths = [
+        s3Key, // Originalschlüssel
+        generateUserScopedPath(folder, fileName), // Benutzerspezifischer Pfad
+        `${folder}/${fileName}` // Legacy-Pfad
+      ];
+      
+      // Wenn USER_ID vorhanden ist, versuche auch den Pfad ohne Benutzerstruktur
+      if (USER_ID) {
+        possiblePaths.push(`${folder}/${USER_ID}/${fileName}`);
+      }
+      
+      let success = false;
+      for (const tryPath of possiblePaths) {
+        if (tryPath === s3Key) continue; // Überspringen des bereits versuchten Pfads
+        
+        try {
+          console.log(`Trying alternative path: ${tryPath}`);
+          await downloadFile(tryPath, localPath);
+          console.log(`Successfully downloaded file using alternative path: ${tryPath}`);
+          success = true;
+          break;
+        } catch (altError) {
+          console.warn(`Failed with alternative path ${tryPath}: ${altError.message}`);
+        }
+      }
+      
+      if (!success) {
+        throw new Error(`Could not download file after trying multiple paths`);
+      }
+      
+      return true;
+    } catch (fallbackError) {
+      console.error(`All download attempts failed for ${s3Key}: ${fallbackError.message}`);
+      throw fallbackError;
+    }
+  }
+}
+
+/**
+ * Hilfsfunktion für den eigentlichen Download-Prozess
+ */
+async function downloadFile(s3Key, localPath) {
+  const command = new GetObjectCommand({
+    Bucket: S3_BUCKET,
+    Key: s3Key
+  });
+  
+  const response = await s3Client.send(command);
+  const chunks = [];
+  
+  // Stream die Daten in einen Buffer
+  for await (const chunk of response.Body) {
+    chunks.push(chunk);
+  }
+  
+  // Schreibe den Buffer in eine Datei
+  const buffer = Buffer.concat(chunks);
+  fs.writeFileSync(localPath, buffer);
+}
+
+/**
+ * Lädt eine Datei zu S3 hoch
+ */
+async function uploadFileToS3(localPath, s3Key) {
+  console.log(`Uploading file to S3: ${localPath} -> ${s3Key}`);
+  
+  try {
+    // Normalisiere den S3-Schlüssel
+    const normalizedKey = normalizeS3Key(s3Key, null, USER_ID);
+    
+    // Lese die Datei ein
+    const fileContent = fs.readFileSync(localPath);
+    
+    // Bestimme den MIME-Typ
+    let contentType = 'application/octet-stream';
+    if (localPath.endsWith('.mp4')) {
+      contentType = 'video/mp4';
+    } else if (localPath.endsWith('.mp3')) {
+      contentType = 'audio/mpeg';
+    } else if (localPath.endsWith('.json')) {
+      contentType = 'application/json';
+    } else if (localPath.endsWith('.txt')) {
+      contentType = 'text/plain';
+    }
+    
+    // Erstelle den Upload-Befehl
+    const command = new PutObjectCommand({
+      Bucket: S3_BUCKET,
+      Key: normalizedKey,
+      Body: fileContent,
+      ContentType: contentType
+    });
+    
+    // Führe den Upload durch
+    await s3Client.send(command);
+    console.log(`Successfully uploaded file to S3: ${normalizedKey}`);
+    
+    return normalizedKey;
+  } catch (error) {
+    console.error(`Error uploading file to S3: ${error.message}`);
+    throw error;
+  }
 }
 
 /**
@@ -566,7 +717,7 @@ async function main() {
         
         // Lade die Template-Daten aus S3
         const tempDataPath = `${TEMP_DIR}/template-data.json`;
-        await downloadFromS3(templateDataPath, tempDataPath);
+        await downloadFileFromS3(templateDataPath, tempDataPath);
         
         // Lese und parse die JSON-Datei
         const templateDataStr = fs.readFileSync(tempDataPath, 'utf8');
@@ -1772,6 +1923,26 @@ async function downloadFromS3(key, outputPath) {
     return outputPath;
   } catch (error) {
     console.error(`Error downloading from S3: ${error.message}`);
+    throw error;
+  }
+}
+
+// Lade die Template-Daten aus S3
+async function loadTemplateDataFromS3(templateDataPath) {
+  console.log(`Loading template data from S3 path: ${templateDataPath}`);
+  
+  try {
+    // Verwende die Funktion, die verschiedene Pfadformate ausprobiert
+    const localPath = path.join(TEMP_DIR, 'template-data.json');
+    await downloadFileFromS3(templateDataPath, localPath);
+    
+    // Lese die Datei ein
+    const templateDataStr = fs.readFileSync(localPath, 'utf-8');
+    console.log(`Template data file loaded from S3, size: ${templateDataStr.length} bytes`);
+    
+    return JSON.parse(templateDataStr);
+  } catch (error) {
+    console.error(`Error loading template data from S3: ${error.message}`);
     throw error;
   }
 }

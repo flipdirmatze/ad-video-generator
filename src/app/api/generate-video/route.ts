@@ -198,7 +198,7 @@ export async function POST(request: Request) {
     try {
       // Ausgabedateinamen generieren
       const outputFileName = generateUniqueFileName(`${title.toLowerCase().replace(/\s+/g, '-')}.mp4`);
-      const outputKey = `final/${session.user.id}/${outputFileName}`;
+      const outputKey = `final/${outputFileName}`;
       console.log('Generated output key:', outputKey);
 
       // Die Segmente für den AWS Batch Job vorbereiten
@@ -226,7 +226,9 @@ export async function POST(request: Request) {
       
       // Template-Daten in S3 speichern, um die Container Overrides Limite zu umgehen
       const { v4: uuidv4 } = await import('uuid');
-      const templateDataKey = `config/${session.user.id}/${uuidv4()}-template.json`;
+      // Benutzer-ID für mandantensichere Speicherung
+      const userId = session.user.id;
+      const templateDataKey = `config/${uuidv4()}-template.json`;
       console.log(`Storing template data in S3 with key: ${templateDataKey}`);
       
       const templateDataBuffer = Buffer.from(JSON.stringify(templateData));
@@ -240,7 +242,8 @@ export async function POST(request: Request) {
         templateDataBuffer,
         templateDataKey.split('/').pop() || 'template.json',
         'application/json',
-        'config'
+        'config',
+        userId
       );
       
       console.log('Template data stored in S3 successfully');

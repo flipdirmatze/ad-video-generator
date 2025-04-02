@@ -253,7 +253,7 @@ export async function POST(request: NextRequest) {
         });
         
         project = new ProjectModel({
-          userId: String(userId), // Stelle sicher, dass die userId als String gespeichert wird
+          userId,
           title: data.title,
           description: data.description || '',
           status: 'pending',
@@ -340,7 +340,8 @@ export async function POST(request: NextRequest) {
         templateDataBuffer,
         templateDataKey.split('/').pop() || 'template.json',
         'application/json',
-        templateDataKey.startsWith('config/') ? 'config' : 'uploads'
+        templateDataKey.startsWith('config/') ? 'config' : 'uploads',
+        userId
       );
       
       console.log('Template data stored in S3 successfully');

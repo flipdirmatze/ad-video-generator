@@ -5,6 +5,7 @@ import { uploadToS3, generateUniqueFileName } from '@/lib/storage'
 import dbConnect from '@/lib/mongoose'
 import Voiceover from '@/models/Voiceover'
 import { Types } from 'mongoose'
+import { v4 as uuidv4 } from 'uuid'
 
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY
 const DEFAULT_VOICE_ID = 'pNInz6obpgDQGcFmaJgB' // Standard-Stimme als Fallback
@@ -296,12 +297,16 @@ export async function POST(request: Request) {
       console.log(`Uploading voiceover to S3 with filename: ${fileName}`);
       
       try {
+        // Benutzer-ID für Mandantentrennung abrufen
+        const userId = session.user.id;
+        
         const s3Url = await uploadToS3(
           buffer,
           fileName, 
           'audio/mpeg',
-          'audio' // S3-Bucket-Ordner 'audio' verwenden
-        )
+          'audio', // S3-Bucket-Ordner 'audio' verwenden
+          userId    // Benutzer-ID für Mandantentrennung
+        );
         
         console.log(`Voiceover uploaded to S3 successfully. URL: ${s3Url}`);
         
@@ -320,7 +325,7 @@ export async function POST(request: Request) {
             wordTimestamps: wordTimestamps.length > 0 ? wordTimestamps : [], // Use empty array instead of undefined
             createdAt: new Date(),
             updatedAt: new Date()
-          })
+          });
           
           console.log(`Voiceover metadata saved to MongoDB. ID: ${voiceover._id}. Word timestamps count: ${wordTimestamps.length}`);
           
@@ -342,27 +347,27 @@ export async function POST(request: Request) {
             console.error('CRITICAL TEST ERROR:', testError);
           }
           
-          // Beide URLs zurückgeben - dataUrl für Frontend-Kompatibilität und s3Url für die Verarbeitung
-          return NextResponse.json({
-            success: true,
-            dataUrl, // Legacy-URL für vorhandene Implementierung
-            url: s3Url, // S3-URL für die neue Implementierung
-            voiceoverId: voiceover._id,
-            voiceId: selectedVoiceId, // Gib die verwendete Stimmen-ID zurück
-            fileName,
-            wordTimestampsCount: wordTimestamps.length
-          })
-        } catch (dbError) {
-          console.error('MongoDB error when saving voiceover:', dbError);
-          // Auch wenn der DB-Eintrag fehlschlägt, können wir die Voiceover-Datei zurückgeben
+          // Rückgabe des Voiceover-Objekts
+          return NextResponse.json({ 
+            voiceover: {
+              id: voiceover._id,
+              text: voiceover.text,
+              voiceId: voiceover.voiceId,
+              modelId: 'eleven_multilingual_v2',
+              audioUrl: voiceover.url,
+              createdAt: voiceover.createdAt,
+              wordTimestampsCount: wordTimestamps.length
+            }
+          });
+        } catch (s3Error) {
+          console.error('S3 upload error:', s3Error);
+          // Fallback: Bei S3-Fehler zumindest die Base64-Daten zurückgeben
           return NextResponse.json({
             success: true,
             dataUrl,
-            url: s3Url,
-            fileName,
+            warning: 'Voiceover generated but could not be uploaded to S3',
             voiceId: selectedVoiceId, // Gib die verwendete Stimmen-ID zurück
-            voiceoverId: voiceoverId.toString(),
-            warning: 'Voiceover generated but metadata could not be saved to database'
+            fileName: 'voiceover.mp3'
           })
         }
       } catch (s3Error) {

@@ -371,7 +371,8 @@ export const generateFinalVideo = async (
       outputFormat?: string;
     };
   },
-  outputFileName: string
+  outputFileName: string,
+  userId?: string
 ): Promise<string> => {
   if (!templateData || !outputFileName) {
     throw new Error('Missing required parameters for generating final video');
@@ -392,6 +393,7 @@ export const generateFinalVideo = async (
       outputFileName,
       {
         TEMPLATE_DATA: templateData,
+        USER_ID: userId || 'system'  // Benutzer-ID für Mandantentrennung
       }
     );
     
@@ -399,7 +401,12 @@ export const generateFinalVideo = async (
       throw new Error('S3_BUCKET_NAME environment variable is not set');
     }
     
-    return `https://${process.env.S3_BUCKET_NAME}.s3.amazonaws.com/final/${outputFileName}`;
+    // Generiere eine URL, die der neuen Struktur entspricht
+    if (userId) {
+      return `https://${process.env.S3_BUCKET_NAME}.s3.amazonaws.com/users/${userId}/final/${outputFileName}`;
+    } else {
+      return `https://${process.env.S3_BUCKET_NAME}.s3.amazonaws.com/final/${outputFileName}`;
+    }
   } catch (error) {
     console.error('Error in generateFinalVideo:', error);
     throw error instanceof Error 

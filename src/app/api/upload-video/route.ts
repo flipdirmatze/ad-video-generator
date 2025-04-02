@@ -114,10 +114,13 @@ export async function POST(request: Request) {
       const arrayBuffer = await file.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
 
-      // Upload to S3
+      // Benutzer-ID aus der Session für Mandantentrennung
+      const userId = session?.user?.id;
+
+      // Upload to S3 with user ID for tenant isolation
       let fileUrl;
       try {
-        fileUrl = await uploadToS3(buffer, uniqueFileName, file.type);
+        fileUrl = await uploadToS3(buffer, uniqueFileName, file.type, 'uploads', userId);
         console.log(`[${requestId}] File uploaded to S3: ${fileUrl}`);
       } catch (s3Error) {
         console.error(`[${requestId}] S3 upload error:`, s3Error);

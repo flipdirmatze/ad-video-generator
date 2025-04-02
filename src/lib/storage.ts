@@ -3,6 +3,13 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 /**
  * S3 Bucket-Folder-Struktur für die Anwendung:
+ * - users/{userId}/uploads/: Benutzerspezifische Uploads
+ * - users/{userId}/processed/: Benutzerspezifische verarbeitete Segmente
+ * - users/{userId}/final/: Benutzerspezifische fertige Videos
+ * - users/{userId}/audio/: Benutzerspezifische Audiodateien
+ * - users/{userId}/config/: Benutzerspezifische Konfigurationen
+ * 
+ * Legacy-Struktur (für Abwärtskompatibilität):
  * - uploads/: Ursprüngliche Video-Uploads der Benutzer
  * - processed/: Zwischenverarbeitete Videosegmente
  * - final/: Endgültige zusammengesetzte Videos
@@ -47,15 +54,34 @@ try {
 const bucketName = process.env.S3_BUCKET_NAME || 'ad-video-generator-bucket';
 
 /**
- * Upload einer Datei direkt zu S3
+ * Generiert einen S3-Pfad mit Berücksichtigung der Mandantentrennung
+ */
+export function generateUserScopedPath(
+  folder: S3BucketFolder,
+  fileName: string,
+  userId?: string
+): string {
+  if (!userId) {
+    // Legacy-Pfad für Abwärtskompatibilität
+    return `${folder}/${fileName}`;
+  }
+  return `users/${userId}/${folder}/${fileName}`;
+}
+
+/**
+ * Upload einer Datei direkt zu S3 mit Mandantentrennung
  */
 export async function uploadToS3(
   fileBuffer: Buffer,
   fileName: string,
   contentType: string,
-  folder: S3BucketFolder = 'uploads'
+  folder: S3BucketFolder = 'uploads',
+  userId?: string
 ) {
-  const key = `${folder}/${fileName}`;
+  // Generiere den richtigen Pfad mit Mandantentrennung
+  const key = generateUserScopedPath(folder, fileName, userId);
+  
+  console.log(`Uploading to S3 with key: ${key}${userId ? ' (mandantensicher)' : ' (legacy)'}`);
   
   const command = new PutObjectCommand({
     Bucket: bucketName,
@@ -75,16 +101,18 @@ export async function getPresignedUploadUrl(
   fileName: string,
   contentType: string,
   folder: S3BucketFolder = 'uploads',
-  expiresIn: number = 3600
+  expiresIn: number = 3600,
+  userId?: string
 ) {
   // Prüfe AWS Konfiguration
   if (!process.env.AWS_REGION || !process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY || !bucketName) {
     throw new Error('AWS Konfiguration ist unvollständig. Bitte AWS_REGION, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY und S3_BUCKET_NAME definieren.');
   }
   
-  console.log(`Generating presigned URL for ${fileName} in folder ${folder}`);
+  // Generiere den richtigen Pfad mit Mandantentrennung
+  const key = generateUserScopedPath(folder, fileName, userId);
   
-  const key = `${folder}/${fileName}`;
+  console.log(`Generating presigned URL for ${key}`);
   
   try {
     const command = new PutObjectCommand({
@@ -137,11 +165,21 @@ export function getS3Url(key: string): string {
 export async function listFiles(
   folder: S3BucketFolder,
   prefix: string = '',
-  maxKeys: number = 100
+  maxKeys: number = 100,
+  userId?: string
 ) {
+  // Mandantentrennung für die Auflistung von Dateien
+  const folderPrefix = userId 
+    ? `users/${userId}/${folder}/` 
+    : `${folder}/`;
+    
+  const fullPrefix = prefix 
+    ? `${folderPrefix}${prefix}` 
+    : folderPrefix;
+
   const command = new ListObjectsV2Command({
     Bucket: bucketName,
-    Prefix: prefix ? `${folder}/${prefix}` : `${folder}/`,
+    Prefix: fullPrefix,
     MaxKeys: maxKeys,
   });
 
@@ -158,15 +196,14 @@ export async function listFiles(
 
 /**
  * Erzeugt einen S3-Key basierend auf Ordner und Dateiname
+ * Diese Funktion wird durch generateUserScopedPath ersetzt, bleibt aber für Abwärtskompatibilität
  */
 export function generateS3Key(
   fileName: string, 
   folder: S3BucketFolder = 'uploads',
   userId?: string
 ): string {
-  // Optional: Füge Benutzer-ID für bessere Organisation hinzu
-  const userPath = userId ? `${userId}/` : '';
-  return `${folder}/${userPath}${fileName}`;
+  return generateUserScopedPath(folder, fileName, userId);
 }
 
 /**
@@ -191,8 +228,8 @@ export async function getSignedVideoUrl(key: string, expiresIn: number = 3600): 
   // Entferne führenden Schrägstrich, falls vorhanden
   const cleanKey = key.startsWith('/') ? key.slice(1) : key;
   
-  // Wenn der Key nicht mit 'uploads/' beginnt, füge es hinzu
-  const fullKey = cleanKey.startsWith('uploads/') ? cleanKey : `uploads/${cleanKey}`;
+  // Verwende den Key direkt, da er jetzt möglicherweise eine Benutzer-ID enthält
+  const fullKey = cleanKey;
 
   const command = new GetObjectCommand({
     Bucket: bucketName,
