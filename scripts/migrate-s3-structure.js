@@ -28,9 +28,39 @@ const mongoose = require('mongoose');
 const { execSync } = require('child_process');
 
 // Mongoose-Modelle
-const VideoModel = require('../src/models/Video');
-const VoiceoverModel = require('../src/models/Voiceover');
-const ProjectModel = require('../src/models/Project');
+const VideoSchema = new mongoose.Schema({
+  _id: { type: String, required: true },
+  name: { type: String, required: true },
+  userId: { type: String, required: true },
+  videoKey: String,
+  fileUrl: String,
+  tags: [String],
+  uploadedAt: Date,
+});
+
+const VoiceoverSchema = new mongoose.Schema({
+  _id: { type: mongoose.Schema.Types.ObjectId, required: true },
+  userId: { type: String, required: true },
+  url: String,
+  path: String,
+  text: String,
+  size: Number,
+  wordTimestamps: Array,
+});
+
+const ProjectSchema = new mongoose.Schema({
+  _id: { type: mongoose.Schema.Types.ObjectId, required: true },
+  userId: { type: String, required: true },
+  title: String,
+  description: String,
+  templateDataPath: String,
+  status: String,
+});
+
+// Definiere die Modelle
+const VideoModel = mongoose.model('Video', VideoSchema);
+const VoiceoverModel = mongoose.model('Voiceover', VoiceoverSchema);
+const ProjectModel = mongoose.model('Project', ProjectSchema);
 
 // Konfiguration
 const s3Client = new S3Client({
