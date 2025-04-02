@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import dbConnect from '@/lib/mongoose';
 import VideoModel from '@/models/Video';
-import { getSignedVideoUrl } from '@/lib/storage';
+import { getSignedVideoUrl, getSignedDownloadUrl } from '@/lib/storage';
 
 /**
  * GET /api/media
@@ -28,44 +28,45 @@ export async function GET(request: NextRequest) {
       .lean();
     
     // Rückmeldung formatieren mit signierten URLs
-    const formattedVideos = await Promise.all(videos.map(async video => {
+    const files = await Promise.all(videos.map(async (video) => {
+      // Generiere eine signierte URL für jedes Video
+      let signedUrl;
       try {
-        if (!video.path) {
-          console.error('Video has no path:', video);
-          return null;
+        if (video.path) {
+          signedUrl = await getSignedDownloadUrl(video.path, 86400); // 24 Stunden gültige URL
+          console.log(`Generated signed URL for video ${video.id}`);
+        } else {
+          signedUrl = video.url;
+          console.log(`No path for video ${video.id}, using original URL`);
         }
-
-        // Generiere eine signierte URL für jedes Video
-        const signedUrl = await getSignedVideoUrl(video.path);
-        console.log(`Generated signed URL for video ${video.id}:`, signedUrl);
-        
-        return {
-          id: video.id,
-          name: video.name,
-          path: video.path,
-          url: signedUrl,
-          size: video.size,
-          type: video.type,
-          tags: video.tags || [],
-          createdAt: video.createdAt,
-          isPublic: video.isPublic,
-          status: video.status || 'complete',
-          progress: video.progress || 100
-        };
       } catch (error) {
-        console.error(`Error processing video ${video.id}:`, error);
-        return null;
+        console.error(`Failed to generate signed URL for video ${video.id}:`, error);
+        signedUrl = video.url; // Fallback zur ursprünglichen URL
       }
+
+      return {
+        id: video.id,
+        name: video.name,
+        size: video.size,
+        type: video.type,
+        url: signedUrl, // Verwende die signierte URL
+        path: video.path, // Behalte den Pfad für spätere Verwendung
+        tags: video.tags || [],
+        createdAt: video.createdAt,
+        isPublic: video.isPublic,
+        status: video.status || 'complete',
+        progress: video.progress || 100
+      };
     }));
     
     // Filtere fehlgeschlagene Videos heraus
-    const validVideos = formattedVideos.filter(video => video !== null);
+    const validFiles = files.filter(file => file !== null);
     
     // Erfolg zurückgeben
     return NextResponse.json({
       success: true,
-      count: validVideos.length,
-      files: validVideos
+      count: validFiles.length,
+      files: validFiles
     });
   } catch (error) {
     console.error('Error fetching videos from database:', error);

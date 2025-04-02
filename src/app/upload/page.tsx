@@ -35,7 +35,7 @@ export default function UploadPage() {
   const [workflowStep, setWorkflowStep] = useState<string | null>(null)
   const [success, setSuccess] = useState('')
   const [untaggedVideos, setUntaggedVideos] = useState(0)
-  const [signedUrls, setSignedUrls] = useState<{[key: string]: string}>({})
+  const [signedUrls, setSignedUrls] = useState<Record<string, string>>({})
 
   // Vereinfachte Authentifizierungs-Prüfung
   useEffect(() => {
@@ -69,12 +69,12 @@ export default function UploadPage() {
             }));
             console.log('Loaded videos with signed URLs:', videos);
             setUploadedVideos(videos);
-            
+
             // Speichere die signierten URLs in einem separaten State für Zugriffssteuerung
-            const urlMap = videos.reduce((acc, video) => {
+            const urlMap = videos.reduce((acc: Record<string, string>, video: UploadedVideo) => {
               acc[video.id] = video.url;
               return acc;
-            }, {} as Record<string, string>);
+            }, {});
             setSignedUrls(urlMap);
           } else {
             setUploadedVideos([])
@@ -129,43 +129,6 @@ export default function UploadPage() {
     
     checkUntaggedVideos()
   }, [])
-
-  // Hilfsfunktion zum Aktualisieren aller Video-URLs
-  const refreshAllVideoUrls = useCallback(async () => {
-    try {
-      // Hole signierte URLs für alle Videos
-      const videoPromises = uploadedVideos.map(async (video) => {
-        const key = video.key || `uploads/${video.id}`;
-        try {
-          const response = await fetch(`/api/get-signed-url?key=${encodeURIComponent(key)}`);
-          if (response.ok) {
-            const data = await response.json();
-            if (data.url) {
-              // Aktualisiere die signierten URLs
-              setSignedUrls(prev => ({
-                ...prev,
-                [video.id]: data.url
-              }));
-              return {
-                ...video,
-                url: data.url
-              };
-            }
-          }
-          return video;
-        } catch (error) {
-          console.error(`Failed to refresh URL for video ${video.id}:`, error);
-          return video;
-        }
-      });
-
-      // Warte auf alle Anfragen und aktualisiere den State
-      const updatedVideos = await Promise.all(videoPromises);
-      setUploadedVideos(updatedVideos);
-    } catch (error) {
-      console.error('Error refreshing video URLs:', error);
-    }
-  }, [uploadedVideos]);
 
   // Vereinfachtes Drag & Drop
   function handleDrag(e: React.DragEvent) {
@@ -292,42 +255,66 @@ export default function UploadPage() {
           throw new Error('Failed to save video metadata')
         }
         
+        // Upload erfolgreich
+        setUploadProgress(prev => ({ ...prev, [videoId]: 100 }))
+        setIsUploading(prev => ({ ...prev, [videoId]: false }))
+        
+        // Video-Liste aktualisieren
+        const data = await metadataResponse.json()
+        setUploadedVideos(prev => [...prev, {
+          id: videoId,
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          url: fileUrl,
+          tags: [],
+          key: key
+        }])
+        
+        // Pending Upload entfernen
+        setPendingUploads(prev => prev.filter(v => v.id !== videoId))
+        
+        // Nach erfolgreichem Upload:
         // Extrahiere die Response-Daten
         const metadataData = await metadataResponse.json();
         console.log('Upload completed successfully:', metadataData);
-        
+
         // Upload erfolgreich markieren
         setUploadProgress(prev => ({ ...prev, [videoId]: 100 }));
         setIsUploading(prev => ({ ...prev, [videoId]: false }));
-        
+
         // Pending Upload entfernen
         setPendingUploads(prev => prev.filter(v => v.id !== videoId));
-        
+
         // Verwende die signierte URL aus der Antwort, falls vorhanden
         const videoUrl = metadataData.url || fileUrl;
-        
-        // Video-Liste aktualisieren
+        console.log(`Using URL for video ${videoId}: ${videoUrl.substring(0, 50)}...`);
+
+        // Video-Liste aktualisieren mit der signierten URL
         setUploadedVideos(prev => [{
           id: videoId,
           name: file.name,
           size: file.size,
           type: file.type,
-          url: videoUrl,
+          url: videoUrl, // Verwende die signierte URL
           tags: [],
           key: key
         }, ...prev]);
-        
+
         // Speichere die URL auch in den signierten URLs
         setSignedUrls(prev => ({
           ...prev,
           [videoId]: videoUrl
         }));
-        
+
         // Erfolgsmeldung anzeigen
         setSuccess(`Video ${file.name} erfolgreich hochgeladen`);
-        
-        // Aktualisiere alle bestehenden Video-URLs nach kurzer Verzögerung
-        setTimeout(() => refreshAllVideoUrls(), 2000);
+
+        // Aktualisiere alle bestehenden Video-URLs nach kurzer Verzögerung (2 Sekunden)
+        setTimeout(() => {
+          console.log("Refreshing all video URLs");
+          refreshAllVideoUrls();
+        }, 2000);
         
       } catch (error) {
         console.error('Upload error:', error)
@@ -421,6 +408,45 @@ export default function UploadPage() {
       }
     }
   }
+
+  // Hilfsfunktion zum Aktualisieren aller Video-URLs
+  const refreshAllVideoUrls = useCallback(async () => {
+    try {
+      // Hole signierte URLs für alle Videos
+      const videoPromises = uploadedVideos.map(async (video) => {
+        const key = video.key || `uploads/${video.id}`;
+        try {
+          console.log(`Refreshing URL for video ${video.id} with key ${key}`);
+          const response = await fetch(`/api/get-signed-url?key=${encodeURIComponent(key)}`);
+          if (response.ok) {
+            const data = await response.json();
+            if (data.url) {
+              console.log(`Got new signed URL for video ${video.id}: ${data.url.substring(0, 50)}...`);
+              // Aktualisiere die signierten URLs
+              setSignedUrls(prev => ({
+                ...prev,
+                [video.id]: data.url
+              }));
+              return {
+                ...video,
+                url: data.url
+              };
+            }
+          }
+          return video;
+        } catch (error) {
+          console.error(`Failed to refresh URL for video ${video.id}:`, error);
+          return video;
+        }
+      });
+
+      // Warte auf alle Anfragen und aktualisiere den State
+      const updatedVideos = await Promise.all(videoPromises);
+      setUploadedVideos(updatedVideos);
+    } catch (error) {
+      console.error('Error refreshing video URLs:', error);
+    }
+  }, [uploadedVideos]);
 
   if (isLoading || status === 'loading') {
     return (
@@ -595,16 +621,26 @@ export default function UploadPage() {
                           if (!signedUrls[video.id] || target.error.code === 4) {
                             const key = video.key || `uploads/${video.id}`;
                             try {
+                              console.log(`Refreshing URL for video ${video.id} with key ${key}`);
                               const response = await fetch(`/api/get-signed-url?key=${encodeURIComponent(key)}`);
                               if (response.ok) {
                                 const data = await response.json();
                                 if (data.url) {
+                                  console.log(`Got new signed URL for video ${video.id}: ${data.url.substring(0, 50)}...`);
                                   // Aktualisiere die signierte URL
                                   setSignedUrls(prev => ({
                                     ...prev,
                                     [video.id]: data.url
                                   }));
-                                  // Re-render sollte automatisch erfolgen
+                                  
+                                  // Um sicherzustellen, dass die Komponente neu rendert, müssen wir auch 
+                                  // das Video-Objekt im uploadedVideos-State aktualisieren
+                                  setUploadedVideos(prev => 
+                                    prev.map(v => v.id === video.id ? {...v, url: data.url} : v)
+                                  );
+                                  
+                                  // Versuche, das Video-Element neu zu laden
+                                  target.load();
                                   return;
                                 }
                               }
