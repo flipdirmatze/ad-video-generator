@@ -318,7 +318,7 @@ export async function POST(request: Request) {
             name: fileName,
             text: script,
             url: s3Url,
-            path: `audio/${fileName}`,
+            path: `users/${session.user.id}/audio/${fileName}`, // Korrekter Pfad mit Benutzer-ID
             size: buffer.length,
             voiceId: selectedVoiceId, // Speichere die verwendete Stimmen-ID
             isPublic: false,
