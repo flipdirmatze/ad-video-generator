@@ -305,6 +305,14 @@ export async function POST(request: NextRequest) {
     console.log('Using job queue:', process.env.AWS_BATCH_JOB_QUEUE);
     console.log('Using job definition:', process.env.AWS_BATCH_JOB_DEFINITION);
 
+    // Prüfe, ob Fargate explizit angefordert wurde
+    const useFargate = additionalParams?.USE_FARGATE === true;
+    if (useFargate) {
+      console.log('Fargate mode explicitly requested. Using Fargate-compatible configuration.');
+      // Entferne das Flag aus den additionalParams, da es in AWS Batch nicht benötigt wird
+      delete additionalParams.USE_FARGATE;
+    }
+
     // Erstelle den AWS Batch Job Command für Fargate
     // Die Ressourcendefinitionen werden aus der Job-Definition übernommen
     const command = new SubmitJobCommand({
@@ -312,7 +320,7 @@ export async function POST(request: NextRequest) {
       jobQueue: process.env.AWS_BATCH_JOB_QUEUE || '',
       jobDefinition: process.env.AWS_BATCH_JOB_DEFINITION || '',
       containerOverrides: {
-        // Nur Umgebungsvariablen übergeben, keine Ressourcenanforderungen
+        // Nur Umgebungsvariablen übergeben
         environment
       }
     });

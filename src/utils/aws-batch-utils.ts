@@ -87,7 +87,7 @@ export const submitAwsBatchJob = async (
     // Hole die Benutzer-ID aus den additionalParams, falls vorhanden
     const userId = additionalParams?.USER_ID || 'system';
     
-    // Erstelle die Anfrage an unsere API-Route
+    // Erstelle die Anfrage an unsere API-Route mit Fargate-Flag
     const requestOptions = {
       method: 'POST',
       headers: {
@@ -99,7 +99,11 @@ export const submitAwsBatchJob = async (
         jobType,
         inputVideoUrl,
         outputKey,
-        additionalParams,
+        additionalParams: {
+          ...additionalParams,
+          // Zusätzliches Flag hinzufügen, damit die API weiß, dass dies ein Fargate-Job ist
+          USE_FARGATE: true
+        }
       } as BatchJobParams),
       // Erhöhe das Timeout für die Anfrage
       signal: AbortSignal.timeout(30000) // 30 Sekunden Timeout
