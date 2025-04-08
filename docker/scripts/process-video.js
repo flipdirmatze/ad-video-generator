@@ -87,6 +87,18 @@ const BATCH_CALLBACK_URL = process.env.BATCH_CALLBACK_URL || 'https://ad-video-g
 const AWS_BATCH_JOB_ID = process.env.AWS_BATCH_JOB_ID || '';
 const PROJECT_ID = process.env.PROJECT_ID || '';
 
+// Initialisiere die TEMPLATE_DATA Variable aus der Umgebungsvariable
+let TEMPLATE_DATA = null;
+try {
+  if (process.env.TEMPLATE_DATA) {
+    TEMPLATE_DATA = JSON.parse(process.env.TEMPLATE_DATA);
+    console.log('Successfully parsed TEMPLATE_DATA from environment variable');
+  }
+} catch (error) {
+  console.error('Error parsing TEMPLATE_DATA from environment variable:', error.message);
+  console.log('Will try to load from S3 if TEMPLATE_DATA_PATH is provided');
+}
+
 // Initialisiere den S3-Client
 const s3Client = new S3Client({
   region: AWS_REGION
