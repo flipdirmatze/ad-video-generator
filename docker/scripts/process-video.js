@@ -352,7 +352,7 @@ function generateSrtContent(subtitleText, duration, wordTimestamps = null) {
         // Wort passt in die Zeile - füge es hinzu
         currentLine = (currentLine + ' ' + word).trim();
         words.push(word);
-      } else {
+    } else {
         // Zeile ist voll - speichere sie und beginne eine neue
         if (currentLine) {
           lines.push({

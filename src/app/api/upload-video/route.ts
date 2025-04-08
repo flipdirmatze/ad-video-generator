@@ -71,15 +71,11 @@ export async function POST(request: Request) {
         // Generate a signed URL for the video
         const signedUrl = await getS3UrlSigned(video.path);
         
-        console.log(`[${requestId}] Generated signed URL for newly uploaded video`);
-        console.log(`[${requestId}] URL starts with: ${signedUrl.substring(0, 100)}...`);
-        
         return NextResponse.json({
           success: true,
           videoId: video.id,
           key: video.path,
-          url: signedUrl,
-          path: video.path
+          url: signedUrl
         });
       } catch (unknownError) {
         console.error(`[${requestId}] Error creating video document:`, unknownError);
@@ -170,17 +166,13 @@ export async function POST(request: Request) {
         console.log(`[${requestId}] Video document created successfully: ${video._id}`);
         
         // Generate a signed URL for the video
-        const signedUrl = await getS3UrlSigned(`uploads/${uniqueFileName}`);
-        
-        console.log(`[${requestId}] Generated signed URL for newly uploaded video`);
-        console.log(`[${requestId}] URL starts with: ${signedUrl.substring(0, 100)}...`);
+        const signedUrl = await getS3UrlSigned(video.path);
         
         return NextResponse.json({
           success: true,
           videoId: video.id,
           key: video.path,
-          url: signedUrl,
-          path: video.path
+          url: signedUrl
         });
       } catch (unknownError) {
         console.error(`[${requestId}] Error creating video document:`, unknownError);

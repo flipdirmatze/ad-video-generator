@@ -22,44 +22,45 @@ const createBatchClient = () => {
   }
 };
 
-// Erstelle den Client nur einmal
-let batchClient: BatchClient;
-try {
-  batchClient = createBatchClient();
-} catch (error) {
-  console.error('Failed to initialize AWS Batch client:', error);
-  // Wir erstellen den Client später bei Bedarf
-}
+const batchClient = createBatchClient();
 
-// Validiere die erforderlichen Umgebungsvariablen
+// Validiere wichtige Umgebungsvariablen
 function validateEnvironment() {
   const requiredEnvVars = [
     'AWS_REGION',
     'AWS_ACCESS_KEY_ID',
     'AWS_SECRET_ACCESS_KEY',
-    'AWS_BATCH_JOB_QUEUE',
     'AWS_BATCH_JOB_DEFINITION',
+    'AWS_BATCH_JOB_QUEUE',
     'S3_BUCKET_NAME'
   ];
 
-  const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
-  
-  if (missingVars.length > 0) {
-    console.error('Missing required environment variables:', missingVars);
-    throw new Error(`Missing required environment variables: ${missingVars.join(', ')}`);
+  for (const envVar of requiredEnvVars) {
+    const value = process.env[envVar];
+    if (!value) {
+      console.error(`Missing required environment variable: ${envVar}`);
+    } else {
+      console.log(`Environment variable ${envVar} is set`);
+    }
   }
-  
-  // Logge die Werte der Umgebungsvariablen (ohne sensible Daten)
-  console.log('Environment validation successful with the following values:');
+
+  // Logge die tatsächlich verwendeten Werte (ohne sensible Daten)
   console.log('AWS_REGION:', process.env.AWS_REGION);
-  console.log('AWS_BATCH_JOB_QUEUE:', process.env.AWS_BATCH_JOB_QUEUE);
   console.log('AWS_BATCH_JOB_DEFINITION:', process.env.AWS_BATCH_JOB_DEFINITION);
+  console.log('AWS_BATCH_JOB_QUEUE:', process.env.AWS_BATCH_JOB_QUEUE);
   console.log('S3_BUCKET_NAME:', process.env.S3_BUCKET_NAME);
-  console.log('AWS_BATCH_CONTAINER_IMAGE:', process.env.AWS_BATCH_CONTAINER_IMAGE);
 }
 
 /**
- * Verarbeitet POST-Anfragen zum Starten von AWS Batch-Jobs für Videobearbeitung
+ * API-Handler für AWS Batch Job-Anfragen
+ * 
+ * POST /api/aws-batch
+ * - Sendet einen neuen Job an AWS Batch
+ * - Erfordert jobType, inputVideoUrl
+ * - Unterstützt zusätzliche Parameter
+ * 
+ * GET /api/aws-batch?jobId=[jobId]
+ * - Ruft den Status eines Jobs ab
  */
 export async function POST(request: NextRequest) {
   console.log('AWS Batch POST request received');
@@ -67,12 +68,6 @@ export async function POST(request: NextRequest) {
   try {
     // Validiere Umgebungsvariablen
     validateEnvironment();
-
-    // Stelle sicher, dass der Batch-Client existiert
-    if (!batchClient) {
-      console.log('Initializing AWS Batch client on demand');
-      batchClient = createBatchClient();
-    }
 
     // Authentifizierung prüfen
     let userId;
@@ -95,48 +90,42 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Extrahiere JSON-Daten aus der Anfrage
-    let data;
-    try {
-      data = await request.json();
-      console.log('Received job request:', JSON.stringify(data, null, 2));
-    } catch (error) {
-      console.error('Failed to parse request data:', error);
-      return NextResponse.json({
-        error: 'Invalid request data',
-        details: error instanceof Error ? error.message : 'Failed to parse JSON'
-      }, { status: 400 });
-    }
+    // Anfrageparameter parsen
+    const requestData = await request.json();
+    
+    const { 
+      jobType, 
+      inputVideoUrl, 
+      outputKey,
+      additionalParams = {}
+    } = requestData;
 
-    const { jobType, inputVideoUrl, outputKey, additionalParams } = data;
+    console.log('Request data:', { 
+      jobType, 
+      inputVideoUrl: inputVideoUrl?.substring(0, 50) + '...',
+      outputKey,
+      additionalParamsKeys: Object.keys(additionalParams || {})
+    });
 
     // Validiere erforderliche Parameter
-    if (!jobType || !inputVideoUrl) {
-      console.error('Missing required parameters:', { jobType, inputVideoUrl });
+    if (!jobType) {
+      console.error('Missing jobType parameter');
       return NextResponse.json(
-        { 
-          error: 'Missing parameters: jobType and inputVideoUrl are required',
-          details: {
-            missingParams: {
-              jobType: !jobType,
-              inputVideoUrl: !inputVideoUrl
-            }
-          }
-        },
+        { error: 'Missing parameter: jobType is required' },
         { status: 400 }
       );
     }
 
-    // Validiere Job-Typ
+    // Validiere, dass der Job-Typ gültig ist
     const validJobTypes = Object.values(BatchJobTypes);
     if (!validJobTypes.includes(jobType)) {
-      console.error('Invalid job type:', jobType);
+      console.error(`Invalid job type: ${jobType}. Valid types:`, validJobTypes);
       return NextResponse.json(
         { 
           error: 'Invalid job type',
           details: {
             provided: jobType,
-            allowed: validJobTypes
+            valid: validJobTypes
           }
         },
         { status: 400 }
@@ -305,22 +294,15 @@ export async function POST(request: NextRequest) {
     console.log('Using job queue:', process.env.AWS_BATCH_JOB_QUEUE);
     console.log('Using job definition:', process.env.AWS_BATCH_JOB_DEFINITION);
 
-    // Prüfe, ob Fargate explizit angefordert wurde
-    const useFargate = additionalParams?.USE_FARGATE === true;
-    if (useFargate) {
-      console.log('Fargate mode explicitly requested. Using Fargate-compatible configuration.');
-      // Entferne das Flag aus den additionalParams, da es in AWS Batch nicht benötigt wird
-      delete additionalParams.USE_FARGATE;
-    }
-
-    // Erstelle den AWS Batch Job Command für Fargate
-    // Die Ressourcendefinitionen werden aus der Job-Definition übernommen
+    // WICHTIGE ÄNDERUNG: Erstelle den AWS Batch Job Command OHNE platformCapabilities
+    // Dies ermöglicht es AWS, selbst zu entscheiden, ob EC2 oder Fargate verwendet wird
     const command = new SubmitJobCommand({
       jobName,
       jobQueue: process.env.AWS_BATCH_JOB_QUEUE || '',
-      jobDefinition: process.env.AWS_BATCH_JOB_DEFINITION || '',
+      // Stelle sicher, dass eine Fargate-kompatible Job-Definition verwendet wird
+      // Verwende die neue v2 Fargate Job-Definition, die wir gerade erstellt haben
+      jobDefinition: 'video-processor-job-fargate-v2',
       containerOverrides: {
-        // Nur Umgebungsvariablen übergeben
         environment
       }
     });
@@ -537,21 +519,18 @@ export async function GET(request: NextRequest) {
       stoppedAt: job.stoppedAt,
       exitCode: job.container?.exitCode,
       reason: job.container?.reason,
-      error: job.statusReason
+      statusReason: job.statusReason
     };
 
     console.log('Job status:', jobStatus);
-
+    
+    // Erfolgsantwort senden
     return NextResponse.json(jobStatus);
   } catch (error) {
-    console.error('Unhandled error in job status fetch:', error);
-    return NextResponse.json(
-      { 
-        error: 'Failed to fetch job status',
-        details: error instanceof Error ? error.message : 'Unknown error',
-        stack: error instanceof Error ? error.stack : undefined
-      },
-      { status: 500 }
-    );
+    console.error('Failed to get job status:', error);
+    return NextResponse.json({
+      error: 'Failed to get job status',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 });
   }
 }

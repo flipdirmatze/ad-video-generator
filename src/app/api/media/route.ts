@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import dbConnect from '@/lib/mongoose';
 import VideoModel from '@/models/Video';
-import { getS3UrlSigned } from '@/lib/storage';
+import { getSignedVideoUrl } from '@/lib/storage';
 
 /**
  * GET /api/media
@@ -27,29 +27,39 @@ export async function GET(request: NextRequest) {
       .sort({ createdAt: -1 })
       .lean();
     
-    // Für jedes Video eine signierte URL generieren
-    const videosWithSignedUrls = await Promise.all(videos.map(async (video) => {
+    // Rückmeldung formatieren mit signierten URLs
+    const formattedVideos = await Promise.all(videos.map(async video => {
       try {
-        // Verwende die getS3UrlSigned-Funktion, um eine signierte URL zu erhalten
-        const signedUrl = await getS3UrlSigned(video.path);
-        
-        console.log(`Generated signed URL for video ${video.id}. Path: ${video.path}`);
-        console.log(`URL starts with: ${signedUrl.substring(0, 100)}...`);
+        if (!video.path) {
+          console.error('Video has no path:', video);
+          return null;
+        }
+
+        // Generiere eine signierte URL für jedes Video
+        const signedUrl = await getSignedVideoUrl(video.path);
+        console.log(`Generated signed URL for video ${video.id}:`, signedUrl);
         
         return {
-          ...video,
-          url: signedUrl, // Ersetze die ursprüngliche URL mit der signierten URL
-          key: video.path, // Stelle sicher, dass der Key für spätere Verwendung verfügbar ist
+          id: video.id,
+          name: video.name,
+          path: video.path,
+          url: signedUrl,
+          size: video.size,
+          type: video.type,
+          tags: video.tags || [],
+          createdAt: video.createdAt,
+          isPublic: video.isPublic,
+          status: video.status || 'complete',
+          progress: video.progress || 100
         };
       } catch (error) {
-        console.error(`Error generating signed URL for video ${video.id}:`, error);
-        // Wenn die signierte URL-Generierung fehlschlägt, verwende die ursprüngliche URL
-        return video;
+        console.error(`Error processing video ${video.id}:`, error);
+        return null;
       }
     }));
     
     // Filtere fehlgeschlagene Videos heraus
-    const validVideos = videosWithSignedUrls.filter(video => video !== null);
+    const validVideos = formattedVideos.filter(video => video !== null);
     
     // Erfolg zurückgeben
     return NextResponse.json({
