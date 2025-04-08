@@ -306,24 +306,14 @@ export async function POST(request: NextRequest) {
     console.log('Using job definition:', process.env.AWS_BATCH_JOB_DEFINITION);
 
     // Erstelle den AWS Batch Job Command für Fargate
+    // Die Ressourcendefinitionen werden aus der Job-Definition übernommen
     const command = new SubmitJobCommand({
       jobName,
       jobQueue: process.env.AWS_BATCH_JOB_QUEUE || '',
       jobDefinition: process.env.AWS_BATCH_JOB_DEFINITION || '',
       containerOverrides: {
-        // Umgebungsvariablen nach Optimierung
-        environment,
-        // Ressourcenanforderungen für Fargate
-        resourceRequirements: [
-          {
-            type: 'MEMORY',
-            value: '4096'
-          },
-          {
-            type: 'VCPU',
-            value: '2'
-          }
-        ]
+        // Nur Umgebungsvariablen übergeben, keine Ressourcenanforderungen
+        environment
       }
     });
 
@@ -335,11 +325,7 @@ export async function POST(request: NextRequest) {
         jobQueue: process.env.AWS_BATCH_JOB_QUEUE,
         jobDefinition: process.env.AWS_BATCH_JOB_DEFINITION,
         containerOverrides: {
-          environmentCount: environment.length,
-          resourceRequirements: [
-            { type: 'MEMORY', value: '4096' },
-            { type: 'VCPU', value: '2' }
-          ]
+          environmentCount: environment.length
         }
       });
       
