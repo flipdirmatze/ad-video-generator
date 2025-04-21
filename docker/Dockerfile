@@ -6,6 +6,8 @@ ENV BATCH_CALLBACK_URL=https://ad-video-generator.vercel.app/api/batch-callback
 ENV BATCH_CALLBACK_SECRET=""
 ENV BATCH_CALLBACK_ENABLED=true
 
+# WICHTIG: BATCH_CALLBACK_SECRET muss bei der Ausführung mit einem gültigen Wert überschrieben werden
+
 # Installiere notwendige Abhängigkeiten und FFmpeg
 RUN apt-get update && apt-get install -y \
     ffmpeg \

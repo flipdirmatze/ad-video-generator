@@ -167,6 +167,22 @@ export async function POST(request: NextRequest) {
       value: 'true'
     });
 
+    // Callback URL und Secret hinzufügen
+    environment.push({
+      name: 'BATCH_CALLBACK_URL',
+      value: `${process.env.NEXT_PUBLIC_APP_URL || 'https://ad-video-generator.vercel.app'}/api/batch-callback`
+    });
+
+    // Wenn verfügbar, füge das Callback-Secret hinzu
+    if (process.env.BATCH_CALLBACK_SECRET) {
+      environment.push({
+        name: 'BATCH_CALLBACK_SECRET',
+        value: process.env.BATCH_CALLBACK_SECRET
+      });
+    } else {
+      console.warn('BATCH_CALLBACK_SECRET is not set in environment variables');
+    }
+
     // Füge Output-Key hinzu, wenn vorhanden
     if (outputKey) {
       environment.push({ name: 'OUTPUT_KEY', value: outputKey });

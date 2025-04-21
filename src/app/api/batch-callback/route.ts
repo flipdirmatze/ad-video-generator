@@ -5,6 +5,7 @@ import { getS3Url } from '@/lib/storage';
 
 // Einen Secret-Key für mehr Sicherheit verwenden
 const CALLBACK_SECRET = process.env.BATCH_CALLBACK_SECRET;
+const ACCEPT_EMPTY_CALLBACK_SECRET = process.env.ACCEPT_EMPTY_CALLBACK_SECRET === 'true' || process.env.NODE_ENV === 'development';
 
 type BatchCallbackRequest = {
   jobId: string;
@@ -28,10 +29,15 @@ export async function POST(request: NextRequest) {
     
     console.log(`Processing callback for job ${jobId} with status ${status}${projectId ? `, projectId: ${projectId}` : ''}`);
 
-    // Verifiziere den Secret-Key
-    if (CALLBACK_SECRET && (!callbackSecret || callbackSecret !== CALLBACK_SECRET)) {
+    // Verifiziere den Secret-Key (außer in Entwicklungsmodus oder wenn explizit deaktiviert)
+    if (CALLBACK_SECRET && !ACCEPT_EMPTY_CALLBACK_SECRET && (!callbackSecret || callbackSecret !== CALLBACK_SECRET)) {
       console.warn(`Unauthorized batch callback attempt: ${jobId}`);
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    
+    // In Development-Modus oder wenn ACCEPT_EMPTY_CALLBACK_SECRET aktiviert ist, akzeptiere leere Secrets
+    if (ACCEPT_EMPTY_CALLBACK_SECRET && (!callbackSecret || callbackSecret === '')) {
+      console.warn(`Accepting empty callback secret for job ${jobId} (development mode or explicitly allowed)`);
     }
 
     if (!jobId) {

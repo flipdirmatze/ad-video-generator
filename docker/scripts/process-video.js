@@ -1770,7 +1770,7 @@ async function sendCallback(data) {
 
   // Wenn kein Callback-Secret vorhanden ist, gib eine Warnung aus, aber sende den Callback trotzdem
   if (!BATCH_CALLBACK_SECRET) {
-    console.warn('BATCH_CALLBACK_SECRET not provided, callback may be rejected by API');
+    console.warn('BATCH_CALLBACK_SECRET not provided, sending callback anyway');
   } 
 
   try {
@@ -1779,7 +1779,7 @@ async function sendCallback(data) {
       jobId: AWS_BATCH_JOB_ID,
       projectId: PROJECT_ID,
       ...data,
-      callbackSecret: BATCH_CALLBACK_SECRET
+      callbackSecret: BATCH_CALLBACK_SECRET || '' // Use empty string if not provided
     };
 
     console.log('Callback payload:', {
