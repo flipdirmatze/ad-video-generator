@@ -3,6 +3,8 @@ FROM node:18-slim
 # Umgebungsvariablen
 ENV DEBIAN_FRONTEND=noninteractive
 ENV BATCH_CALLBACK_URL=https://ad-video-generator.vercel.app/api/batch-callback
+ENV BATCH_CALLBACK_SECRET=""
+ENV BATCH_CALLBACK_ENABLED=true
 
 # Installiere notwendige Abhängigkeiten und FFmpeg
 RUN apt-get update && apt-get install -y \
@@ -21,7 +23,7 @@ RUN pip3 install --no-cache-dir awscli --break-system-packages
 WORKDIR /app
 
 # Package.json und package-lock.json kopieren
-COPY package.json ./
+COPY docker/package.json ./
 
 # Abhängigkeiten installieren
 RUN npm install

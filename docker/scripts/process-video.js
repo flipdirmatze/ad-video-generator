@@ -1760,69 +1760,52 @@ async function uploadOutputFile(filePath) {
 }
 
 /**
- * Sende einen Callback an die Anwendung
+ * Sendet einen Callback an die API, um den Job-Status zu aktualisieren
  */
 async function sendCallback(data) {
+  if (!BATCH_CALLBACK_URL) {
+    console.log('No callback URL provided, skipping callback');
+    return;
+  }
+
+  // Wenn kein Callback-Secret vorhanden ist, gib eine Warnung aus, aber sende den Callback trotzdem
   if (!BATCH_CALLBACK_SECRET) {
-    console.log('BATCH_CALLBACK_SECRET not provided, skipping callback');
-    return;
-  }
-  
-  if (!AWS_BATCH_JOB_ID) {
-    console.log('AWS_BATCH_JOB_ID not provided, skipping callback');
-    return;
-  }
-  
-  const callbackData = {
-    ...data,
-    jobId: AWS_BATCH_JOB_ID,
-    projectId: process.env.PROJECT_ID,
-    callbackSecret: BATCH_CALLBACK_SECRET
-  };
-  
-  console.log(`Sending callback to ${BATCH_CALLBACK_URL} for project ${process.env.PROJECT_ID}`);
-  
-  return new Promise((resolve, reject) => {
-    const postData = JSON.stringify(callbackData);
-    const url = new URL(BATCH_CALLBACK_URL);
-    
-    const options = {
-      hostname: url.hostname,
-      port: url.port || 443,
-      path: url.pathname,
+    console.warn('BATCH_CALLBACK_SECRET not provided, callback may be rejected by API');
+  } 
+
+  try {
+    console.log(`Sending callback to ${BATCH_CALLBACK_URL}`);
+    const body = {
+      jobId: AWS_BATCH_JOB_ID,
+      projectId: PROJECT_ID,
+      ...data,
+      callbackSecret: BATCH_CALLBACK_SECRET
+    };
+
+    console.log('Callback payload:', {
+      ...body,
+      callbackSecret: BATCH_CALLBACK_SECRET ? '***REDACTED***' : 'not provided'
+    });
+
+    const response = await fetch(BATCH_CALLBACK_URL, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'Content-Length': postData.length
-      }
-    };
-    
-    const req = https.request(options, (res) => {
-      let responseData = '';
-      
-      res.on('data', (chunk) => {
-        responseData += chunk;
-      });
-      
-      res.on('end', () => {
-        if (res.statusCode >= 200 && res.statusCode < 300) {
-          console.log('Callback sent successfully');
-          resolve();
-        } else {
-          console.error(`Callback failed with status ${res.statusCode}: ${responseData}`);
-          reject(new Error(`Callback failed with status ${res.statusCode}: ${responseData}`));
-        }
-      });
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body)
     });
-    
-    req.on('error', (err) => {
-      console.error(`Callback request failed: ${err.message}`);
-      reject(new Error(`Callback request failed: ${err.message}`));
-    });
-    
-    req.write(postData);
-    req.end();
-  });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`Failed to send callback: ${response.status} ${response.statusText}`, errorText);
+      return;
+    }
+
+    const result = await response.json();
+    console.log('Callback successful:', result);
+  } catch (error) {
+    console.error('Error sending callback:', error);
+  }
 }
 
 /**
