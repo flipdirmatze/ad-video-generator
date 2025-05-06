@@ -1769,7 +1769,7 @@ async function sendCallback(data) {
   const callbackData = JSON.stringify({
     ...data,
     jobId: AWS_BATCH_JOB_ID,
-    secret: BATCH_CALLBACK_SECRET
+    callbackSecret: BATCH_CALLBACK_SECRET // Korrigierter Schlüsselname
   });
 
   // URL-Normalisierung, um doppelte Schrägstriche zu entfernen
