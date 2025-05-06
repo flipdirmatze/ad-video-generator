@@ -226,11 +226,6 @@ export async function POST(request: NextRequest) {
       }
     }
     
-    // Ausgabedateinamen generieren
-    const outputFileName = generateUniqueFileName(`${data.title.toLowerCase().replace(/\s+/g, '-')}.mp4`);
-    const outputKey = `final/${userId}/${outputFileName}`;
-    console.log('Generated output key:', outputKey);
-    
     // Segmente aus den Videos extrahieren und sortieren
     const segments = data.videos.flatMap(video => 
       video.segments.map(segment => ({
@@ -243,6 +238,10 @@ export async function POST(request: NextRequest) {
     ).sort((a, b) => a.position - b.position);
     
     console.log('Prepared segments:', segments);
+    
+    // Generiere einen eindeutigen, mandantengetrennten Ausgabeschlüssel für das finale Video
+    const outputKey = `users/${userId}/final/${uuidv4()}.mp4`;
+    console.log('Generated user-specific output key:', outputKey);
     
     try {
       if (!project) {
@@ -432,13 +431,9 @@ export async function POST(request: NextRequest) {
     
     // Starte den AWS Batch-Job
     try {
-      console.log(`Submitting AWS Batch job for segment ${segments[0].videoKey}`);
-      
-      // Erstelle einen eindeutigen Ausgabeschlüssel
-      const outputKey = `final/${uuidv4()}.mp4`;
-      
-      // Konvertiere den S3-Key zu einer vollständigen URL
-      const inputVideoUrl = getS3Url(segments[0].videoKey);
+      // Der outputKey wurde bereits oben generiert und in jobParams.OUTPUT_KEY gesetzt.
+      // Die inputVideoUrl wird ebenfalls benötigt.
+      const inputVideoUrl = getS3Url(segments[0].videoKey); // Annahme: segments[0] existiert immer
       console.log(`Converting S3 key to full URL: ${segments[0].videoKey} -> ${inputVideoUrl}`);
       
       // Bereite die zusätzlichen Parameter vor - NUR mit einem Verweis auf die S3-Datei
@@ -447,7 +442,7 @@ export async function POST(request: NextRequest) {
         USER_ID: userId,
         PROJECT_ID: project._id.toString(),
         TEMPLATE_DATA_PATH: templateDataKey, // Nur der Pfad, nicht die Daten selbst
-        DEBUG: 'true'
+        // DEBUG: 'true' // Kann bei Bedarf aktiviert werden
       };
       
       console.log('Submitting job with template data in S3:', {
@@ -457,11 +452,11 @@ export async function POST(request: NextRequest) {
         templateDataSizeBytes: JSON.stringify(templateData).length
       });
       
-      // Sende den Job an AWS Batch
+      // Sende den Job an AWS Batch - verwende den bereits generierten outputKey
       const jobResult = await submitAwsBatchJob(
         BatchJobTypes.GENERATE_FINAL,
         inputVideoUrl,
-        outputKey,
+        outputKey, // Stelle sicher, dass dieser der mandantengetrennte Key ist
         additionalParams
       );
       
