@@ -78,7 +78,8 @@ export async function POST(request: NextRequest) {
         contentType,
         folder as S3BucketFolder,
         // 5 Minuten gültig, mehr Zeit für große Dateien
-        300
+        300,
+        session.user.id
       );
       console.timeEnd(`[${requestId}] S3 presigned URL generation time`);
       
