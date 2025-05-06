@@ -1763,49 +1763,67 @@ async function uploadOutputFile(filePath) {
  * Sendet einen Callback an die API, um den Job-Status zu aktualisieren
  */
 async function sendCallback(data) {
-  if (!BATCH_CALLBACK_URL) {
-    console.log('No callback URL provided, skipping callback');
-    return;
+  console.log(`Sending callback to ${BATCH_CALLBACK_URL} for project ${data.projectId || PROJECT_ID}`);
+  
+  // Daten für den Callback vorbereiten
+  const callbackData = JSON.stringify({
+    ...data,
+    jobId: AWS_BATCH_JOB_ID,
+    secret: BATCH_CALLBACK_SECRET
+  });
+
+  // URL-Normalisierung, um doppelte Schrägstriche zu entfernen
+  let cleanCallbackUrl = BATCH_CALLBACK_URL;
+  const urlParts = BATCH_CALLBACK_URL.split('://');
+  if (urlParts.length > 1) {
+    const protocol = urlParts[0];
+    const rest = urlParts[1];
+    // Ersetze doppelte Schrägstriche im Pfadteil, aber nicht im Protokoll
+    cleanCallbackUrl = `${protocol}://${rest.replace(/\/\/+/g, '/')}`;
+  } else {
+    // Fallback, falls kein Protokoll vorhanden ist (sollte nicht passieren)
+    cleanCallbackUrl = BATCH_CALLBACK_URL.replace(/\/\/+/g, '/');
   }
+  console.log(`Normalized callback URL: ${cleanCallbackUrl}`);
 
-  // Wenn kein Callback-Secret vorhanden ist, gib eine Warnung aus, aber sende den Callback trotzdem
-  if (!BATCH_CALLBACK_SECRET) {
-    console.warn('BATCH_CALLBACK_SECRET not provided, sending callback anyway');
-  } 
+  const parsedUrl = new URL(cleanCallbackUrl);
 
-  try {
-    console.log(`Sending callback to ${BATCH_CALLBACK_URL}`);
-    const body = {
-      jobId: AWS_BATCH_JOB_ID,
-      projectId: PROJECT_ID,
-      ...data,
-      callbackSecret: BATCH_CALLBACK_SECRET || '' // Use empty string if not provided
-    };
-
-    console.log('Callback payload:', {
-      ...body,
-      callbackSecret: BATCH_CALLBACK_SECRET ? '***REDACTED***' : 'not provided'
-    });
-
-    const response = await fetch(BATCH_CALLBACK_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(body)
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`Failed to send callback: ${response.status} ${response.statusText}`, errorText);
-      return;
+  const options = {
+    hostname: parsedUrl.hostname,
+    port: parsedUrl.port || (parsedUrl.protocol === 'https:' ? 443 : 80), // Korrigiertes Anführungszeichen
+    path: parsedUrl.pathname + parsedUrl.search,
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Content-Length': Buffer.byteLength(callbackData)
     }
+  };
 
-    const result = await response.json();
-    console.log('Callback successful:', result);
-  } catch (error) {
-    console.error('Error sending callback:', error);
-  }
+  return new Promise((resolve, reject) => {
+    const req = https.request(options, (res) => {
+      let responseBody = '';
+      res.on('data', (chunk) => {
+        responseBody += chunk;
+      });
+      res.on('end', () => {
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          console.log(`Callback successful with status ${res.statusCode}: ${responseBody}`);
+          resolve();
+        } else {
+          console.error(`Callback failed with status ${res.statusCode}: ${responseBody}`);
+          reject(new Error(`Callback failed with status ${res.statusCode}: ${responseBody}`));
+        }
+      });
+    });
+
+    req.on('error', (error) => {
+      console.error('Error sending callback:', error);
+      reject(error);
+    });
+
+    req.write(callbackData);
+    req.end();
+  });
 }
 
 /**
