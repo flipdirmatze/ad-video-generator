@@ -499,11 +499,16 @@ export default function EditorPage() {
           return;
         }
         
+        // Logging: Logge die empfangenen Daten, bevor der State aktualisiert wird
+        console.log('[Editor Status Poll] Received data:', data);
+        
         // Status verarbeiten und UI aktualisieren
         if (data.status === 'completed') {
           // Video ist fertig! Setze final video URL
           if (isMounted) {
             console.log('Video generation completed successfully', data);
+            // Logging: Logge die URLs vor dem Setzen des States
+            console.log(`[Editor Status Poll] Updating state with: finalVideoUrl=${data.outputUrl}, signedVideoUrl=${data.signedUrl}`);
             setFinalVideoUrl(data.outputUrl);
             setSignedVideoUrl(data.signedUrl || data.outputUrl);
             setIsGenerating(false);

@@ -93,6 +93,7 @@ export async function GET(
     // Wenn das Projekt bereits abgeschlossen ist, generiere eine signierte URL für das Video
     if (project.status === 'completed' && project.outputUrl) {
       const signedUrl = await getSignedVideoUrlFromS3(project.outputUrl);
+      console.log(`[Project Status API] Generated Signed URL for completed project ${projectId}: ${signedUrl}`);
       
       return NextResponse.json({
         projectId: project._id.toString(),
@@ -195,6 +196,7 @@ export async function GET(
         // generiere eine signierte URL
         if (newStatus === 'completed' && project.outputUrl) {
           const signedUrl = await getSignedVideoUrlFromS3(project.outputUrl);
+          console.log(`[Project Status API] Generated Signed URL for updated project ${projectId}: ${signedUrl}`);
           
           return NextResponse.json({
             projectId: project._id.toString(),
