@@ -35,8 +35,8 @@ export default function UploadPage() {
   const [uploadedVideos, setUploadedVideos] = useState<UploadedVideo[]>([])
   const [error, setError] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
-  const [isUploading, setIsUploading] = useState<{[key: string]: boolean}>({})
-  const [uploadProgress, setUploadProgress] = useState<{[key: string]: number}>({})
+  const [isUploading, setIsUploading] = useState<boolean>(false)
+  const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({})
   const [pendingUploads, setPendingUploads] = useState<UploadedVideo[]>([])
   // Tag-related state
   const [currentTag, setCurrentTag] = useState('')
@@ -142,10 +142,9 @@ export default function UploadPage() {
     checkUntaggedVideos()
   }, [])
 
-  // Vereinfachter File-Upload
+  // Korrigierte onDrop/handleFiles Funktion
   const handleFiles = useCallback(async (acceptedFiles: File[], fileRejections: FileRejection[], event: DropEvent | null) => {
     setError(null)
-    setSuccess('') // Reset success message
     
     const videoFiles = acceptedFiles.filter(file => file.type.startsWith('video/'));
     if (videoFiles.length !== acceptedFiles.length) {
@@ -153,12 +152,13 @@ export default function UploadPage() {
     }
 
     if (videoFiles.length === 0) {
-      setIsUploading(prev => ({ ...prev, ...Object.fromEntries(videoFiles.map(file => ([crypto.randomUUID(), false])) as [string, boolean][] as Record<string, boolean>) }));
       return;
     }
 
+    setIsUploading(true);
+
     const uploadPromises = videoFiles.map(async (file) => {
-      const videoId = crypto.randomUUID()
+      const videoId = crypto.randomUUID(); 
       
       // Wir erhöhen das Limit auf 2GB für direkte S3-Uploads
       const MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024; // 2GB
@@ -169,18 +169,17 @@ export default function UploadPage() {
       
       const url = URL.createObjectURL(file)
       
-      // Optimistisches UI-Update
-      setPendingUploads(prev => [...prev, {
-        id: videoId,
-        name: file.name,
-        size: file.size,
-        type: file.type,
-        url,
-        tags: []
-      }])
-      
-      setIsUploading(prev => ({ ...prev, [videoId]: true }))
-      setUploadProgress(prev => ({ ...prev, [videoId]: 0 }))
+      // Füge Platzhalter hinzu
+      const placeholderVideo: UploadedVideo = {
+          id: videoId,
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          url: '', 
+          tags: [],
+          key: 'pending'
+      };
+      setUploadedVideos(prev => [placeholderVideo, ...prev]);
       
       try {
         // 1. Hole einen presigned URL von der API
@@ -261,12 +260,11 @@ export default function UploadPage() {
         const metadataData = await metadataResponse.json();
         console.log('Upload completed successfully:', metadataData);
         
-        // Upload erfolgreich markieren
-        setUploadProgress(prev => ({ ...prev, [videoId]: 100 }));
-        setIsUploading(prev => ({ ...prev, [videoId]: false }));
-        
-        // Pending Upload entfernen
-        setPendingUploads(prev => prev.filter(v => v.id !== videoId));
+        // Upload erfolgreich markieren (nur Progress entfernen)
+        setUploadProgress(prev => { 
+            const { [videoId]: _, ...rest } = prev; 
+            return rest; 
+        }); 
         
         // Verwende die signierte URL aus der Antwort, falls vorhanden
         const videoUrl = metadataData.url || fileUrl;
@@ -306,14 +304,16 @@ export default function UploadPage() {
       } catch (error) {
         console.error('Upload error:', error)
         setError(`Failed to upload ${file.name}: ${error instanceof Error ? error.message : 'Unknown error'}`)
-        setIsUploading(prev => ({ ...prev, [videoId]: false }))
-        setPendingUploads(prev => prev.filter(v => v.id !== videoId))
+        // Entferne Platzhalter bei Fehler
+        setUploadedVideos(prev => prev.filter(v => v.id !== videoId));
+        setUploadProgress(prev => { const { [videoId]: _, ...rest } = prev; return rest; });
       }
       
       URL.revokeObjectURL(url)
     });
 
     await Promise.all(uploadPromises);
+    setIsUploading(false);
   }, []);
 
   // Tag management functions
