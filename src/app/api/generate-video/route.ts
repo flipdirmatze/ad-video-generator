@@ -168,6 +168,13 @@ export async function POST(request: Request) {
         value: session.user.id
       });
       
+      // Generiere den korrekten, mandantengetrennten outputKey und outputUrl FRÜHZEITIG
+      const { v4: uuidv4_project } = await import('uuid'); // Stelle sicher, dass uuid hier importiert ist
+      const outputKey = `users/${session.user.id}/final/${uuidv4_project()}.mp4`;
+      const outputUrl = getS3Url(outputKey);
+      console.log('[Project Create] Generated user-specific output key:', outputKey);
+      console.log('[Project Create] Generated corresponding S3 URL:', outputUrl);
+      
       project = await ProjectModel.create({
         userId: String(session.user.id),
         title,
@@ -179,7 +186,9 @@ export async function POST(request: Request) {
           duration: segment.duration,
           position: segment.position
         })),
-        voiceoverId: voiceoverId || null
+        voiceoverId: voiceoverId || null,
+        outputKey: outputKey, // Speichere korrekten Key
+        outputUrl: outputUrl  // Speichere korrekte URL
       });
       console.log('Created project:', {
         id: project._id,
@@ -196,22 +205,28 @@ export async function POST(request: Request) {
 
     // Starte direkt den AWS Batch Job statt über video-workflow
     try {
-      // Ausgabedateinamen generieren
-      const outputFileName = generateUniqueFileName(`${title.toLowerCase().replace(/\s+/g, '-')}.mp4`);
-      const outputKey = `final/${outputFileName}`;
-      console.log('Generated output key:', outputKey);
+      // Der korrekte outputKey und outputUrl wurden bereits beim Erstellen/Laden des Projekts generiert und gesetzt
+      // Hole sie aus dem Projekt-Objekt, um Konsistenz sicherzustellen
+      const finalOutputKey = project.outputKey;
+      const finalOutputUrl = project.outputUrl;
 
-      // Die Segmente für den AWS Batch Job vorbereiten
+      if (!finalOutputKey || !finalOutputUrl) {
+        // Sollte nicht passieren, wenn die Logik oben korrekt ist
+        console.error('OutputKey or OutputUrl is missing in the project document!', project);
+        throw new Error('Project data is incomplete. Cannot determine output path.');
+      }
+      console.log('[Batch Submit] Using Output Key from project:', finalOutputKey);
+
+      // Die Segmente für den AWS Batch Job vorbereiten (URLs werden aus Keys generiert)
       const videoSegments = segments.map(segment => ({
         videoId: segment.videoId,
         url: getS3Url(segment.videoKey),
-            startTime: segment.startTime,
-            duration: segment.duration,
-            position: segment.position
+        startTime: segment.startTime,
+        duration: segment.duration,
+        position: segment.position
       }));
 
-      // Verwende den ersten Videoclip als Eingabevideo für AWS Batch
-      // Der AWS Batch Job wird die eigentliche Verarbeitung basierend auf den übergebenen Segmenten durchführen
+      // Verwende den ersten Videoclip als Eingabe-URL für AWS Batch
       const firstVideoUrl = getS3Url(segments[0].videoKey);
       console.log('Using first video as input URL:', firstVideoUrl);
       
@@ -466,22 +481,27 @@ export async function POST(request: Request) {
       console.log('- VOICEOVER_KEY:', additionalParams.VOICEOVER_KEY || 'not set');
       console.log('- VOICEOVER_ID:', additionalParams.VOICEOVER_ID || 'not set');
 
+      // Stelle sicher, dass OUTPUT_KEY NICHT in additionalParams ist, da er direkt übergeben wird
+      delete additionalParams.OUTPUT_KEY; 
+
       console.log('Submitting AWS Batch job with params:', additionalParams);
       
       const batchResponse = await submitAwsBatchJob(
         BatchJobTypes.GENERATE_FINAL,
-        firstVideoUrl, // Verwende das erste Video als Eingabe-URL
-        outputKey,
+        firstVideoUrl, 
+        finalOutputKey, // <<< Übergebe den korrekten Key aus dem Projekt
         additionalParams
       );
       
       console.log('AWS Batch job submitted successfully:', batchResponse);
       
-      // Aktualisiere das Projekt mit der Job-ID
+      // Aktualisiere das Projekt mit der Job-ID (outputKey/Url sind schon korrekt)
       await ProjectModel.findByIdAndUpdate(project._id, {
         status: 'processing',
         jobId: batchResponse.jobId,
-        outputPath: outputKey
+        batchJobId: batchResponse.jobId, // Sicherstellen, dass beide Felder gesetzt sind
+        batchJobName: batchResponse.jobName
+        // outputPath: finalOutputKey // Entferne/Ignoriere das veraltete outputPath Feld
       });
 
       // Erfolgsantwort senden
@@ -490,7 +510,7 @@ export async function POST(request: Request) {
         message: 'Video generation started',
         projectId: project._id.toString(),
         jobId: batchResponse.jobId,
-        outputPath: outputKey
+        outputKey: finalOutputKey // Gib den korrekten Key zurück
       });
       
     } catch (error) {
