@@ -178,7 +178,7 @@ export default function UploadPage() {
 
     const uploadPromises = videoFiles.map(async (file) => {
       const videoId = crypto.randomUUID(); 
-      const tempUrl = URL.createObjectURL(file); // Temporäre URL für interne Zwecke, falls benötigt
+      const tempUrl = URL.createObjectURL(file); 
       
       // Wir erhöhen das Limit auf 2GB für direkte S3-Uploads
       const MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024; // 2GB
@@ -188,12 +188,7 @@ export default function UploadPage() {
         return
       }
       
-      // Setze nur den Fortschritts-State, füge KEINEN Platzhalter zu uploadedVideos hinzu
       setUploadProgress(prev => ({ ...prev, [videoId]: 0 }))
-      
-      // Optional: Zeige temporären Upload-Indikator (nicht in der Hauptliste)
-      // const placeholderVideo: UploadedVideo = { ... };
-      // setUploadingPlaceholders(prev => [placeholderVideo, ...prev]); 
       
       try {
         // 1. Hole einen presigned URL von der API
@@ -248,76 +243,72 @@ export default function UploadPage() {
         xhr.send(file)
         await uploadPromise
         
-        // 3. Speichere die Metadaten in der Datenbank
-        console.log(`File uploaded successfully, saving metadata to database`)
+        // 3. Send video metadata to backend API
         const metadataResponse = await fetch('/api/upload-video', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            videoId,
-            name: file.name,
-            size: file.size,
-            type: file.type,
-            key,
-            url: fileUrl,
-            tags: []
-          })
-        })
-        
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ videoId, name: file.name, size: file.size, type: file.type, key, url: fileUrl, tags: [] }),
+        });
         if (!metadataResponse.ok) {
-          throw new Error('Failed to save video metadata')
+            const errorData = await metadataResponse.json();
+            throw new Error(errorData.error || 'Failed to save video metadata');
         }
-        
-        // Extrahiere die Response-Daten
         const metadataData = await metadataResponse.json();
-        console.log('Upload completed successfully:', metadataData);
-        
+        console.log('Upload completed successfully (API Response):', metadataData);
+
+        // **** NEUE PRÜFUNG: Stelle sicher, dass metadataData.video existiert ****
+        if (!metadataData || !metadataData.video) {
+            console.error('Error: metadataData.video is missing in the API response.', metadataData);
+            setError(`Failed to process metadata for ${file.name}. API response incomplete.`);
+            // Bereinige Fortschritt für dieses Video
+            setUploadProgress(prev => { const { [videoId]: _, ...rest } = prev; return rest; });
+            // Entferne Platzhalter/Video aus der Liste, falls es hinzugefügt wurde
+            setUploadedVideos(prev => prev.filter(v => v.id !== videoId)); 
+            return; // Beende Verarbeitung für DIESES File
+        }
+
         // Upload erfolgreich markieren (Progress entfernen)
         setUploadProgress(prev => { 
             const { [videoId]: _, ...rest } = prev; 
             return rest; 
         }); 
         
-        // Neues Video-Objekt erstellen (mit Daten vom Backend)
+        // Neues Video-Objekt erstellen (mit optionalem Chaining & Fallbacks)
         const newVideo: UploadedVideo = {
-          id: metadataData.video.id || videoId, 
-          name: metadataData.video.name,
-          size: metadataData.video.size,
-          type: metadataData.video.type,
+          id: metadataData.video?.id || videoId, 
+          name: metadataData.video?.name || file.name, 
+          size: metadataData.video?.size || file.size, 
+          type: metadataData.video?.type || file.type, 
           url: '', 
-          tags: metadataData.video.tags || [],
-          key: metadataData.video.path 
+          tags: metadataData.video?.tags || [],
+          key: metadataData.video?.path 
         };
         
-        // JETZT ERST das Video zur Liste hinzufügen
+        // Video zur Liste hinzufügen
         setUploadedVideos(prev => [newVideo, ...prev]);
         
-        // Signierte URL holen und Tags setzen (Korrekte Funktionsnamen)
+        // Signierte URL holen und Tags setzen
         if (newVideo.key) {
             getSignedUrlForKey(newVideo.key, newVideo.id);
         }
-        setTags(prev => ({ ...prev, [newVideo.id]: newVideo.tags })); // Korrekter Aufruf von setTags
+        setTags(prev => ({ ...prev, [newVideo.id]: newVideo.tags })); 
         
         // Erfolgsmeldung anzeigen (optional)
-        setSuccess(`Video "${newVideo.name}" erfolgreich hochgeladen`);
+        // setSuccess(`Video "${newVideo.name}" erfolgreich hochgeladen`);
 
       } catch (error) {
         console.error('Upload error:', error)
         setError(`Failed to upload ${file.name}: ${error instanceof Error ? error.message : 'Unknown error'}`)
-        // Entferne Fortschritt bei Fehler
         setUploadProgress(prev => { const { [videoId]: _, ...rest } = prev; return rest; });
-        // Entferne Platzhalter, falls einer verwendet wurde
-        // setUploadingPlaceholders(prev => prev.filter(p => p.id !== videoId));
+        setUploadedVideos(prev => prev.filter(v => v.id !== videoId)); 
       }
       
-      URL.revokeObjectURL(tempUrl); // Temporäre URL freigeben
+      URL.revokeObjectURL(tempUrl); 
     });
 
     await Promise.all(uploadPromises);
     setIsUploading(false);
-  }, [getSignedUrlForKey]); // getSignedUrlForKey als Abhängigkeit hinzugefügt
+  }, [getSignedUrlForKey]); 
 
   // Tag management functions
   const handleTagChange = (videoId: string, value: string) => {
