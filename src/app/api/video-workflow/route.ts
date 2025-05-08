@@ -243,6 +243,10 @@ export async function POST(request: NextRequest) {
     const outputKey = `users/${userId}/final/${uuidv4()}.mp4`;
     console.log('Generated user-specific output key:', outputKey);
     
+    // Generiere die dazugehörige S3-URL
+    const outputUrl = getS3Url(outputKey);
+    console.log('Generated corresponding S3 URL:', outputUrl);
+    
     try {
       if (!project) {
         // Erstelle ein neues Projekt
@@ -259,6 +263,7 @@ export async function POST(request: NextRequest) {
           segments,
           voiceoverId: data.voiceoverId,
           outputKey,
+          outputUrl,
           createdAt: new Date(),
           updatedAt: new Date()
         });
@@ -267,6 +272,7 @@ export async function POST(request: NextRequest) {
         project.segments = segments;
         project.status = 'pending';
         project.outputKey = outputKey;
+        project.outputUrl = outputUrl;
         project.updatedAt = new Date();
         if (data.voiceoverId) project.voiceoverId = data.voiceoverId;
       }
