@@ -1082,17 +1082,33 @@ export default function EditorPage() {
         const matchedVideo = matchedVideos.find(m => m.videoId === videoId);
         
         // Stelle sicher, dass wir den korrekten S3-Key verwenden
-        const videoKey = video?.key || (video?.filepath?.startsWith('uploads/') ? video.filepath : `uploads/${videoId}.mp4`);
+        // Der korrekte Key wird beim Laden der Videos in `video.filepath` gespeichert
+        const videoKey = video?.filepath;
+        
+        // Wenn kein Key gefunden wurde, überspringe dieses Segment (sollte nicht passieren)
+        if (!videoKey) {
+          console.error(`Could not find S3 key (filepath) for videoId: ${videoId}`);
+          // In einer realen Anwendung sollte hier ein besserer Fehler geworfen oder behandelt werden.
+          // Fürs Erste geben wir null zurück und filtern es später raus.
+          return null;
+        }
         
         return {
           videoId,
           // Wichtig: Der Backend erwartet den S3-Key und nicht den vollständigen Pfad
-          videoKey: videoKey,
+          videoKey: videoKey, // Verwende den korrekten Key
           startTime: matchedVideo?.startTime || 0,
           duration: matchedVideo?.duration || 5, // Fallback auf 5 Sekunden
           position: matchedVideo?.position || index
         };
-      });
+      }).filter(segment => segment !== null); // Filtere Segmente ohne gültigen Key heraus
+      
+      // Prüfe, ob nach dem Filtern noch Segmente übrig sind
+      if (segmentsWithKeys.length === 0) {
+        setError("Konnte die benötigten Video-Dateipfade nicht finden. Bitte versuche, die Seite neu zu laden.");
+        setIsGenerating(false);
+        return;
+      }
       
       console.log('Sending segments to API:', segmentsWithKeys);
       
