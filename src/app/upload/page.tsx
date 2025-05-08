@@ -499,14 +499,12 @@ export default function UploadPage() {
 
         {/* Upload Area */}
         <div 
+          {...getRootProps()}
           className={`mt-8 border-2 border-dashed rounded-lg p-8 text-center ${
-            dragActive ? 'border-primary bg-primary/5' : 'border-white/20 hover:border-white/40'
+            isDragActive ? 'border-blue-500 bg-blue-900/20' : 'border-gray-600 hover:border-gray-500 bg-gray-800/30'
           } transition-colors`}
-          onDragEnter={handleDrag}
-          onDragLeave={handleDrag}
-          onDragOver={handleDrag}
-          onDrop={handleDrop}
         >
+          <input {...getInputProps()} />
           <ArrowUpTrayIcon className="mx-auto h-12 w-12 text-white/40" />
           <p className="mt-4 text-lg font-medium">
             Drag and drop your video files here
