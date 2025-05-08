@@ -553,46 +553,59 @@ export default function UploadPage() {
                       muted
                       crossOrigin="anonymous"
                       onError={async (e) => {
-                        console.error('Video loading error:', e);
                         const target = e.target as HTMLVideoElement;
-                        if (target.error) {
-                          console.error('Error code:', target.error.code);
-                          console.error('Error message:', target.error.message);
-                          console.error('Failed URL:', signedUrls[video.id] || video.url);
-                          
-                          if (uploadProgress[video.id] !== undefined && uploadProgress[video.id] < 100) {
-                            return;
-                          }
-                          
-                          // Versuche, die URL zu aktualisieren, wenn noch keine signierte URL vorhanden ist
-                          // oder die vorhandene abgelaufen ist
-                          if (!signedUrls[video.id] || target.error.code === 4) {
-                            const key = video.key || `uploads/${video.id}`;
-                            try {
-                              const response = await fetch(`/api/get-signed-url?key=${encodeURIComponent(key)}`);
-                              if (response.ok) {
-                                const data = await response.json();
-                                if (data.url) {
-                                  // Aktualisiere die signierte URL
-                                  setSignedUrls(prev => ({
-                                    ...prev,
-                                    [video.id]: data.url
-                                  }));
-                                  
-                                  // Versuche das Video neu zu laden
-                                  const videoElement = e.target as HTMLVideoElement;
-                                  videoElement.src = data.url;
-                                  videoElement.load();
-                                  return;
-                                }
-                              }
-                            } catch (refreshError) {
-                              console.error('Error refreshing URL:', refreshError);
-                            }
-                          }
-                          
-                          setError(`Failed to load video: ${video.name}`);
+                        console.error('Video loading error:', {
+                          videoId: video.id,
+                          videoName: video.name,
+                          errorCode: target.error?.code,
+                          errorMessage: target.error?.message,
+                          currentSrc: target.currentSrc,
+                          passedUrl: signedUrls[video.id] || video.url,
+                          videoKey: video.key
+                        });
+
+                        // Wenn bereits ein Upload-Fortschritt angezeigt wird und dieser nicht abgeschlossen ist,
+                        // dann ist der Fehler wahrscheinlich auf den noch nicht abgeschlossenen Upload zurückzuführen.
+                        if (uploadProgress[video.id] !== undefined && uploadProgress[video.id] < 100) {
+                          console.log(`[Video Error Handler] Upload for ${video.name} in progress (${uploadProgress[video.id]}%), ignoring playback error for now.`);
+                          return;
                         }
+                        
+                        // Versuche immer, eine neue signierte URL zu erhalten, wenn ein Fehler auftritt
+                        // und ein gültiger video.key vorhanden ist.
+                        if (target.error && video.key) {
+                          console.log(`[Video Error Handler] Attempting to refresh signed URL for ${video.name} (key: ${video.key})`);
+                          try {
+                            const response = await fetch(`/api/get-signed-url?key=${encodeURIComponent(video.key)}`);
+                            if (response.ok) {
+                              const data = await response.json();
+                              if (data.url) {
+                                console.log(`[Video Error Handler] Successfully refreshed signed URL for ${video.name}: ${data.url}`);
+                                setSignedUrls(prev => ({
+                                  ...prev,
+                                  [video.id]: data.url
+                                }));
+                                // Wichtig: Nachdem die URL im State aktualisiert wurde, muss das Video-Element
+                                // dazu gebracht werden, die neue URL zu verwenden. 
+                                // Ein direkter .src-Wechsel und .load() ist hier am zuverlässigsten.
+                                target.src = data.url;
+                                target.load(); 
+                                return; // Verhindere, dass der generische setError unten ausgelöst wird
+                              }
+                            }
+                            // Wenn die Antwort nicht ok ist oder keine URL enthält, werfe einen Fehler, um zum Catch-Block zu gelangen
+                            const errorText = await response.text();
+                            throw new Error(`Failed to get new signed URL: ${response.status} ${errorText}`);
+                          } catch (refreshError) {
+                            console.error(`[Video Error Handler] Error refreshing signed URL for ${video.name}:`, refreshError);
+                            // Hier den setError nicht global setzen, da es sonst alle Videos betrifft.
+                            // Der Fehler wird bereits im Log erfasst.
+                          }
+                        }
+                        
+                        // Generischer Fehler, wenn kein Key vorhanden ist oder das Neuladen fehlschlägt
+                        // Dieser Fehler wird nur angezeigt, wenn das automatische Neuladen fehlschlägt.
+                        setError(`Failed to load video: ${video.name}. Please try refreshing the page or re-uploading.`);
                       }}
                       style={{ minHeight: '200px' }}
                     />
