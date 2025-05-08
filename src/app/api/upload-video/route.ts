@@ -59,7 +59,7 @@ export async function POST(request: Request) {
           originalFilename: name,
           size: size,
           type: type,
-          path: key.startsWith('uploads/') ? key : `uploads/${key}`,
+          path: key,
           tags: tags || [],
           isPublic: false,
           status: 'complete',
