@@ -142,25 +142,8 @@ export default function UploadPage() {
     checkUntaggedVideos()
   }, [])
 
-  // Vereinfachtes Drag & Drop
-  function handleDrag(e: React.DragEvent) {
-    e.preventDefault()
-    e.stopPropagation()
-    setDragActive(e.type === 'dragenter' || e.type === 'dragover')
-  }
-
-  function handleDrop(e: React.DragEvent) {
-    e.preventDefault()
-    e.stopPropagation()
-    setDragActive(false)
-    
-    if (e.dataTransfer.files?.length > 0) {
-      handleFiles(e.dataTransfer.files)
-    }
-  }
-
   // Vereinfachter File-Upload
-  const handleFiles = useCallback(async (acceptedFiles: File[], fileRejections: FileRejection[], event: DropEvent) => {
+  const handleFiles = useCallback(async (acceptedFiles: File[], fileRejections: FileRejection[], event: DropEvent | null) => {
     setError(null)
     setSuccess('') // Reset success message
     
