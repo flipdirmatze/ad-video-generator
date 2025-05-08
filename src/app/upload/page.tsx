@@ -485,7 +485,7 @@ export default function UploadPage() {
           {...getRootProps()}
           className={`mt-8 border-2 border-dashed rounded-lg p-8 text-center ${
             isDragActive ? 'border-blue-500 bg-blue-900/20' : 'border-gray-600 hover:border-gray-500 bg-gray-800/30'
-          } transition-colors`}
+          } transition-colors cursor-pointer`}
         >
           <input {...getInputProps()} />
           <ArrowUpTrayIcon className="mx-auto h-12 w-12 text-white/40" />
@@ -493,30 +493,8 @@ export default function UploadPage() {
             Drag and drop your video files here
           </p>
           <p className="mt-2 text-white/60">
-            or
+            or click to select files
           </p>
-          <button
-            onClick={() => inputRef.current?.click()}
-            className="mt-4 px-4 py-2 bg-white/10 rounded-lg hover:bg-white/20 transition-colors"
-          >
-            Select Files
-          </button>
-          <input
-            ref={inputRef}
-            type="file"
-            multiple
-            accept="video/*"
-            onChange={(e) => {
-              if (e.target.files) {
-                // Konvertiere FileList zu File[]
-                const filesArray = Array.from(e.target.files);
-                // Rufe handleFiles mit konvertiertem Array und leeren/null Argumenten für Rejections/Event auf
-                handleFiles(filesArray, [], null as unknown as DropEvent); 
-              }
-            }}
-            className="hidden"
-            style={{ display: 'none' }}
-          />
           <p className="mt-4 text-sm text-white/40">
             Maximum file size: 2GB
           </p>
