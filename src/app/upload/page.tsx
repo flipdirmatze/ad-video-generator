@@ -543,7 +543,7 @@ export default function UploadPage() {
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
               {allVideos.map((video) => (
-                <div key={video.id} className="flex flex-col rounded-lg overflow-hidden bg-gray-800">
+                <div key={video.id} className="relative flex flex-col rounded-lg overflow-hidden bg-gray-800">
                   {/* Delete Button Top Right */}
                   <button
                     onClick={() => handleDeleteVideo(video.id, video.name)}
