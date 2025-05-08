@@ -4,7 +4,7 @@ import { authOptions } from '@/lib/auth';
 import dbConnect from '@/lib/mongoose';
 import VideoModel, { IVideo } from '@/models/Video';
 import mongoose from 'mongoose';
-import { getSignedVideoUrl } from '@/lib/storage';
+import { getSignedVideoUrl, deleteS3Object } from '@/lib/storage';
 
 // Erweitere den IVideo-Typ für das Dokument aus MongoDB
 interface IVideoDocument extends IVideo {
@@ -89,49 +89,82 @@ export async function GET(
 
 /**
  * DELETE /api/media/[id]
- * Löscht ein Video aus der Datenbank
+ * Löscht ein Video aus S3 und der Datenbank
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
   try {
+    const videoId = params.id;
+    if (!videoId) {
+      return NextResponse.json({ error: 'Video ID is required' }, { status: 400 });
+    }
+
+    console.log(`[API DELETE /api/media/${videoId}] Request received`);
+
     // Authentifizierung prüfen
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
+      console.error(`[API DELETE /api/media/${videoId}] Unauthorized: No session`);
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-
     const userId = session.user.id;
-    // Await the params Promise to get the id
-    const { id: videoId } = await params;
-    
-    // Verbindung zur Datenbank herstellen
+    console.log(`[API DELETE /api/media/${videoId}] User authenticated: ${userId}`);
+
+    // Mit Datenbank verbinden
     await dbConnect();
-    
+
     // Video finden und prüfen, ob es dem Benutzer gehört
-    const video = await VideoModel.findOne({ 
+    console.log(`[API DELETE /api/media/${videoId}] Finding video...`);
+    const video = await VideoModel.findOne({
       id: videoId,
-      userId 
-    });
-    
+      userId: userId 
+    }).lean() as IVideoDocument | null;
+
     if (!video) {
-      return NextResponse.json({ error: 'Video not found or no permission' }, { status: 404 });
+      console.error(`[API DELETE /api/media/${videoId}] Video not found or user mismatch.`);
+      return NextResponse.json({ error: 'Video not found or user mismatch' }, { status: 404 });
+    }
+    console.log(`[API DELETE /api/media/${videoId}] Found video: ${video.name}, Path: ${video.path}`);
+
+    // 1. Objekt aus S3 löschen
+    let s3DeleteSuccess = false;
+    if (video.path) {
+      s3DeleteSuccess = await deleteS3Object(video.path);
+      if (!s3DeleteSuccess) {
+        // Logge den Fehler, aber fahre fort, um den DB-Eintrag zu löschen
+        console.warn(`[API DELETE /api/media/${videoId}] Failed to delete S3 object, but proceeding with DB deletion.`);
+      }
+    } else {
+      console.warn(`[API DELETE /api/media/${videoId}] Video has no path, skipping S3 deletion.`);
+      // Wenn kein Pfad da ist, betrachten wir die S3-Löschung als "erfolgreich" 
+      // im Sinne von "nichts zu löschen"
+      s3DeleteSuccess = true;
+    }
+
+    // 2. Dokument aus MongoDB löschen
+    console.log(`[API DELETE /api/media/${videoId}] Deleting video document from DB...`);
+    const dbDeleteResult = await VideoModel.deleteOne({ id: videoId, userId: userId });
+
+    if (dbDeleteResult.deletedCount === 0) {
+      // Sollte nicht passieren, wenn wir das Video vorher gefunden haben
+      console.error(`[API DELETE /api/media/${videoId}] Failed to delete video from DB, although it was found earlier.`);
+      // Trotzdem Erfolg zurückgeben, wenn S3-Löschung geklappt hat? Oder 500?
+      // Wir entscheiden uns für einen 500er, da der Zustand inkonsistent ist.
+      return NextResponse.json({ error: 'Failed to delete video from database' }, { status: 500 });
     }
     
-    // Video löschen
-    await VideoModel.deleteOne({ id: videoId, userId });
-    
-    // Hier könnte man noch das Video aus S3 löschen, falls erforderlich
-    // Dies würde einen zusätzlichen AWS S3 DeleteObject-Aufruf erfordern
-    
+    console.log(`[API DELETE /api/media/${videoId}] Successfully deleted video document from DB.`);
+
     return NextResponse.json({
       success: true,
       message: 'Video deleted successfully',
-      videoId
+      s3Deleted: s3DeleteSuccess
     });
+
   } catch (error) {
-    console.error('Error deleting video:', error);
+    console.error(`[API DELETE /api/media/[id]] Error:`, error);
     return NextResponse.json(
       { 
         error: 'Failed to delete video', 

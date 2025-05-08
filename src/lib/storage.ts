@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand, GetObjectCommand, S3ClientConfig, ListObjectsV2Command } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, GetObjectCommand, S3ClientConfig, ListObjectsV2Command, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 /**
@@ -154,10 +154,11 @@ export async function getSignedDownloadUrl(key: string, expiresIn: number = 3600
 /**
  * Generiert einen öffentlichen S3-URL für eine Datei
  */
-export function getS3Url(key: string): string {
+export const getS3Url = (key: string): string => {
+  if (!key) return '';
   const region = process.env.AWS_REGION || 'eu-central-1'; // Fallback auf eu-central-1 wenn keine Region gesetzt ist
   return `https://${bucketName}.s3.${region}.amazonaws.com/${key}`;
-}
+};
 
 /**
  * Generiert einen öffentlichen S3-URL für eine Datei
@@ -259,5 +260,33 @@ export async function getSignedVideoUrl(key: string, expiresIn: number = 3600): 
   } catch (error) {
     console.error(`Error generating signed URL for ${fullKey}:`, error);
     throw error;
+  }
+}
+
+/**
+ * Löscht ein Objekt aus dem S3 Bucket anhand seines Keys.
+ */
+export async function deleteS3Object(key: string): Promise<boolean> {
+  if (!key) {
+    console.error('[S3 Delete] Received empty key, cannot delete.');
+    return false;
+  }
+  
+  console.log(`[S3 Delete] Attempting to delete object with key: ${key}`);
+  
+  const command = new DeleteObjectCommand({
+    Bucket: bucketName,
+    Key: key,
+  });
+
+  try {
+    await s3Client.send(command);
+    console.log(`[S3 Delete] Successfully deleted object: ${key}`);
+    return true;
+  } catch (error) {
+    console.error(`[S3 Delete] Failed to delete object ${key}:`, error);
+    // Wir geben false zurück, aber werfen den Fehler nicht unbedingt weiter,
+    // damit der aufrufende Code entscheiden kann, wie er damit umgeht (z.B. DB-Eintrag trotzdem löschen?)
+    return false;
   }
 }

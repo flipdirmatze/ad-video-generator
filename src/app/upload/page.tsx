@@ -1,10 +1,11 @@
 'use client'
 
 import React, { useEffect, useRef, useState, useCallback } from 'react'
-import { ArrowUpTrayIcon, ArrowRightIcon, CheckCircleIcon, FilmIcon, TagIcon, XMarkIcon, DocumentMagnifyingGlassIcon } from '@heroicons/react/24/outline'
+import { ArrowUpTrayIcon, ArrowRightIcon, CheckCircleIcon, FilmIcon, TagIcon, XMarkIcon, DocumentMagnifyingGlassIcon, ExclamationTriangleIcon, TrashIcon, ArrowPathIcon } from '@heroicons/react/24/outline'
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
+import { useDropzone, DropEvent, FileRejection } from 'react-dropzone'
 
 // Vereinfachter Video-Typ
 type UploadedVideo = {
@@ -16,6 +17,15 @@ type UploadedVideo = {
   tags: string[];
   key?: string;
 }
+
+// Debounce Funktion (falls noch nicht vorhanden)
+const debounce = (fn: (...args: any[]) => any, ms = 300) => {
+  let timeoutId: ReturnType<typeof setTimeout>;
+  return function(this: any, ...args: any[]) {
+    clearTimeout(timeoutId);
+    timeoutId = setTimeout(() => fn.apply(this, args), ms);
+  };
+};
 
 export default function UploadPage() {
   const { data: session, status } = useSession()
@@ -36,6 +46,8 @@ export default function UploadPage() {
   const [success, setSuccess] = useState('')
   const [untaggedVideos, setUntaggedVideos] = useState(0)
   const [signedUrls, setSignedUrls] = useState<Record<string, string>>({})
+  const [isDeleting, setIsDeleting] = useState<Record<string, boolean>>({})
+  const tagInputRef = useRef<HTMLInputElement | null>(null)
 
   // Vereinfachte Authentifizierungs-Prüfung
   useEffect(() => {
@@ -148,24 +160,30 @@ export default function UploadPage() {
   }
 
   // Vereinfachter File-Upload
-  async function handleFiles(files: FileList) {
+  const handleFiles = useCallback(async (acceptedFiles: File[], fileRejections: FileRejection[], event: DropEvent) => {
     setError(null)
     setSuccess('') // Reset success message
     
-    for (const file of Array.from(files)) {
-      if (!file.type.startsWith('video/')) {
-        setError('Only video files are allowed.')
-        continue
-      }
+    const videoFiles = acceptedFiles.filter(file => file.type.startsWith('video/'));
+    if (videoFiles.length !== acceptedFiles.length) {
+      setError('Einige Dateien waren keine Videos und wurden ignoriert.');
+    }
+
+    if (videoFiles.length === 0) {
+      setIsUploading(prev => ({ ...prev, ...Object.fromEntries(videoFiles.map(file => ([crypto.randomUUID(), false])) as [string, boolean][] as Record<string, boolean>) }));
+      return;
+    }
+
+    const uploadPromises = videoFiles.map(async (file) => {
+      const videoId = crypto.randomUUID()
       
       // Wir erhöhen das Limit auf 2GB für direkte S3-Uploads
       const MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024; // 2GB
       if (file.size > MAX_FILE_SIZE) {
         setError(`File ${file.name} is too large. Maximum size is 2GB.`)
-        continue
+        return
       }
       
-      const videoId = crypto.randomUUID()
       const url = URL.createObjectURL(file)
       
       // Optimistisches UI-Update
@@ -310,11 +328,17 @@ export default function UploadPage() {
       }
       
       URL.revokeObjectURL(url)
-    }
-  }
+    });
+
+    await Promise.all(uploadPromises);
+  }, []);
 
   // Tag management functions
-  async function addTag(videoId: string) {
+  const handleTagChange = (videoId: string, value: string) => {
+    setCurrentTag(value);
+  };
+
+  const addTag = async (videoId: string) => {
     if (!currentTag || currentTag.trim() === '') return
     
     const isPending = pendingUploads.some(video => video.id === videoId)
@@ -357,7 +381,7 @@ export default function UploadPage() {
     setSelectedVideoId(null)
   }
 
-  async function removeTag(videoId: string, tagToRemove: string) {
+  const removeTag = async (videoId: string, tagToRemove: string) => {
     const isPending = pendingUploads.some(video => video.id === videoId)
     
     if (isPending) {
@@ -394,6 +418,49 @@ export default function UploadPage() {
       }
     }
   }
+
+  // NEUE FUNKTION: Video löschen
+  const handleDeleteVideo = async (videoId: string, videoName: string) => {
+    if (isDeleting[videoId]) return; // Verhindere Doppelklicks
+
+    if (window.confirm(`Möchtest du das Video "${videoName}" wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.`)) {
+      console.log(`Attempting to delete video: ${videoId}`);
+      setIsDeleting(prev => ({ ...prev, [videoId]: true }));
+      setError(null);
+
+      try {
+        const response = await fetch(`/api/media/${videoId}`, {
+          method: 'DELETE'
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || `Failed to delete video (status: ${response.status})`);
+        }
+
+        // Erfolgreich gelöscht
+        console.log(`Successfully deleted video: ${videoId}`);
+        // Entferne Video aus dem State
+        setUploadedVideos(prev => prev.filter(video => video.id !== videoId));
+        // Entferne zugehörige Tags und Input-Status
+        setSignedUrls(prev => {
+          const { [videoId]: _, ...rest } = prev;
+          return rest;
+        });
+
+      } catch (err) {
+        console.error(`Error deleting video ${videoId}:`, err);
+        setError(`Fehler beim Löschen von ${videoName}: ${err instanceof Error ? err.message : 'Unbekannter Fehler'}`);
+      } finally {
+        setIsDeleting(prev => ({ ...prev, [videoId]: false }));
+      }
+    }
+  };
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({ 
+    onDrop: handleFiles, 
+    accept: { 'video/*': [] } 
+  });
 
   if (isLoading || status === 'loading') {
     return (
@@ -488,6 +555,23 @@ export default function UploadPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
               {allVideos.map((video) => (
                 <div key={video.id} className="flex flex-col rounded-lg overflow-hidden bg-gray-800">
+                  {/* Delete Button Top Right */}
+                  <button
+                    onClick={() => handleDeleteVideo(video.id, video.name)}
+                    disabled={isDeleting[video.id]}
+                    className={`absolute top-2 right-2 z-10 p-1.5 rounded-full transition-colors 
+                                ${isDeleting[video.id]
+                                  ? 'bg-gray-600 cursor-not-allowed' 
+                                  : 'bg-red-800/70 hover:bg-red-700 text-white'}`}
+                    aria-label="Video löschen"
+                  >
+                    {isDeleting[video.id] ? (
+                      <ArrowPathIcon className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <TrashIcon className="h-4 w-4" />
+                    )}
+                  </button>
+
                   {/* Tags Section - Above video */}
                   <div className="p-2 bg-gray-800 border-b border-gray-700">
                     <div className="flex flex-wrap gap-1 mb-2">
@@ -498,7 +582,10 @@ export default function UploadPage() {
                         >
                           {tag}
                           <button
-                            onClick={() => removeTag(video.id, tag)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              removeTag(video.id, tag);
+                            }}
                             className="ml-1 hover:text-white"
                             aria-label={`Remove tag ${tag}`}
                           >
@@ -511,16 +598,20 @@ export default function UploadPage() {
                     {selectedVideoId === video.id ? (
                       <div className="flex gap-2">
                         <input
+                          ref={tagInputRef}
                           type="text"
                           value={currentTag}
-                          onChange={(e) => setCurrentTag(e.target.value)}
+                          onChange={(e) => handleTagChange(video.id, e.target.value)}
                           onKeyPress={(e) => e.key === 'Enter' && addTag(video.id)}
                           placeholder="Add tag..."
                           className="flex-1 bg-white/10 text-white text-sm rounded px-2 py-1"
                           aria-label="Enter new tag"
                         />
                         <button
-                          onClick={() => addTag(video.id)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            addTag(video.id);
+                          }}
                           className="bg-purple-500 text-white px-2 py-1 rounded text-sm hover:bg-purple-600 transition-colors"
                           aria-label="Add tag"
                         >
@@ -529,7 +620,10 @@ export default function UploadPage() {
                       </div>
                     ) : (
                       <button
-                        onClick={() => setSelectedVideoId(video.id)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedVideoId(video.id);
+                        }}
                         className="text-white/60 text-sm flex items-center hover:text-white transition-colors"
                         aria-label="Show tag input"
                       >
