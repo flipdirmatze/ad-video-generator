@@ -544,23 +544,6 @@ export default function UploadPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
               {allVideos.map((video) => (
                 <div key={video.id} className="relative flex flex-col rounded-lg overflow-hidden bg-gray-800">
-                  {/* Delete Button Top Right */}
-                  <button
-                    onClick={() => handleDeleteVideo(video.id, video.name)}
-                    disabled={isDeleting[video.id]}
-                    className={`absolute top-2 right-2 z-10 p-1.5 rounded-full transition-colors 
-                                ${isDeleting[video.id]
-                                  ? 'bg-gray-600 cursor-not-allowed' 
-                                  : 'bg-red-800/70 hover:bg-red-700 text-white'}`}
-                    aria-label="Video löschen"
-                  >
-                    {isDeleting[video.id] ? (
-                      <ArrowPathIcon className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <TrashIcon className="h-4 w-4" />
-                    )}
-                  </button>
-
                   {/* Tags Section - Above video */}
                   <div className="p-2 bg-gray-800 border-b border-gray-700">
                     <div className="flex flex-wrap gap-1 mb-2">
@@ -624,6 +607,23 @@ export default function UploadPage() {
 
                   {/* Video Container */}
                   <div className="relative">
+                    {/* Delete Button moved here */}
+                    <button
+                      onClick={() => handleDeleteVideo(video.id, video.name)}
+                      disabled={isDeleting[video.id]}
+                      className={`absolute top-2 right-2 z-20 p-1.5 rounded-full transition-colors 
+                                  ${isDeleting[video.id]
+                                    ? 'bg-gray-600 cursor-not-allowed' 
+                                    : 'bg-red-800/70 hover:bg-red-700 text-white'}`}
+                      aria-label="Video löschen"
+                    >
+                      {isDeleting[video.id] ? (
+                        <ArrowPathIcon className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <TrashIcon className="h-4 w-4" />
+                      )}
+                    </button>
+                    
                     {/* Video Element */}
                     <video 
                       className="w-full object-cover"
