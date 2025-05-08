@@ -254,17 +254,18 @@ export default function UploadPage() {
             throw new Error(errorData.error || 'Failed to save video metadata');
         }
         const metadataData = await metadataResponse.json();
-        console.log('Upload completed successfully (API Response):', metadataData);
+        // Logge die TATSÄCHLICHE Struktur der Antwort
+        console.log('Upload completed - Raw API Response Data:', metadataData);
 
-        // **** NEUE PRÜFUNG: Stelle sicher, dass metadataData.video existiert ****
-        if (!metadataData || !metadataData.video) {
-            console.error('Error: metadataData.video is missing in the API response.', metadataData);
-            setError(`Failed to process metadata for ${file.name}. API response incomplete.`);
-            // Bereinige Fortschritt für dieses Video
+        // **** Anpassung: Prüfe, ob metadataData selbst das Video-Objekt ist oder eine `video` Eigenschaft hat ****
+        const videoData = metadataData.video || metadataData; // Versuche .video, fallback auf metadataData direkt
+
+        if (!videoData || !videoData.id) { // Prüfe auf eine essentielle Eigenschaft wie id
+            console.error('Error: Video data (or essential properties like id) is missing in the API response.', metadataData);
+            setError(`Failed to process metadata for ${file.name}. API response invalid or incomplete.`);
             setUploadProgress(prev => { const { [videoId]: _, ...rest } = prev; return rest; });
-            // Entferne Platzhalter/Video aus der Liste, falls es hinzugefügt wurde
             setUploadedVideos(prev => prev.filter(v => v.id !== videoId)); 
-            return; // Beende Verarbeitung für DIESES File
+            return; 
         }
 
         // Upload erfolgreich markieren (Progress entfernen)
@@ -273,15 +274,15 @@ export default function UploadPage() {
             return rest; 
         }); 
         
-        // Neues Video-Objekt erstellen (mit optionalem Chaining & Fallbacks)
+        // Neues Video-Objekt erstellen (jetzt mit videoData)
         const newVideo: UploadedVideo = {
-          id: metadataData.video?.id || videoId, 
-          name: metadataData.video?.name || file.name, 
-          size: metadataData.video?.size || file.size, 
-          type: metadataData.video?.type || file.type, 
+          id: videoData.id || videoId, 
+          name: videoData.name || file.name, 
+          size: videoData.size || file.size, 
+          type: videoData.type || file.type, 
           url: '', 
-          tags: metadataData.video?.tags || [],
-          key: metadataData.video?.path 
+          tags: videoData.tags || [],
+          key: videoData.path // Annahme: Der Key ist im 'path' Feld
         };
         
         // Video zur Liste hinzufügen
