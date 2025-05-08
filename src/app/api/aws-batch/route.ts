@@ -154,7 +154,7 @@ export async function POST(request: NextRequest) {
     // Erstelle eine Liste von Umgebungsvariablen
     let environment: { name: string; value: string }[] = [];
     
-    // Füge Basis-Umgebungsvariablen hinzu
+    // Füge Basis-Umgebungsvariablen hinzu (OHNE OUTPUT_KEY zunächst)
     environment.push({ name: 'JOB_TYPE', value: jobType });
     environment.push({ name: 'INPUT_VIDEO_URL', value: inputVideoUrl });
     environment.push({ name: 'USER_ID', value: userId });
@@ -183,24 +183,27 @@ export async function POST(request: NextRequest) {
       console.warn('BATCH_CALLBACK_SECRET is not set in environment variables');
     }
 
-    // Füge Output-Key hinzu, wenn vorhanden
-    if (outputKey) {
-      environment.push({ name: 'OUTPUT_KEY', value: outputKey });
-    }
-
-    // Extrahiere Umgebungsvariablen aus zusätzlichen Parametern
+    // VERARBEITE ZUERST additionalParams
     if (additionalParams) {
       console.log('Processing additional parameters');
       const maxEnvVarLength = 4000; // AWS Batch hat ein Limit für die Umgebungsvariablenlänge
       
       // Erstelle Liste von sicheren Parameternamen, die direkt übergeben werden können
+      // Wichtig: OUTPUT_KEY hier NICHT als "sicher" behandeln, damit er nicht überschrieben wird
       const safeKeysToPassDirectly = [
         'USER_ID', 'PROJECT_ID', 'TITLE', 'TEMPLATE_DATA_PATH', 'TEMPLATE_DATA', 'VOICEOVER_URL',
-        'DEBUG', 'AWS_REGION', 'OUTPUT_KEY', 'WORD_TIMESTAMPS', 'VOICEOVER_ID', 'VOICEOVER_KEY'
+        'DEBUG', 'AWS_REGION', 'WORD_TIMESTAMPS', 'VOICEOVER_ID', 'VOICEOVER_KEY'
+        // 'OUTPUT_KEY' bewusst entfernt
       ];
       
       // Filtere und verarbeite die Parameter
       Object.entries(additionalParams).forEach(([key, value]) => {
+        // Überspringe OUTPUT_KEY hier, da wir ihn separat setzen
+        if (key === 'OUTPUT_KEY') {
+            console.log(`Skipping OUTPUT_KEY from additionalParams to avoid override.`);
+            return;
+        }
+        
         if (value === undefined || value === null) {
           console.log(`Skipping null/undefined value for key: ${key}`);
           return;
@@ -237,22 +240,39 @@ export async function POST(request: NextRequest) {
         }
       });
 
-      // Stelle sicher, dass TEMPLATE_DATA in den Umgebungsvariablen enthalten ist
+      // Stelle sicher, dass TEMPLATE_DATA in den Umgebungsvariablen enthalten ist (falls nicht schon durch additionalParams)
       const hasTemplateData = environment.some(env => env.name === 'TEMPLATE_DATA');
       if (!hasTemplateData && additionalParams?.TEMPLATE_DATA) {
-        console.log('Adding TEMPLATE_DATA to environment variables directly');
+        console.log('Adding TEMPLATE_DATA to environment variables directly (from additionalParams)');
         const templateDataValue = typeof additionalParams.TEMPLATE_DATA === 'string' 
           ? additionalParams.TEMPLATE_DATA 
           : JSON.stringify(additionalParams.TEMPLATE_DATA);
         
-        environment.push({
-          name: 'TEMPLATE_DATA',
-          value: templateDataValue
-        });
+        // Prüfe Größe vor dem Hinzufügen
+        if (templateDataValue.length <= maxEnvVarLength) {
+            environment.push({
+              name: 'TEMPLATE_DATA',
+              value: templateDataValue
+            });
+        } else {
+            console.warn('TEMPLATE_DATA from additionalParams is too large, skipping.');
+        }
       }
     }
+    
+    // SETZE JETZT DEN OUTPUT_KEY (aus dem Request Body), falls vorhanden.
+    // Dies überschreibt jeden OUTPUT_KEY, der fälschlicherweise in additionalParams war.
+    if (outputKey) {
+      // Entferne zuerst eventuelle Duplikate, die durch die additionalParams-Logik entstanden sein könnten
+      environment = environment.filter(env => env.name !== 'OUTPUT_KEY');
+      // Füge den korrekten Key hinzu
+      environment.push({ name: 'OUTPUT_KEY', value: outputKey });
+      console.log(`Ensured OUTPUT_KEY is set to: ${outputKey}`);
+    } else {
+      console.warn('OUTPUT_KEY was not provided in the request body.');
+    }
 
-    console.log('Prepared environment variables:', environment);
+    console.log('Final prepared environment variables:', environment);
     
     // Überprüfe die Gesamtgröße der Umgebungsvariablen
     const totalSize = environment.reduce((sum, env) => sum + (env.name.length + (env.value?.length || 0)), 0);
