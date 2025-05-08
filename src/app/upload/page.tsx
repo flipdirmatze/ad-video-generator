@@ -523,8 +523,16 @@ export default function UploadPage() {
             type="file"
             multiple
             accept="video/*"
-            onChange={(e) => e.target.files && handleFiles(e.target.files)}
+            onChange={(e) => {
+              if (e.target.files) {
+                // Konvertiere FileList zu File[]
+                const filesArray = Array.from(e.target.files);
+                // Rufe handleFiles mit konvertiertem Array und leeren/null Argumenten für Rejections/Event auf
+                handleFiles(filesArray, [], null as unknown as DropEvent); 
+              }
+            }}
             className="hidden"
+            style={{ display: 'none' }}
           />
           <p className="mt-4 text-sm text-white/40">
             Maximum file size: 2GB
