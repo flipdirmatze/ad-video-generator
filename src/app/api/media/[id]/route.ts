@@ -93,10 +93,10 @@ export async function GET(
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: { id: string } } // Korrigierte Signatur
 ) {
   try {
-    const videoId = params.id;
+    const videoId = context.params.id; // Extrahiere ID aus context.params
     if (!videoId) {
       return NextResponse.json({ error: 'Video ID is required' }, { status: 400 });
     }
@@ -117,10 +117,12 @@ export async function DELETE(
 
     // Video finden und prüfen, ob es dem Benutzer gehört
     console.log(`[API DELETE /api/media/${videoId}] Finding video...`);
+    // Wichtig: Verwende lean() nicht, wenn du später deleteOne auf dem Objekt aufrufen willst
+    // Holen wir das volle Dokument, um sicherzustellen, dass der Pfad korrekt ist.
     const video = await VideoModel.findOne({
       id: videoId,
       userId: userId 
-    }).lean() as IVideoDocument | null;
+    }) as IVideoDocument | null; // lean() entfernt
 
     if (!video) {
       console.error(`[API DELETE /api/media/${videoId}] Video not found or user mismatch.`);
@@ -138,20 +140,16 @@ export async function DELETE(
       }
     } else {
       console.warn(`[API DELETE /api/media/${videoId}] Video has no path, skipping S3 deletion.`);
-      // Wenn kein Pfad da ist, betrachten wir die S3-Löschung als "erfolgreich" 
-      // im Sinne von "nichts zu löschen"
+      // Wenn kein Pfad da ist, betrachten wir die S3-Löschung als "erfolgreich"
       s3DeleteSuccess = true;
     }
 
-    // 2. Dokument aus MongoDB löschen
+    // 2. Dokument aus MongoDB löschen (verwende deleteOne mit Filter)
     console.log(`[API DELETE /api/media/${videoId}] Deleting video document from DB...`);
     const dbDeleteResult = await VideoModel.deleteOne({ id: videoId, userId: userId });
 
     if (dbDeleteResult.deletedCount === 0) {
-      // Sollte nicht passieren, wenn wir das Video vorher gefunden haben
       console.error(`[API DELETE /api/media/${videoId}] Failed to delete video from DB, although it was found earlier.`);
-      // Trotzdem Erfolg zurückgeben, wenn S3-Löschung geklappt hat? Oder 500?
-      // Wir entscheiden uns für einen 500er, da der Zustand inkonsistent ist.
       return NextResponse.json({ error: 'Failed to delete video from database' }, { status: 500 });
     }
     
