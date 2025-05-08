@@ -1360,6 +1360,48 @@ export default function EditorPage() {
                   src={signedVideoUrl || finalVideoUrl}
                   controls
                   poster="/video-poster.jpg"
+                  onError={async (e) => {
+                    const target = e.target as HTMLVideoElement;
+                    console.error('Error loading final video:', {
+                      errorCode: target.error?.code,
+                      errorMessage: target.error?.message,
+                      currentSrc: target.currentSrc,
+                      finalVideoUrl: finalVideoUrl,
+                      signedVideoUrl: signedVideoUrl
+                    });
+
+                    // Versuche, eine neue signierte URL zu holen, wenn ein Fehler auftritt
+                    // und wir eine Basis-URL haben, aus der wir den Key extrahieren können.
+                    if (target.error && finalVideoUrl) {
+                      try {
+                        // Extrahiere den S3-Key aus der finalVideoUrl
+                        const key = finalVideoUrl.substring(finalVideoUrl.indexOf('amazonaws.com/') + 'amazonaws.com/'.length);
+                        console.log(`[Final Video Error Handler] Extracted key: ${key}`);
+                        
+                        if (key) {
+                          console.log(`[Final Video Error Handler] Attempting to refresh signed URL for key: ${key}`);
+                          const response = await fetch(`/api/get-signed-url?key=${encodeURIComponent(key)}`);
+                          if (response.ok) {
+                            const data = await response.json();
+                            if (data.url) {
+                              console.log(`[Final Video Error Handler] Successfully refreshed signed URL: ${data.url}`);
+                              setSignedVideoUrl(data.url); // Update state
+                              // Wichtig: Video-Element zum Neuladen zwingen
+                              target.src = data.url;
+                              target.load();
+                              return; // Erfolgreich, keine weitere Fehlermeldung
+                            }
+                          }
+                          const errorText = await response.text();
+                          throw new Error(`Failed to get new signed URL: ${response.status} ${errorText}`);
+                        }
+                      } catch (refreshError) {
+                        console.error(`[Final Video Error Handler] Error refreshing signed URL:`, refreshError);
+                      }
+                    }
+                    // Nur allgemeinen Fehler setzen, wenn das Neuladen fehlschlägt
+                    setError("Das finale Video konnte nicht geladen werden. Bitte versuche die Seite neu zu laden.");
+                  }}
                 />
                 
                 {/* Video Controls */}

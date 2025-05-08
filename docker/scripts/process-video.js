@@ -1727,7 +1727,10 @@ async function runFFmpeg(args) {
  * Lade das verarbeitete Video zu S3 hoch
  */
 async function uploadOutputFile(filePath) {
-  console.log(`Uploading output file ${filePath} to S3 bucket ${S3_BUCKET} with key ${OUTPUT_KEY}`);
+  // Verwende den globalen OUTPUT_KEY als Zielpfad
+  const targetS3Key = OUTPUT_KEY;
+  
+  console.log(`Uploading output file ${filePath} to S3 bucket ${S3_BUCKET} with target key ${targetS3Key}`);
   
   try {
     // Verify the file exists and has content
@@ -1742,25 +1745,24 @@ async function uploadOutputFile(filePath) {
     
     console.log(`Output file size: ${fileStats.size} bytes`);
     
-    const fileContent = fs.readFileSync(filePath);
+    // Nutze die allgemeine Upload-Funktion, die die Key-Normalisierung übernimmt
+    const finalUploadedKey = await uploadFileToS3(filePath, targetS3Key);
     
-    const command = new PutObjectCommand({
-      Bucket: S3_BUCKET,
-      Key: OUTPUT_KEY,
-      Body: fileContent,
-      ContentType: 'video/mp4'
-    });
+    console.log(`Successfully uploaded output file to S3: s3://${S3_BUCKET}/${finalUploadedKey}`);
     
-    await s3Client.send(command);
-    console.log(`Successfully uploaded output file to S3: s3://${S3_BUCKET}/${OUTPUT_KEY}`);
+    // Wichtig: Gib den *tatsächlich* verwendeten (normalisierten) Key zurück,
+    // damit der Callback die korrekte URL erstellen kann (obwohl der Callback 
+    // den Key selbst als Parameter erhält und ihn verwenden sollte).
+    return finalUploadedKey;
+    
   } catch (error) {
-    console.error('Error uploading file to S3:', error);
+    console.error('Error uploading output file to S3:', error);
     throw error;
   }
 }
 
 /**
- * Sendet einen Callback an die API, um den Job-Status zu aktualisieren
+ * Sendet einen Callback an die definierte URL
  */
 async function sendCallback(data) {
   console.log(`Sending callback to ${BATCH_CALLBACK_URL} for project ${data.projectId || PROJECT_ID}`);
@@ -1787,18 +1789,18 @@ async function sendCallback(data) {
   console.log(`Normalized callback URL: ${cleanCallbackUrl}`);
 
   const parsedUrl = new URL(cleanCallbackUrl);
-
-  const options = {
+    
+    const options = {
     hostname: parsedUrl.hostname,
     port: parsedUrl.port || (parsedUrl.protocol === 'https:' ? 443 : 80), // Korrigiertes Anführungszeichen
     path: parsedUrl.pathname + parsedUrl.search,
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
       'Content-Length': Buffer.byteLength(callbackData)
-    }
-  };
-
+      }
+    };
+    
   return new Promise((resolve, reject) => {
     const req = https.request(options, (res) => {
       let responseBody = '';
@@ -1815,7 +1817,7 @@ async function sendCallback(data) {
         }
       });
     });
-
+    
     req.on('error', (error) => {
       console.error('Error sending callback:', error);
       reject(error);
