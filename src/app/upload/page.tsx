@@ -48,6 +48,7 @@ export default function UploadPage() {
   const [signedUrls, setSignedUrls] = useState<Record<string, string>>({})
   const [isDeleting, setIsDeleting] = useState<Record<string, boolean>>({})
   const tagInputRef = useRef<HTMLInputElement | null>(null)
+  const [tags, setTags] = useState<Record<string, string[]>>({})
 
   // Vereinfachte Authentifizierungs-Prüfung
   useEffect(() => {
@@ -142,6 +143,24 @@ export default function UploadPage() {
     checkUntaggedVideos()
   }, [])
 
+  // Funktion zum Holen der signierten URL (Definition hier sicherstellen)
+  const getSignedUrlForKey = useCallback(async (key: string, videoId: string) => {
+    if (!key || key === 'pending') return;
+    try {
+      const response = await fetch(`/api/get-signed-url?key=${encodeURIComponent(key)}`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.url) {
+          setSignedUrls(prev => ({ ...prev, [videoId]: data.url }));
+        }
+      } else {
+         console.warn(`Failed to get signed URL for key ${key}: ${response.status}`);
+      }
+    } catch (err) {
+      console.error(`Error fetching signed URL for ${key}:`, err);
+    }
+  }, [/* Keine Abhängigkeiten hier, da setSignedUrls stabil ist */]);
+
   // Korrigierte onDrop/handleFiles Funktion
   const handleFiles = useCallback(async (acceptedFiles: File[], fileRejections: FileRejection[], event: DropEvent | null) => {
     setError(null)
@@ -159,27 +178,22 @@ export default function UploadPage() {
 
     const uploadPromises = videoFiles.map(async (file) => {
       const videoId = crypto.randomUUID(); 
+      const tempUrl = URL.createObjectURL(file); // Temporäre URL für interne Zwecke, falls benötigt
       
       // Wir erhöhen das Limit auf 2GB für direkte S3-Uploads
       const MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024; // 2GB
       if (file.size > MAX_FILE_SIZE) {
         setError(`File ${file.name} is too large. Maximum size is 2GB.`)
+        URL.revokeObjectURL(tempUrl);
         return
       }
       
-      const url = URL.createObjectURL(file)
+      // Setze nur den Fortschritts-State, füge KEINEN Platzhalter zu uploadedVideos hinzu
+      setUploadProgress(prev => ({ ...prev, [videoId]: 0 }))
       
-      // Füge Platzhalter hinzu
-      const placeholderVideo: UploadedVideo = {
-          id: videoId,
-          name: file.name,
-          size: file.size,
-          type: file.type,
-          url: '', 
-          tags: [],
-          key: 'pending'
-      };
-      setUploadedVideos(prev => [placeholderVideo, ...prev]);
+      // Optional: Zeige temporären Upload-Indikator (nicht in der Hauptliste)
+      // const placeholderVideo: UploadedVideo = { ... };
+      // setUploadingPlaceholders(prev => [placeholderVideo, ...prev]); 
       
       try {
         // 1. Hole einen presigned URL von der API
@@ -260,61 +274,50 @@ export default function UploadPage() {
         const metadataData = await metadataResponse.json();
         console.log('Upload completed successfully:', metadataData);
         
-        // Upload erfolgreich markieren (nur Progress entfernen)
+        // Upload erfolgreich markieren (Progress entfernen)
         setUploadProgress(prev => { 
             const { [videoId]: _, ...rest } = prev; 
             return rest; 
         }); 
         
-        // Verwende die signierte URL aus der Antwort, falls vorhanden
-        const videoUrl = metadataData.url || fileUrl;
-        
-        // Neues Video-Objekt erstellen
+        // Neues Video-Objekt erstellen (mit Daten vom Backend)
         const newVideo: UploadedVideo = {
-          id: videoId,
-          name: file.name,
-          size: file.size,
-          type: file.type,
-          url: videoUrl,
-          tags: [],
-          key: key
+          id: metadataData.video.id || videoId, 
+          name: metadataData.video.name,
+          size: metadataData.video.size,
+          type: metadataData.video.type,
+          url: '', 
+          tags: metadataData.video.tags || [],
+          key: metadataData.video.path 
         };
         
-        // Video-Liste aktualisieren - an den Anfang setzen
+        // JETZT ERST das Video zur Liste hinzufügen
         setUploadedVideos(prev => [newVideo, ...prev]);
         
-        // Speichere die URL auch in den signierten URLs
-        setSignedUrls(prev => ({
-          ...prev,
-          [videoId]: videoUrl
-        }));
+        // Signierte URL holen und Tags setzen (Korrekte Funktionsnamen)
+        if (newVideo.key) {
+            getSignedUrlForKey(newVideo.key, newVideo.id);
+        }
+        setTags(prev => ({ ...prev, [newVideo.id]: newVideo.tags })); // Korrekter Aufruf von setTags
         
-        // Erfolgsmeldung anzeigen
-        setSuccess(`Video "${file.name}" erfolgreich hochgeladen`);
-        
-        // Zum Zurücksetzen des Videos nach 2-3 Sekunden für korrektes Laden
-        setTimeout(() => {
-          const videoElement = document.querySelector(`video[data-id="${videoId}"]`) as HTMLVideoElement;
-          if (videoElement) {
-            videoElement.src = videoUrl;
-            videoElement.load();
-          }
-        }, 500);
-        
+        // Erfolgsmeldung anzeigen (optional)
+        setSuccess(`Video "${newVideo.name}" erfolgreich hochgeladen`);
+
       } catch (error) {
         console.error('Upload error:', error)
         setError(`Failed to upload ${file.name}: ${error instanceof Error ? error.message : 'Unknown error'}`)
-        // Entferne Platzhalter bei Fehler
-        setUploadedVideos(prev => prev.filter(v => v.id !== videoId));
+        // Entferne Fortschritt bei Fehler
         setUploadProgress(prev => { const { [videoId]: _, ...rest } = prev; return rest; });
+        // Entferne Platzhalter, falls einer verwendet wurde
+        // setUploadingPlaceholders(prev => prev.filter(p => p.id !== videoId));
       }
       
-      URL.revokeObjectURL(url)
+      URL.revokeObjectURL(tempUrl); // Temporäre URL freigeben
     });
 
     await Promise.all(uploadPromises);
     setIsUploading(false);
-  }, []);
+  }, [getSignedUrlForKey]); // getSignedUrlForKey als Abhängigkeit hinzugefügt
 
   // Tag management functions
   const handleTagChange = (videoId: string, value: string) => {
@@ -507,6 +510,27 @@ export default function UploadPage() {
           </div>
         )}
 
+        {/* Anzeige für laufende Uploads */}
+        {Object.keys(uploadProgress).length > 0 && (
+          <div className="mt-8 mb-4 p-4 bg-gray-800/50 rounded-lg border border-gray-700/50">
+            <h3 className="text-lg font-semibold mb-3">Laufende Uploads...</h3>
+            <div className="space-y-2">
+              {Object.entries(uploadProgress).map(([id, progress]) => (
+                <div key={id} className="text-sm">
+                  {/* Optional: Name der Datei anzeigen, wenn wir ihn speichern */}
+                  <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-blue-600 transition-all duration-150"
+                      style={{ width: `${progress}%` }}
+                    ></div>
+                  </div>
+                  <div className="text-right text-xs text-gray-400 mt-1">{progress}%</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Videos Grid */}
         <div className="mt-8">
           <h2 className="text-xl font-semibold mb-4">
@@ -670,36 +694,6 @@ export default function UploadPage() {
                       }}
                       style={{ minHeight: '200px' }}
                     />
-                    
-                    {/* Upload Progress */}
-                    {uploadProgress[video.id] !== undefined && uploadProgress[video.id] < 100 && (
-                      <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/70">
-                        <div className="w-2/3 h-2 bg-gray-700 rounded-full overflow-hidden">
-                          <div 
-                            className="h-full bg-purple-500 rounded-full"
-                            style={{ width: `${uploadProgress[video.id]}%` }}
-                          />
-                        </div>
-                        <p className="mt-2 text-white text-sm">
-                          Uploading... {Math.floor(uploadProgress[video.id])}%
-                        </p>
-                      </div>
-                    )}
-                    
-                    {/* Upload Complete Indicator */}
-                    {uploadProgress[video.id] === 100 && (
-                      <div className="absolute top-2 right-2 bg-green-500/20 text-green-400 py-1 px-2 rounded-md flex items-center text-xs">
-                        <CheckCircleIcon className="h-4 w-4 mr-1" />
-                        Upload complete
-                      </div>
-                    )}
-
-                    {/* Video Name Overlay */}
-                    <div className="absolute bottom-0 left-0 right-0 p-2 bg-black bg-opacity-50">
-                      <div className="flex items-center justify-between">
-                        <span className="text-white text-sm truncate">{video.name}</span>
-                      </div>
-                    </div>
                   </div>
                 </div>
               ))}
