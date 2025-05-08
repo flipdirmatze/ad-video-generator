@@ -254,15 +254,12 @@ export default function UploadPage() {
             throw new Error(errorData.error || 'Failed to save video metadata');
         }
         const metadataData = await metadataResponse.json();
-        // Logge die TATSÄCHLICHE Struktur der Antwort
         console.log('Upload completed - Raw API Response Data:', metadataData);
 
-        // **** Anpassung: Prüfe, ob metadataData selbst das Video-Objekt ist oder eine `video` Eigenschaft hat ****
-        const videoData = metadataData.video || metadataData; // Versuche .video, fallback auf metadataData direkt
-
-        if (!videoData || !videoData.id) { // Prüfe auf eine essentielle Eigenschaft wie id
-            console.error('Error: Video data (or essential properties like id) is missing in the API response.', metadataData);
-            setError(`Failed to process metadata for ${file.name}. API response invalid or incomplete.`);
+        // **** KORREKTUR: Prüfe direkt auf metadataData.videoId ****
+        if (!metadataData || !metadataData.videoId) { 
+            console.error('Error: videoId is missing in the API response.', metadataData);
+            setError(`Failed to process metadata for ${file.name}. API response invalid.`);
             setUploadProgress(prev => { const { [videoId]: _, ...rest } = prev; return rest; });
             setUploadedVideos(prev => prev.filter(v => v.id !== videoId)); 
             return; 
@@ -274,15 +271,15 @@ export default function UploadPage() {
             return rest; 
         }); 
         
-        // Neues Video-Objekt erstellen (jetzt mit videoData)
+        // Neues Video-Objekt erstellen (Daten direkt aus metadataData)
         const newVideo: UploadedVideo = {
-          id: videoData.id || videoId, 
-          name: videoData.name || file.name, 
-          size: videoData.size || file.size, 
-          type: videoData.type || file.type, 
-          url: '', 
-          tags: videoData.tags || [],
-          key: videoData.path // Annahme: Der Key ist im 'path' Feld
+          id: metadataData.videoId,         // Direkt verwenden
+          name: file.name,                   // Name aus Originaldatei (API gibt keinen Namen zurück)
+          size: file.size,                   // Größe aus Originaldatei (API gibt keine Größe zurück)
+          type: file.type,                   // Typ aus Originaldatei (API gibt keinen Typ zurück)
+          url: '',                            // Wird durch getSignedUrlForKey gesetzt
+          tags: [],                          // Initial leere Tags (API gibt keine Tags zurück)
+          key: metadataData.key             // Key direkt verwenden
         };
         
         // Video zur Liste hinzufügen
@@ -294,9 +291,6 @@ export default function UploadPage() {
         }
         setTags(prev => ({ ...prev, [newVideo.id]: newVideo.tags })); 
         
-        // Erfolgsmeldung anzeigen (optional)
-        // setSuccess(`Video "${newVideo.name}" erfolgreich hochgeladen`);
-
       } catch (error) {
         console.error('Upload error:', error)
         setError(`Failed to upload ${file.name}: ${error instanceof Error ? error.message : 'Unknown error'}`)
