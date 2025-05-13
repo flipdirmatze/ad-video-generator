@@ -180,10 +180,10 @@ export default function UploadPage() {
       const videoId = crypto.randomUUID(); 
       const tempUrl = URL.createObjectURL(file); 
       
-      // Wir erhöhen das Limit auf 2GB für direkte S3-Uploads
-      const MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024; // 2GB
+      // Limit auf 150MB für Video-Uploads
+      const MAX_FILE_SIZE = 150 * 1024 * 1024; // 150MB
       if (file.size > MAX_FILE_SIZE) {
-        setError(`File ${file.name} is too large. Maximum size is 2GB.`)
+        setError(`Datei ${file.name} ist zu groß. Maximale Größe ist 150MB.`)
         URL.revokeObjectURL(tempUrl);
         return
       }
@@ -485,7 +485,10 @@ export default function UploadPage() {
             or click to select files
           </p>
           <p className="mt-4 text-sm text-white/40">
-            Maximum file size: 2GB
+            Maximum file size: 150MB
+          </p>
+          <p className="mt-1 text-sm text-white/40">
+            Allowed formats: MP4, WebM, MOV, AVI, WMV, MKV
           </p>
         </div>
 

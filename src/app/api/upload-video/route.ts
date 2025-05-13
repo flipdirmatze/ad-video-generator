@@ -6,6 +6,17 @@ import { authOptions } from '@/lib/auth';
 import dbConnect from '@/lib/mongoose';
 import VideoModel from '@/models/Video';
 
+// Define constants for upload restrictions
+const MAX_FILE_SIZE = 150 * 1024 * 1024; // 150MB in bytes
+const ALLOWED_VIDEO_MIME_TYPES = [
+  'video/mp4',
+  'video/webm',
+  'video/quicktime', // .mov files
+  'video/x-msvideo', // .avi files
+  'video/x-ms-wmv', // .wmv files
+  'video/x-matroska', // .mkv files
+];
+
 export async function POST(request: Request) {
   // Unique request ID für Logging
   const requestId = `upload-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
@@ -35,6 +46,22 @@ export async function POST(request: Request) {
       if (!videoId || !name || !size || !type || !key || !url) {
         console.error(`[${requestId}] Missing required fields: ${JSON.stringify({ videoId, name, size, type, key, url })}`);
         return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+      }
+      
+      // Validate file size
+      if (size > MAX_FILE_SIZE) {
+        console.error(`[${requestId}] File too large: ${size} bytes (max: ${MAX_FILE_SIZE} bytes)`);
+        return NextResponse.json({ 
+          error: `File too large. Maximum allowed size is 150MB.` 
+        }, { status: 400 });
+      }
+      
+      // Validate file type
+      if (!ALLOWED_VIDEO_MIME_TYPES.includes(type)) {
+        console.error(`[${requestId}] Invalid file type: ${type}`);
+        return NextResponse.json({ 
+          error: `Only video files are allowed. Received: ${type}` 
+        }, { status: 400 });
       }
       
       // Mit Mongoose zur Datenbank verbinden
@@ -100,11 +127,20 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'No file provided' }, { status: 400 });
       }
 
-      // Check file size limit (e.g., 500MB)
-      const MAX_SIZE = 500 * 1024 * 1024;
-      if (file.size > MAX_SIZE) {
-        console.error(`[${requestId}] File too large: ${file.size} bytes`);
-        return NextResponse.json({ error: 'File too large' }, { status: 400 });
+      // Check file size limit (updated to 150MB)
+      if (file.size > MAX_FILE_SIZE) {
+        console.error(`[${requestId}] File too large: ${file.size} bytes (max: ${MAX_FILE_SIZE} bytes)`);
+        return NextResponse.json({ 
+          error: `File too large. Maximum allowed size is 150MB.` 
+        }, { status: 400 });
+      }
+      
+      // Validate file type
+      if (!ALLOWED_VIDEO_MIME_TYPES.includes(file.type)) {
+        console.error(`[${requestId}] Invalid file type: ${file.type}`);
+        return NextResponse.json({ 
+          error: `Only video files are allowed. Received: ${file.type}` 
+        }, { status: 400 });
       }
       
       // Generate unique ID and filename
