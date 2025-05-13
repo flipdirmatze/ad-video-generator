@@ -1,8 +1,7 @@
-import mongoose from 'mongoose';
-import { Schema } from 'mongoose';
+import mongoose, { Schema } from 'mongoose';
 
-// Plan-Typen für den Benutzer
-export type SubscriptionPlan = 'free' | 'premium' | 'enterprise';
+// 1. Interfaces und Typen
+export type SubscriptionPlan = 'starter' | 'pro' | 'business';
 
 // Statistische Daten des Benutzers
 export interface IUserStats {
@@ -17,6 +16,7 @@ export interface IUserLimits {
   maxVideoLength: number; // in Sekunden
   maxStorageSpace: number; // in Bytes
   maxResolution: string; // z.B. "1080p"
+  maxUploadSize: number; // in Bytes
   allowedFeatures: string[]; // z.B. ["voiceover", "templates", "customBranding"]
 }
 
@@ -46,26 +46,29 @@ export interface IUser {
 
 // Standardlimits für verschiedene Abonnements
 const planLimits: Record<SubscriptionPlan, IUserLimits> = {
-  free: {
-    maxVideosPerMonth: 5,
-    maxVideoLength: 60, // 1 Minute
-    maxStorageSpace: 1024 * 1024 * 500, // 500 MB
-    maxResolution: "720p",
-    allowedFeatures: ["templates"]
+  starter: {
+    maxVideosPerMonth: 10,
+    maxVideoLength: 180, // 3 Minuten
+    maxStorageSpace: 1024 * 1024 * 1024 * 2, // 2 GB
+    maxResolution: "720p", // SD
+    maxUploadSize: 150 * 1024 * 1024, // 150MB
+    allowedFeatures: ["templates", "basicEditing"]
   },
-  premium: {
+  pro: {
     maxVideosPerMonth: 50,
-    maxVideoLength: 300, // 5 Minuten
-    maxStorageSpace: 1024 * 1024 * 1024 * 5, // 5 GB
-    maxResolution: "1080p",
-    allowedFeatures: ["templates", "voiceover", "customBranding"]
+    maxVideoLength: 600, // 10 Minuten
+    maxStorageSpace: 1024 * 1024 * 1024 * 10, // 10 GB
+    maxResolution: "1080p", // HD
+    maxUploadSize: 500 * 1024 * 1024, // 500MB
+    allowedFeatures: ["templates", "basicEditing", "advancedEditing", "removeWatermark", "prioritySupport"]
   },
-  enterprise: {
-    maxVideosPerMonth: 1000,
+  business: {
+    maxVideosPerMonth: 200,
     maxVideoLength: 1800, // 30 Minuten
     maxStorageSpace: 1024 * 1024 * 1024 * 50, // 50 GB
-    maxResolution: "4K",
-    allowedFeatures: ["templates", "voiceover", "customBranding", "apiAccess", "priorityProcessing"]
+    maxResolution: "2160p", // 4K
+    maxUploadSize: 2 * 1024 * 1024 * 1024, // 2GB
+    allowedFeatures: ["templates", "basicEditing", "advancedEditing", "removeWatermark", "prioritySupport", "apiAccess", "teamAccess", "priorityProcessing"]
   }
 };
 
@@ -112,8 +115,8 @@ const UserSchema = new Schema<IUser>(
     },
     subscriptionPlan: {
       type: String,
-      enum: ['free', 'premium', 'enterprise'],
-      default: 'free'
+      enum: ['starter', 'pro', 'business'],
+      default: 'starter'
     },
     subscriptionActive: {
       type: Boolean,
@@ -128,10 +131,11 @@ const UserSchema = new Schema<IUser>(
         maxVideoLength: Number,
         maxStorageSpace: Number,
         maxResolution: String,
+        maxUploadSize: Number,
         allowedFeatures: [String]
       },
       default: function() {
-        return planLimits.free;
+        return planLimits.starter;
       }
     },
     stats: {

@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
     }
     
     // Hash password with lower cost for faster processing
-    const hashedPassword = await bcrypt.hash(password, 8); // Lower cost from 10 to 8
+    const hashedPassword = await bcrypt.hash(password, 12);
     
     // Create user
     const newUser = new db({
@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
       name,
       createdAt: new Date(),
       role: 'user',
-      subscriptionPlan: 'free',
+      subscriptionPlan: 'starter',
       subscriptionActive: true,
       limits: {
         maxVideosPerMonth: 5,
@@ -51,7 +51,8 @@ export async function POST(request: NextRequest) {
         totalVideosCreated: 0,
         totalStorage: 0,
         lastActive: new Date()
-      }
+      },
+      emailVerified: new Date()
     });
     
     const result = await newUser.save();

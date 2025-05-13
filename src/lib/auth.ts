@@ -44,7 +44,7 @@ const getUserFromCredentials = async (credentials: Credentials) => {
     image: user.image,
     role: user.role,
     username: user.username,
-    subscriptionPlan: user.subscriptionPlan || 'free',
+    subscriptionPlan: user.subscriptionPlan || 'starter',
     subscriptionActive: user.subscriptionActive ?? true,
     limits: user.limits,
     stats: user.stats
@@ -69,7 +69,7 @@ export const authOptions: NextAuthOptions = {
           // Setzen der Standard-Rolle für Google-Anmeldungen
           role: 'user',
           // Setzen des Standard-Abonnements für neue Benutzer
-          subscriptionPlan: 'free',
+          subscriptionPlan: 'starter',
           subscriptionActive: true
         };
       },
@@ -130,7 +130,7 @@ export const authOptions: NextAuthOptions = {
         token.id = user.id;
         
         // Füge Abonnement-Informationen hinzu
-        token.subscriptionPlan = user.subscriptionPlan || 'free';
+        token.subscriptionPlan = user.subscriptionPlan || 'starter';
         token.subscriptionActive = user.subscriptionActive ?? true;
         token.hasLimits = !!user.limits;
       }
@@ -148,7 +148,7 @@ export const authOptions: NextAuthOptions = {
       if (session.user) {
         session.user.role = token.role as string;
         session.user.id = token.id as string;
-        session.user.subscriptionPlan = token.subscriptionPlan || 'free';
+        session.user.subscriptionPlan = token.subscriptionPlan || 'starter';
         session.user.subscriptionActive = token.subscriptionActive ?? true;
         
         // Wenn der Adapter verwendet wird, ist user verfügbar
