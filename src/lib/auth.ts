@@ -59,20 +59,13 @@ export const authOptions: NextAuthOptions = {
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID || '',
       clientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
-      // Passen der Benutzerdaten aus Google an
-      profile(profile) {
-        return {
-          id: profile.sub,
-          name: profile.name,
-          email: profile.email,
-          image: profile.picture,
-          // Setzen der Standard-Rolle für Google-Anmeldungen
-          role: 'user',
-          // Setzen des Standard-Abonnements für neue Benutzer
-          subscriptionPlan: 'starter',
-          subscriptionActive: true
-        };
-      },
+      authorization: {
+        params: {
+          prompt: "consent",
+          access_type: "offline",
+          response_type: "code"
+        }
+      }
     }),
     CredentialsProvider({
       name: 'credentials',
@@ -113,14 +106,42 @@ export const authOptions: NextAuthOptions = {
   
   // Verbesserte Fehlerbehandlung
   callbacks: {
-    async signIn({ user, account, profile, email, credentials }) {
-      try {
-        // Erfolgreiche Anmeldung
-        return true;
-      } catch (error) {
-        console.error('Sign-in callback error:', error);
-        return false;
+    async signIn({ user, account, profile }) {
+      // Prüfen, ob es ein Google-Login ist
+      if (account?.provider === 'google' && profile?.email) {
+        try {
+          await dbConnect();
+          
+          // Prüfen, ob User bereits existiert
+          const existingUser = await User.findOne({ email: profile.email });
+          
+          // Wenn der User nicht existiert, erstellen wir einen neuen mit dem richtigen Plan
+          if (!existingUser && user) {
+            const newUser = new User({
+              name: user.name,
+              email: user.email,
+              image: user.image,
+              role: 'user',
+              subscriptionPlan: 'starter',
+              subscriptionActive: true,
+              emailVerified: new Date(),
+              stats: {
+                totalVideosCreated: 0,
+                totalStorage: 0,
+                lastActive: new Date()
+              }
+            });
+            
+            await newUser.save();
+            console.log(`New user created via Google: ${user.email}`);
+          }
+        } catch (error) {
+          console.error('Error in Google signIn callback:', error);
+          // Wir lassen den User trotzdem durch, auch wenn die DB-Operation fehlschlägt
+        }
       }
+      
+      return true;
     },
     
     async jwt({ token, user, account }) {
