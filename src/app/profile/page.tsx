@@ -86,24 +86,24 @@ export default function Profile() {
   // Plan-Eigenschaften
   const getPlanDetails = (plan: SubscriptionPlan) => {
     const planMap: Record<SubscriptionPlan, { label: string, color: string, description: string }> = {
-      'free': { 
-        label: 'Free', 
-        color: 'bg-gray-600', 
-        description: 'Kostenlose Grundfunktionen'
+      'starter': { 
+        label: 'Starter', 
+        color: 'bg-blue-600', 
+        description: 'Basis-Features für Einsteiger'
       },
-      'premium': { 
-        label: 'Premium', 
+      'pro': { 
+        label: 'Pro', 
         color: 'bg-purple-600',
         description: 'Erweiterte Funktionen und mehr Nutzungskontingent'
       },
-      'enterprise': { 
-        label: 'Enterprise', 
-        color: 'bg-gold-600', 
+      'business': { 
+        label: 'Business', 
+        color: 'bg-amber-600', 
         description: 'Maximale Funktionalität für Unternehmen'
       }
     };
     
-    return planMap[plan] || planMap.free;
+    return planMap[plan] || planMap.starter;
   };
 
   if (status === 'loading' || loading) {
@@ -117,7 +117,7 @@ export default function Profile() {
     );
   }
 
-  const userPlan = session?.user?.subscriptionPlan as SubscriptionPlan || 'free';
+  const userPlan = session?.user?.subscriptionPlan as SubscriptionPlan || 'starter';
   const planDetails = getPlanDetails(userPlan);
   const userLimits = session?.user?.limits;
   const userStats = session?.user?.stats;
@@ -182,13 +182,13 @@ export default function Profile() {
                 </div>
                 
                 {/* Zeige Ablaufdatum und Upgrade-Button für nicht-Enterprise-Nutzer */}
-                {userPlan !== 'enterprise' && (
+                {userPlan !== 'business' && (
                   <div className="mt-3">
                     <Link
                       href="/pricing"
                       className="block w-full text-center text-xs py-1.5 px-3 bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-500 hover:to-purple-600 rounded transition-colors"
                     >
-                      Upgrade auf {userPlan === 'free' ? 'Premium' : 'Enterprise'}
+                      Upgrade auf {userPlan === 'starter' ? 'Pro' : 'Business'}
                     </Link>
                   </div>
                 )}
@@ -430,7 +430,7 @@ export default function Profile() {
                           </li>
                         ))}
                         
-                        {userPlan !== 'enterprise' && (
+                        {userPlan !== 'business' && (
                           <>
                             {!userLimits?.allowedFeatures?.includes('customBranding') && (
                               <li className="flex items-center text-gray-500">
@@ -453,7 +453,7 @@ export default function Profile() {
                         )}
                       </ul>
                       
-                      {userPlan !== 'enterprise' && (
+                      {userPlan !== 'business' && (
                         <div className="mt-4 pt-4 border-t border-gray-700">
                           <Link
                             href="/pricing"

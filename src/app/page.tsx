@@ -319,6 +319,174 @@ export default function Home() {
         </div>
       </section>
 
+      {/* Pricing Section */}
+      <section className="py-24 bg-gradient-to-b from-background/50 to-background">
+        <div className="container">
+          <div className="text-center mb-16">
+            <h2 className="text-3xl font-bold sm:text-4xl bg-gradient-to-r from-white to-primary bg-clip-text text-transparent">
+              Choose Your Plan
+            </h2>
+            <p className="mt-4 text-lg text-white/70 max-w-2xl mx-auto">
+              Find the perfect plan for your video creation needs
+            </p>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto">
+            {/* Starter Plan */}
+            <div className="relative rounded-2xl overflow-hidden group">
+              <div className="absolute inset-0 bg-gradient-to-b from-blue-600/20 to-blue-800/40 opacity-70 group-hover:opacity-100 transition-opacity duration-300"></div>
+              <div className="relative z-10 p-8 flex flex-col h-full glass border border-blue-500/30">
+                <div className="px-3 py-1 text-sm text-blue-200 bg-blue-500/30 self-start rounded-full mb-4">
+                  Starter
+                </div>
+                <div className="flex items-end gap-2 mb-6">
+                  <span className="text-4xl font-bold">€19</span>
+                  <span className="text-white/60 mb-1">/month</span>
+                </div>
+                <p className="text-white/70 mb-8">
+                  Perfect for individuals just getting started with video ads
+                </p>
+                
+                <ul className="space-y-4 mb-8 flex-grow">
+                  <li className="flex">
+                    <CheckCircleIcon className="h-6 w-6 text-blue-400 mr-2 flex-shrink-0" />
+                    <span>10 videos per month</span>
+                  </li>
+                  <li className="flex">
+                    <CheckCircleIcon className="h-6 w-6 text-blue-400 mr-2 flex-shrink-0" />
+                    <span>150MB max upload size</span>
+                  </li>
+                  <li className="flex">
+                    <CheckCircleIcon className="h-6 w-6 text-blue-400 mr-2 flex-shrink-0" />
+                    <span>2GB total storage space</span>
+                  </li>
+                  <li className="flex">
+                    <CheckCircleIcon className="h-6 w-6 text-blue-400 mr-2 flex-shrink-0" />
+                    <span>720p video resolution (SD)</span>
+                  </li>
+                  <li className="flex">
+                    <CheckCircleIcon className="h-6 w-6 text-blue-400 mr-2 flex-shrink-0" />
+                    <span>3 minutes max video length</span>
+                  </li>
+                </ul>
+                
+                <Link
+                  href="/auth/signup?plan=starter"
+                  className="w-full py-3 text-center text-white font-medium bg-blue-600 hover:bg-blue-500 rounded-xl transition-colors"
+                >
+                  Get Started
+                </Link>
+              </div>
+            </div>
+            
+            {/* Pro Plan - Featured */}
+            <div className="relative rounded-2xl overflow-hidden group transform scale-105 z-10">
+              <div className="absolute inset-0 bg-gradient-to-b from-purple-600/30 to-purple-800/50 opacity-80 group-hover:opacity-100 transition-opacity duration-300"></div>
+              <div className="absolute top-0 inset-x-0 h-2 bg-gradient-to-r from-purple-400 to-purple-600"></div>
+              <div className="relative z-10 p-8 flex flex-col h-full glass border border-purple-500/40">
+                <div className="px-3 py-1 text-sm text-purple-200 bg-purple-500/30 self-start rounded-full mb-4">
+                  Pro
+                </div>
+                <div className="absolute top-8 right-8">
+                  <span className="px-3 py-1 text-xs bg-purple-500 text-white rounded-full">Popular</span>
+                </div>
+                <div className="flex items-end gap-2 mb-6">
+                  <span className="text-4xl font-bold">€49</span>
+                  <span className="text-white/60 mb-1">/month</span>
+                </div>
+                <p className="text-white/70 mb-8">
+                  Ideal for marketers and content creators with regular needs
+                </p>
+                
+                <ul className="space-y-4 mb-8 flex-grow">
+                  <li className="flex">
+                    <CheckCircleIcon className="h-6 w-6 text-purple-400 mr-2 flex-shrink-0" />
+                    <span>50 videos per month</span>
+                  </li>
+                  <li className="flex">
+                    <CheckCircleIcon className="h-6 w-6 text-purple-400 mr-2 flex-shrink-0" />
+                    <span>500MB max upload size</span>
+                  </li>
+                  <li className="flex">
+                    <CheckCircleIcon className="h-6 w-6 text-purple-400 mr-2 flex-shrink-0" />
+                    <span>10GB total storage space</span>
+                  </li>
+                  <li className="flex">
+                    <CheckCircleIcon className="h-6 w-6 text-purple-400 mr-2 flex-shrink-0" />
+                    <span>1080p video resolution (HD)</span>
+                  </li>
+                  <li className="flex">
+                    <CheckCircleIcon className="h-6 w-6 text-purple-400 mr-2 flex-shrink-0" />
+                    <span>10 minutes max video length</span>
+                  </li>
+                </ul>
+                
+                <Link
+                  href="/auth/signup?plan=pro"
+                  className="w-full py-3 text-center text-white font-medium bg-gradient-to-r from-purple-600 to-purple-500 hover:from-purple-500 hover:to-purple-400 rounded-xl transition-all shadow-lg shadow-purple-600/20"
+                >
+                  Choose Pro
+                </Link>
+              </div>
+            </div>
+            
+            {/* Business Plan */}
+            <div className="relative rounded-2xl overflow-hidden group">
+              <div className="absolute inset-0 bg-gradient-to-b from-amber-600/20 to-amber-800/40 opacity-70 group-hover:opacity-100 transition-opacity duration-300"></div>
+              <div className="relative z-10 p-8 flex flex-col h-full glass border border-amber-500/30">
+                <div className="px-3 py-1 text-sm text-amber-200 bg-amber-500/30 self-start rounded-full mb-4">
+                  Business
+                </div>
+                <div className="flex items-end gap-2 mb-6">
+                  <span className="text-4xl font-bold">€99</span>
+                  <span className="text-white/60 mb-1">/month</span>
+                </div>
+                <p className="text-white/70 mb-8">
+                  For professional teams and businesses with high volume needs
+                </p>
+                
+                <ul className="space-y-4 mb-8 flex-grow">
+                  <li className="flex">
+                    <CheckCircleIcon className="h-6 w-6 text-amber-400 mr-2 flex-shrink-0" />
+                    <span>200 videos per month</span>
+                  </li>
+                  <li className="flex">
+                    <CheckCircleIcon className="h-6 w-6 text-amber-400 mr-2 flex-shrink-0" />
+                    <span>2GB max upload size</span>
+                  </li>
+                  <li className="flex">
+                    <CheckCircleIcon className="h-6 w-6 text-amber-400 mr-2 flex-shrink-0" />
+                    <span>50GB total storage space</span>
+                  </li>
+                  <li className="flex">
+                    <CheckCircleIcon className="h-6 w-6 text-amber-400 mr-2 flex-shrink-0" />
+                    <span>4K video resolution (2160p)</span>
+                  </li>
+                  <li className="flex">
+                    <CheckCircleIcon className="h-6 w-6 text-amber-400 mr-2 flex-shrink-0" />
+                    <span>30 minutes max video length</span>
+                  </li>
+                </ul>
+                
+                <Link
+                  href="/auth/signup?plan=business"
+                  className="w-full py-3 text-center text-white font-medium bg-amber-600 hover:bg-amber-500 rounded-xl transition-colors"
+                >
+                  Choose Business
+                </Link>
+              </div>
+            </div>
+          </div>
+          
+          <div className="mt-12 text-center">
+            <p className="text-white/60 max-w-2xl mx-auto">
+              All plans include access to our AI-powered video generation, voiceover creation, and intelligent video matching. Need a custom plan for your enterprise? 
+              <Link href="/contact" className="text-primary ml-1 hover:underline">Contact us</Link>.
+            </p>
+          </div>
+        </div>
+      </section>
+
       {/* CTA Section */}
       <section className="py-20">
         <div className="container">
