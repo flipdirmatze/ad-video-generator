@@ -41,11 +41,12 @@ export async function POST(request: NextRequest) {
       subscriptionPlan: 'starter',
       subscriptionActive: true,
       limits: {
-        maxVideosPerMonth: 5,
-        maxVideoLength: 60,
-        maxStorageSpace: 500 * 1024 * 1024, // 500MB
+        maxVideosPerMonth: 10,
+        maxVideoLength: 180, // 3 Minuten
+        maxStorageSpace: 2 * 1024 * 1024 * 1024, // 2GB
         maxResolution: "720p",
-        allowedFeatures: ["voiceover", "templates"]
+        maxUploadSize: 150 * 1024 * 1024, // 150MB
+        allowedFeatures: ["templates"]
       },
       stats: {
         totalVideosCreated: 0,

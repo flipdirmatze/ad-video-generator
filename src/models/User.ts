@@ -52,7 +52,7 @@ const planLimits: Record<SubscriptionPlan, IUserLimits> = {
     maxStorageSpace: 1024 * 1024 * 1024 * 2, // 2 GB
     maxResolution: "720p", // SD
     maxUploadSize: 150 * 1024 * 1024, // 150MB
-    allowedFeatures: ["templates", "basicEditing"]
+    allowedFeatures: ["templates"]
   },
   pro: {
     maxVideosPerMonth: 50,
@@ -60,7 +60,7 @@ const planLimits: Record<SubscriptionPlan, IUserLimits> = {
     maxStorageSpace: 1024 * 1024 * 1024 * 10, // 10 GB
     maxResolution: "1080p", // HD
     maxUploadSize: 500 * 1024 * 1024, // 500MB
-    allowedFeatures: ["templates", "basicEditing", "advancedEditing", "removeWatermark", "prioritySupport"]
+    allowedFeatures: ["templates"]
   },
   business: {
     maxVideosPerMonth: 200,
@@ -68,7 +68,7 @@ const planLimits: Record<SubscriptionPlan, IUserLimits> = {
     maxStorageSpace: 1024 * 1024 * 1024 * 50, // 50 GB
     maxResolution: "2160p", // 4K
     maxUploadSize: 2 * 1024 * 1024 * 1024, // 2GB
-    allowedFeatures: ["templates", "basicEditing", "advancedEditing", "removeWatermark", "prioritySupport", "apiAccess", "teamAccess", "priorityProcessing"]
+    allowedFeatures: ["templates"]
   }
 };
 
