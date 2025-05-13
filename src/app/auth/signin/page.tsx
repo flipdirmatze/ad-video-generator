@@ -1,21 +1,46 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { signIn } from 'next-auth/react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 
 export default function SignIn() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // Prüfen, ob ein Verified-Parameter in der URL ist
+  useEffect(() => {
+    const verified = searchParams.get('verified');
+    if (verified === '1') {
+      setSuccess('E-Mail-Adresse erfolgreich verifiziert! Du kannst dich jetzt anmelden.');
+    }
+    
+    const error = searchParams.get('error');
+    if (error) {
+      switch (error) {
+        case 'CredentialsSignin':
+          setError('Ungültige Anmeldedaten. Bitte überprüfe deine E-Mail-Adresse und dein Passwort.');
+          break;
+        case 'EmailNotVerified':
+          setError('Deine E-Mail-Adresse wurde noch nicht verifiziert. Bitte überprüfe dein E-Mail-Postfach.');
+          break;
+        default:
+          setError('Ein Fehler ist aufgetreten. Bitte versuche es erneut.');
+      }
+    }
+  }, [searchParams]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     setError('');
+    setSuccess('');
 
     try {
       const result = await signIn('credentials', {
@@ -52,6 +77,12 @@ export default function SignIn() {
           </h1>
           <p className="mt-2 text-gray-400">Sign in to your AI Ad Generator account</p>
         </div>
+
+        {success && (
+          <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-lg text-green-500 text-sm">
+            {success}
+          </div>
+        )}
 
         {error && (
           <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-500 text-sm">

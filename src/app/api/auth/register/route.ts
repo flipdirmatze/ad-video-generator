@@ -1,6 +1,8 @@
 import bcrypt from 'bcrypt';
 import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongoose';
+import { generateVerificationToken, getTokenExpiryDate } from '@/lib/token-utils';
+import { sendVerificationEmail } from '@/lib/email-sender';
 
 export async function POST(request: NextRequest) {
   try {
@@ -31,7 +33,11 @@ export async function POST(request: NextRequest) {
     // Hash password with lower cost for faster processing
     const hashedPassword = await bcrypt.hash(password, 12);
     
-    // Create user
+    // Generate verification token and expiry date
+    const verificationToken = generateVerificationToken();
+    const verificationTokenExpires = getTokenExpiryDate();
+    
+    // Create user with verification token
     const newUser = new db({
       email,
       password: hashedPassword,
@@ -53,10 +59,20 @@ export async function POST(request: NextRequest) {
         totalStorage: 0,
         lastActive: new Date()
       },
-      emailVerified: new Date()
+      // E-Mail-Verifizierung
+      emailVerified: null,
+      verificationToken,
+      verificationTokenExpires
     });
     
     const result = await newUser.save();
+    
+    // Send verification email
+    await sendVerificationEmail({
+      email,
+      name,
+      verificationToken
+    });
     
     return NextResponse.json(
       { 
@@ -65,7 +81,8 @@ export async function POST(request: NextRequest) {
           id: result._id,
           email,
           name 
-        } 
+        },
+        message: 'Registration successful. Please check your email to verify your account.'
       },
       { status: 201 }
     );

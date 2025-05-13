@@ -29,6 +29,11 @@ const getUserFromCredentials = async (credentials: Credentials) => {
     throw new Error('No user found with this email or invalid login method');
   }
 
+  // Check if email is verified
+  if (!user.emailVerified) {
+    throw new Error('EmailNotVerified');
+  }
+
   // Check password
   const isPasswordValid = await bcrypt.compare(credentials.password, user.password);
 
@@ -124,7 +129,7 @@ export const authOptions: NextAuthOptions = {
               role: 'user',
               subscriptionPlan: 'starter',
               subscriptionActive: true,
-              emailVerified: new Date(),
+              emailVerified: new Date(), // Google-Anmeldungen sind automatisch verifiziert
               stats: {
                 totalVideosCreated: 0,
                 totalStorage: 0,

@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { signIn } from 'next-auth/react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
@@ -11,6 +10,7 @@ export default function SignUp() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
 
@@ -18,6 +18,7 @@ export default function SignUp() {
     e.preventDefault();
     setIsLoading(true);
     setError('');
+    setSuccess('');
 
     // Validate inputs
     if (password !== confirmPassword) {
@@ -52,20 +53,20 @@ export default function SignUp() {
         throw new Error(data.error || 'Failed to register');
       }
 
-      // Sign in the user after successful registration
-      const result = await signIn('credentials', {
-        email,
-        password,
-        redirect: false,
-      });
-
-      if (result?.error) {
-        setError('Registration successful, but could not sign in automatically. Please sign in manually.');
+      // Zeige Erfolgsmeldung an
+      setSuccess(data.message || 'Registration successful! Please check your email to verify your account.');
+      
+      // Formular zurücksetzen
+      setName('');
+      setEmail('');
+      setPassword('');
+      setConfirmPassword('');
+      
+      // Nach 5 Sekunden zur Login-Seite weiterleiten
+      setTimeout(() => {
         router.push('/auth/signin');
-      } else {
-        router.push('/');
-        router.refresh();
-      }
+      }, 5000);
+      
     } catch (err: unknown) {
       console.error('Registration error:', err);
       const errorMessage = err instanceof Error ? err.message : 'An unexpected error occurred. Please try again.';
@@ -76,7 +77,7 @@ export default function SignUp() {
   };
 
   const handleGoogleSignIn = () => {
-    signIn('google', { callbackUrl: '/' });
+    window.location.href = '/api/auth/signin/google';
   };
 
   return (
@@ -92,6 +93,12 @@ export default function SignUp() {
         {error && (
           <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-500 text-sm">
             {error}
+          </div>
+        )}
+
+        {success && (
+          <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-lg text-green-500 text-sm">
+            {success}
           </div>
         )}
 

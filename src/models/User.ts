@@ -27,6 +27,8 @@ export interface IUser {
   password?: string; // Password is optional for OAuth users
   image?: string;
   emailVerified?: Date;
+  verificationToken?: string; // Für den E-Mail-Verifizierungslink
+  verificationTokenExpires?: Date; // Ablaufzeit des Tokens
   username?: string; // Optional username für bessere Identifikation
   bio?: string; // Kurze Beschreibung
   role: 'user' | 'admin';
@@ -106,7 +108,16 @@ const UserSchema = new Schema<IUser>(
       maxlength: [200, 'Bio cannot exceed 200 characters']
     },
     emailVerified: { 
-      type: Date 
+      type: Date,
+      default: null // Nicht mehr automatisch auf das aktuelle Datum setzen
+    },
+    verificationToken: {
+      type: String,
+      default: null
+    },
+    verificationTokenExpires: {
+      type: Date,
+      default: null
     },
     role: { 
       type: String, 
