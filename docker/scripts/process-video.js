@@ -83,7 +83,7 @@ const USER_ID = process.env.USER_ID || '';
 const S3_BUCKET = process.env.S3_BUCKET || process.env.S3_BUCKET_NAME || '';
 const AWS_REGION = process.env.AWS_REGION || 'eu-central-1';
 const BATCH_CALLBACK_SECRET = process.env.BATCH_CALLBACK_SECRET || '';
-const BATCH_CALLBACK_URL = process.env.BATCH_CALLBACK_URL || 'https://ad-video-generator.vercel.app/api/batch-callback';
+const BATCH_CALLBACK_URL = process.env.BATCH_CALLBACK_URL || 'https://clevercut.app/api/batch-callback';
 const AWS_BATCH_JOB_ID = process.env.AWS_BATCH_JOB_ID || '';
 const PROJECT_ID = process.env.PROJECT_ID || '';
 

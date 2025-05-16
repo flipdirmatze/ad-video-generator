@@ -73,11 +73,11 @@ export function getVerificationEmailHtml({ name, verificationToken }: Verificati
       <body>
         <div class="container">
           <div class="header">
-            <h1>AI Ad Generator</h1>
+            <h1>CleverCut</h1>
           </div>
           <div class="content">
             <p>Hallo ${name},</p>
-            <p>vielen Dank für deine Registrierung bei AI Ad Generator. Bitte bestätige deine E-Mail-Adresse, indem du auf den untenstehenden Button klickst:</p>
+            <p>vielen Dank für deine Registrierung bei CleverCut. Bitte bestätige deine E-Mail-Adresse, indem du auf den untenstehenden Button klickst:</p>
             
             <div style="text-align: center;">
               <a href="${verificationUrl}" class="button">E-Mail-Adresse bestätigen</a>
@@ -85,7 +85,7 @@ export function getVerificationEmailHtml({ name, verificationToken }: Verificati
             
             <p>Dieser Link ist 24 Stunden gültig.</p>
             
-            <p>Falls du dich nicht für ein Konto bei AI Ad Generator registriert hast, kannst du diese E-Mail ignorieren.</p>
+            <p>Falls du dich nicht für ein Konto bei CleverCut registriert hast, kannst du diese E-Mail ignorieren.</p>
             
             <div class="link-note">
               Falls der Button nicht funktioniert, kopiere bitte diesen Link in deinen Browser:<br>
@@ -93,7 +93,7 @@ export function getVerificationEmailHtml({ name, verificationToken }: Verificati
             </div>
           </div>
           <div class="footer">
-            <p>&copy; ${new Date().getFullYear()} AI Ad Generator. Alle Rechte vorbehalten.</p>
+            <p>&copy; ${new Date().getFullYear()} CleverCut. Alle Rechte vorbehalten.</p>
           </div>
         </div>
       </body>
@@ -107,15 +107,15 @@ export function getVerificationEmailText({ name, verificationToken }: Verificati
   return `
 Hallo ${name},
 
-Vielen Dank für deine Registrierung bei AI Ad Generator. 
+Vielen Dank für deine Registrierung bei CleverCut. 
 
 Bitte bestätige deine E-Mail-Adresse, indem du auf den folgenden Link klickst:
 ${verificationUrl}
 
 Dieser Link ist 24 Stunden gültig.
 
-Falls du dich nicht für ein Konto bei AI Ad Generator registriert hast, kannst du diese E-Mail ignorieren.
+Falls du dich nicht für ein Konto bei CleverCut registriert hast, kannst du diese E-Mail ignorieren.
 
-© ${new Date().getFullYear()} AI Ad Generator. Alle Rechte vorbehalten.
+© ${new Date().getFullYear()} CleverCut. Alle Rechte vorbehalten.
   `;
 } 

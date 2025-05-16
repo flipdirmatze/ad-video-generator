@@ -64,7 +64,7 @@ export const submitAwsBatchJob = async (
   additionalParams?: Record<string, string | number | boolean | object>
 ): Promise<BatchJobResult> => {
   // Bestimme die Basis-URL für API-Aufrufe (nur Server-seitig)
-  const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || 'https://ad-video-generator.vercel.app').replace(/\/+$/, '');
+  const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || 'https://clevercut.app').replace(/\/+$/, '');
 
   try {
     // Validiere den Job-Typ
@@ -171,7 +171,7 @@ export const submitAwsBatchJob = async (
  */
 export const getJobStatus = async (jobId: string, userId?: string): Promise<string> => {
   // Bestimme die Basis-URL für API-Aufrufe (nur Server-seitig)
-  const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || 'https://ad-video-generator.vercel.app').replace(/\/+$/, '');
+  const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || 'https://clevercut.app').replace(/\/+$/, '');
 
   try {
     console.log(`Fetching job status for job ${jobId} from ${baseUrl}/api/aws-batch`);

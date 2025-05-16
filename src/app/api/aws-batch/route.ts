@@ -170,7 +170,7 @@ export async function POST(request: NextRequest) {
     // Callback URL und Secret hinzufügen
     environment.push({
       name: 'BATCH_CALLBACK_URL',
-      value: `${process.env.NEXT_PUBLIC_APP_URL || 'https://ad-video-generator.vercel.app'}/api/batch-callback`
+      value: `${process.env.NEXT_PUBLIC_APP_URL || 'https://clevercut.app'}/api/batch-callback`
     });
 
     // Wenn verfügbar, füge das Callback-Secret hinzu

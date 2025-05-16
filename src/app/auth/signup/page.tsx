@@ -85,9 +85,9 @@ export default function SignUp() {
       <div className="w-full max-w-md p-8 space-y-8 bg-gray-900 rounded-xl shadow-lg border border-gray-800">
         <div className="text-center">
           <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-purple-600">
-            Create Account
+            Konto erstellen
           </h1>
-          <p className="mt-2 text-gray-400">Sign up for your AI Ad Generator account</p>
+          <p className="mt-2 text-gray-400">Registriere dich für dein CleverCut-Konto</p>
         </div>
 
         {error && (
@@ -122,7 +122,7 @@ export default function SignUp() {
 
           <div>
             <label htmlFor="email" className="block text-sm font-medium text-gray-300">
-              Email
+              E-Mail-Adresse
             </label>
             <input
               id="email"
@@ -139,7 +139,7 @@ export default function SignUp() {
 
           <div>
             <label htmlFor="password" className="block text-sm font-medium text-gray-300">
-              Password
+              Passwort
             </label>
             <input
               id="password"
@@ -156,7 +156,7 @@ export default function SignUp() {
 
           <div>
             <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-300">
-              Confirm Password
+              Passwort bestätigen
             </label>
             <input
               id="confirmPassword"
@@ -177,7 +177,7 @@ export default function SignUp() {
               disabled={isLoading}
               className="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isLoading ? 'Creating account...' : 'Sign Up'}
+              {isLoading ? 'Konto wird erstellt...' : 'Registrieren'}
             </button>
           </div>
         </form>
@@ -188,7 +188,7 @@ export default function SignUp() {
               <div className="w-full border-t border-gray-700"></div>
             </div>
             <div className="relative flex justify-center text-sm">
-              <span className="px-2 bg-gray-900 text-gray-400">Or continue with</span>
+              <span className="px-2 bg-gray-900 text-gray-400">Oder fortfahren mit</span>
             </div>
           </div>
 
@@ -203,16 +203,16 @@ export default function SignUp() {
                 <path d="M6.12012 14.0868C5.91512 13.4475 5.79988 12.7653 5.79988 12.0653C5.79988 11.3654 5.91512 10.6831 6.12012 10.0438V7.19006H2.4971C1.8404 8.6636 1.47754 10.3137 1.47754 12.0653C1.47754 13.8169 1.8404 15.467 2.4971 16.9406L6.12012 14.0868Z" fill="#FBBC05" />
                 <path d="M12.214 5.57265C13.7548 5.57265 15.1333 6.15265 16.2047 7.16996L19.3595 4.01511C17.529 2.30249 15.1005 1.13037 12.214 1.13037C8.04051 1.13037 4.36782 3.63116 2.49609 7.19052L6.12011 10.0443C6.9732 7.47265 9.38176 5.57265 12.214 5.57265Z" fill="#EA4335" />
               </svg>
-              Sign up with Google
+              Mit Google registrieren
             </button>
           </div>
         </div>
 
         <div className="mt-6 text-center">
           <p className="text-sm text-gray-400">
-            Already have an account?{' '}
+            Bereits ein Konto?{' '}
             <Link href="/auth/signin" className="text-purple-500 hover:underline">
-              Sign in
+              Anmelden
             </Link>
           </p>
         </div>

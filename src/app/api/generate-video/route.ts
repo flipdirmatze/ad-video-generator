@@ -221,9 +221,9 @@ export async function POST(request: Request) {
       const videoSegments = segments.map(segment => ({
         videoId: segment.videoId,
         url: getS3Url(segment.videoKey),
-        startTime: segment.startTime,
-        duration: segment.duration,
-        position: segment.position
+            startTime: segment.startTime,
+            duration: segment.duration,
+            position: segment.position
       }));
 
       // Verwende den ersten Videoclip als Eingabe-URL für AWS Batch
