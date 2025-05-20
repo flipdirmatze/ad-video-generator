@@ -29,10 +29,26 @@ export default function Navbar() {
             <div className="flex-shrink-0 flex items-center">
               <Link href="/" className="flex items-center">
                 <img 
-                  src="/logos/logo.svg" 
+                  src="https://www.clevercut.app/logos/logo.svg" 
                   alt="CleverCut" 
                   className="h-10"
                   style={{ maxWidth: '150px' }}
+                  onError={(e) => {
+                    // Fallback auf ein Base64-kodiertes Text-Logo
+                    const target = e.target as HTMLImageElement;
+                    target.onerror = null; // Verhindere endlose Fehler-Loops
+                    target.alt = "CleverCut";
+                    target.style.display = "none";
+                    
+                    // Füge Text hinzu statt Bild
+                    const parent = target.parentNode as HTMLElement;
+                    if (parent) {
+                      const textLogo = document.createElement('span');
+                      textLogo.textContent = "CleverCut";
+                      textLogo.className = "text-xl font-bold text-white";
+                      parent.appendChild(textLogo);
+                    }
+                  }}
                 />
               </Link>
             </div>
