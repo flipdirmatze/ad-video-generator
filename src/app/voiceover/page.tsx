@@ -52,10 +52,20 @@ export default function VoiceoverPage() {
     if (!isLoading && status !== 'loading') {
       if (status !== 'authenticated') {
         router.push('/auth/signin?callbackUrl=/voiceover')
+      } else {
+        // Prüfe, ob der Benutzer ein aktives Abonnement hat
+        const hasActiveSubscription = session?.user?.subscriptionActive && 
+                                     session?.user?.subscriptionPlan !== 'free';
+        
+        // Wenn kein aktives Abonnement, zur Pricing-Seite weiterleiten
+        if (!hasActiveSubscription) {
+          router.push('/pricing');
+          toast.error('Ein Abonnement wird benötigt, um Voiceovers zu erstellen');
+        }
       }
     }
     setIsLoading(false)
-  }, [status, isLoading, router])
+  }, [status, isLoading, router, session])
 
   // Gespeicherte Voiceover-Daten laden
   useEffect(() => {

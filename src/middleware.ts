@@ -37,8 +37,10 @@ export async function middleware(request: NextRequest) {
                                path.startsWith('/editor') || 
                                path.startsWith('/projects') || 
                                path.startsWith('/upload') ||
+                               path.startsWith('/voiceover') ||
                                path.startsWith('/api/projects') ||
                                path.startsWith('/api/upload-video') ||
+                               path.startsWith('/api/generate-voiceover') ||
                                path.startsWith('/api/get-upload-url');
 
     // Wenn eine Route ein Abonnement erfordert, aber der Benutzer keines hat
