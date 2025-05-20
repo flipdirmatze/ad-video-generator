@@ -1,8 +1,15 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getToken } from 'next-auth/jwt';
+import { rateLimiter } from '@/lib/rate-limiter';
 
 export async function middleware(request: NextRequest) {
+  // Führe zuerst den Rate Limiter aus
+  const rateLimiterResponse = await rateLimiter(request);
+  if (rateLimiterResponse) {
+    return rateLimiterResponse;
+  }
+
   // Get the pathname of the request
   const path = request.nextUrl.pathname;
 

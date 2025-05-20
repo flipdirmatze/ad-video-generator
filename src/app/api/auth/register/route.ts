@@ -3,8 +3,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongoose';
 import { generateVerificationToken, getTokenExpiryDate } from '@/lib/token-utils';
 import { sendVerificationEmail } from '@/lib/email-sender';
+import { withApiRateLimit } from '@/lib/api-rate-limiter';
 
-export async function POST(request: NextRequest) {
+// Wrap the original handler with rate limiting
+const originalPostHandler = async (request: NextRequest) => {
   try {
     const { email, password, name } = await request.json();
 
@@ -86,4 +88,7 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-} 
+};
+
+// Export the wrapped handler with rate limiting for auth endpoints
+export const POST = withApiRateLimit(originalPostHandler, 'auth'); 
