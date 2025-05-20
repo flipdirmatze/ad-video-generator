@@ -1,7 +1,7 @@
 import mongoose, { Schema } from 'mongoose';
 
 // 1. Interfaces und Typen
-export type SubscriptionPlan = 'starter' | 'pro' | 'business';
+export type SubscriptionPlan = 'free' | 'starter' | 'pro' | 'business';
 
 // Statistische Daten des Benutzers
 export interface IUserStats {
@@ -35,6 +35,10 @@ export interface IUser {
   subscriptionPlan: SubscriptionPlan;
   subscriptionActive: boolean;
   subscriptionExpiresAt?: Date; // Wann läuft das Abonnement ab?
+  // Stripe-bezogene Felder für die zukünftige Integration
+  stripeCustomerId?: string;
+  stripeSubscriptionId?: string;
+  stripeSubscriptionStatus?: 'active' | 'past_due' | 'canceled' | 'trialing' | 'incomplete' | 'incomplete_expired';
   limits: IUserLimits;
   stats: IUserStats;
   preferences?: {
@@ -48,6 +52,15 @@ export interface IUser {
 
 // Standardlimits für verschiedene Abonnements
 const planLimits: Record<SubscriptionPlan, IUserLimits> = {
+  // Sehr eingeschränkter kostenloser Plan, der im Grunde die Anwendung nicht nutzbar macht
+  free: {
+    maxVideosPerMonth: 0,
+    maxVideoLength: 0,
+    maxStorageSpace: 0,
+    maxResolution: "360p",
+    maxUploadSize: 0,
+    allowedFeatures: []
+  },
   starter: {
     maxVideosPerMonth: 10,
     maxVideoLength: 180, // 3 Minuten
@@ -126,15 +139,29 @@ const UserSchema = new Schema<IUser>(
     },
     subscriptionPlan: {
       type: String,
-      enum: ['starter', 'pro', 'business'],
-      default: 'starter'
+      enum: ['free', 'starter', 'pro', 'business'],
+      default: 'free' // Standard ist jetzt "free" statt "starter"
     },
     subscriptionActive: {
       type: Boolean,
-      default: true
+      default: false // Standard ist jetzt "false" statt "true"
     },
     subscriptionExpiresAt: {
       type: Date
+    },
+    // Stripe-bezogene Felder für die zukünftige Integration
+    stripeCustomerId: {
+      type: String,
+      default: null
+    },
+    stripeSubscriptionId: {
+      type: String,
+      default: null
+    },
+    stripeSubscriptionStatus: {
+      type: String,
+      enum: ['active', 'past_due', 'canceled', 'trialing', 'incomplete', 'incomplete_expired'],
+      default: null
     },
     limits: {
       type: {
@@ -146,7 +173,7 @@ const UserSchema = new Schema<IUser>(
         allowedFeatures: [String]
       },
       default: function() {
-        return planLimits.starter;
+        return planLimits.free; // Standard ist jetzt "free" statt "starter"
       }
     },
     stats: {
@@ -209,6 +236,14 @@ UserSchema.methods.updateLimitsForPlan = function(plan: SubscriptionPlan) {
 // Methode zum Überprüfen, ob ein Benutzer noch Videos erstellen kann
 UserSchema.methods.canCreateVideo = function(lengthInSeconds: number) {
   const { maxVideosPerMonth, maxVideoLength } = this.limits;
+  
+  // Free Plan (kein Abo) hat keine Berechtigung für Video-Erstellung
+  if (this.subscriptionPlan === 'free' || !this.subscriptionActive) {
+    return {
+      allowed: false,
+      reason: 'Subscription required to create videos'
+    };
+  }
   
   // Überprüfe, ob die Anzahl der erstellten Videos das Limit übersteigt
   if (this.stats.totalVideosCreated >= maxVideosPerMonth) {

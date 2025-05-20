@@ -21,6 +21,9 @@ export default function Home() {
     finalVideo: false
   });
 
+  // Check if user has an active subscription
+  const hasActiveSubscription = session?.user?.subscriptionActive && session?.user?.subscriptionPlan !== 'free';
+
   // Check localStorage for workflow progress
   useEffect(() => {
     if (status === 'authenticated') {
@@ -40,6 +43,8 @@ export default function Home() {
   const getNextStep = () => {
     if (status !== 'authenticated') {
       return '/auth/signup';
+    } else if (!hasActiveSubscription) {
+      return '/pricing';
     } else if (!workflowStatus.voiceover) {
       return '/voiceover';
     } else if (!workflowStatus.videos) {
@@ -54,7 +59,9 @@ export default function Home() {
   // Get button text based on workflow status
   const getButtonText = () => {
     if (status !== 'authenticated') {
-      return 'Create Free Account';
+      return 'Create Account';
+    } else if (!hasActiveSubscription) {
+      return 'Choose a Plan';
     } else if (workflowStatus.finalVideo) {
       return 'Create Another Ad';
     } else if (workflowStatus.voiceover && workflowStatus.videos) {
@@ -104,8 +111,28 @@ export default function Home() {
               The ultimate SaaS tool for performance marketers and media buyers. Create professional ad videos from a text script using your own tagged video footage.
             </p>
             
-            {/* Progress Indicator for logged in users */}
-            {status === 'authenticated' && (workflowStatus.voiceover || workflowStatus.videos || workflowStatus.finalVideo) && (
+            {/* Subscription Warning for authenticated users without a plan */}
+            {status === 'authenticated' && !hasActiveSubscription && (
+              <div className="mt-6 w-full max-w-md bg-amber-500/20 border border-amber-500/40 p-4 rounded-lg">
+                <div className="flex items-start">
+                  <svg className="h-6 w-6 text-amber-500 mr-3 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                  <div>
+                    <p className="text-white font-medium">Kein aktives Abonnement</p>
+                    <p className="text-white/80 text-sm mt-1">
+                      Du benötigst ein aktives Abonnement, um Videos zu erstellen. Wähle einen Plan, um alle Funktionen freizuschalten.
+                    </p>
+                    <Link href="/pricing" className="inline-block mt-2 text-sm text-amber-400 hover:text-amber-300 font-medium">
+                      Zu den Abonnements →
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            {/* Progress Indicator for logged in users with subscription */}
+            {status === 'authenticated' && hasActiveSubscription && (workflowStatus.voiceover || workflowStatus.videos || workflowStatus.finalVideo) && (
               <div className="mt-10 w-full max-w-md glass p-6 rounded-xl">
                 <div className="flex justify-between mb-3">
                   <span className="text-sm font-medium text-white/80">Your Progress</span>
@@ -161,7 +188,7 @@ export default function Home() {
                   href="/auth/signup"
                   className="inline-flex items-center px-8 py-4 text-lg font-medium text-white bg-gradient-to-r from-primary to-primary-light rounded-xl shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 transform hover:scale-105 transition-all duration-300"
                 >
-                  Create Free Account
+                  Create Account
                   <ArrowRightIcon className="ml-2 h-5 w-5" />
                 </Link>
                 <Link

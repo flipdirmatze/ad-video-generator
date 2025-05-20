@@ -37,29 +37,20 @@ export async function POST(request: NextRequest) {
     const verificationToken = generateVerificationToken();
     const verificationTokenExpires = getTokenExpiryDate();
     
-    // Create user with verification token
+    // Create user with verification token and free plan
     const newUser = new db({
       email,
       password: hashedPassword,
       name,
       createdAt: new Date(),
       role: 'user',
-      subscriptionPlan: 'starter',
-      subscriptionActive: true,
-      limits: {
-        maxVideosPerMonth: 10,
-        maxVideoLength: 180, // 3 Minuten
-        maxStorageSpace: 2 * 1024 * 1024 * 1024, // 2GB
-        maxResolution: "720p",
-        maxUploadSize: 150 * 1024 * 1024, // 150MB
-        allowedFeatures: ["templates"]
-      },
+      subscriptionPlan: 'free',
+      subscriptionActive: false,
       stats: {
         totalVideosCreated: 0,
         totalStorage: 0,
         lastActive: new Date()
       },
-      // E-Mail-Verifizierung
       emailVerified: null,
       verificationToken,
       verificationTokenExpires
@@ -82,7 +73,7 @@ export async function POST(request: NextRequest) {
           email,
           name 
         },
-        message: 'Registration successful. Please check your email to verify your account.'
+        message: 'Registration successful. Please check your email to verify your account. After verification, you will need to select a subscription plan to use the service.'
       },
       { status: 201 }
     );

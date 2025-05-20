@@ -17,7 +17,7 @@ export default function SigninContent() {
   useEffect(() => {
     const verified = searchParams.get('verified');
     if (verified === '1') {
-      setSuccess('E-Mail-Adresse erfolgreich verifiziert! Du kannst dich jetzt anmelden.');
+      setSuccess('E-Mail-Adresse erfolgreich verifiziert! Du kannst dich jetzt anmelden. Nach der Anmeldung wirst du aufgefordert, einen Abonnement-Plan auszuwählen, um den vollen Funktionsumfang von CleverCut nutzen zu können.');
     }
     
     const errorParam = searchParams.get('error');
@@ -60,7 +60,7 @@ export default function SigninContent() {
         return;
       }
 
-      router.push('/');
+      router.push('/pricing');
       router.refresh();
     } catch (err) {
       console.error('Sign in error:', err);
@@ -70,7 +70,7 @@ export default function SigninContent() {
   };
 
   const handleGoogleSignIn = () => {
-    signIn('google', { callbackUrl: '/' });
+    signIn('google', { callbackUrl: '/pricing' });
   };
 
   return (

@@ -68,6 +68,13 @@ export function getVerificationEmailHtml({ name, verificationToken }: Verificati
             font-size: 12px;
             color: #666;
           }
+          .info-box {
+            background-color: #f0f4ff;
+            border-left: 4px solid #6d28d9;
+            padding: 12px;
+            margin: 15px 0;
+            font-size: 14px;
+          }
         </style>
       </head>
       <body>
@@ -84,6 +91,11 @@ export function getVerificationEmailHtml({ name, verificationToken }: Verificati
             </div>
             
             <p>Dieser Link ist 24 Stunden gültig.</p>
+            
+            <div class="info-box">
+              <strong>Nächste Schritte nach der Verifizierung:</strong><br>
+              Nach erfolgreicher Bestätigung deiner E-Mail-Adresse musst du einen Abonnementplan auswählen, um CleverCut nutzen zu können. Wir bieten verschiedene Pläne an, die auf deine Bedürfnisse zugeschnitten sind.
+            </div>
             
             <p>Falls du dich nicht für ein Konto bei CleverCut registriert hast, kannst du diese E-Mail ignorieren.</p>
             
@@ -113,6 +125,8 @@ Bitte bestätige deine E-Mail-Adresse, indem du auf den folgenden Link klickst:
 ${verificationUrl}
 
 Dieser Link ist 24 Stunden gültig.
+
+WICHTIG: Nach erfolgreicher Bestätigung deiner E-Mail-Adresse musst du einen Abonnementplan auswählen, um CleverCut nutzen zu können.
 
 Falls du dich nicht für ein Konto bei CleverCut registriert hast, kannst du diese E-Mail ignorieren.
 
