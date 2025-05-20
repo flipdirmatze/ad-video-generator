@@ -28,13 +28,23 @@ export default function Navbar() {
           <div className="flex">
             <div className="flex-shrink-0 flex items-center">
               <Link href="/" className="flex items-center">
-                <Image
-                  src="/logos/logo.svg"
-                  alt="CleverCut Logo"
-                  width={150}
-                  height={40}
-                  priority
-                />
+                <div className="relative w-[150px] h-[40px]">
+                  <Image
+                    src="/logos/logo.svg"
+                    alt="CleverCut Logo"
+                    fill
+                    priority
+                    style={{ objectFit: 'contain' }}
+                    onError={(e) => {
+                      // Fallback, falls das Bild nicht geladen werden kann
+                      const target = e.target as HTMLImageElement;
+                      target.onerror = null;
+                      target.alt = "CleverCut";
+                      // Optional: Ein Fallback-Bild setzen
+                      // target.src = "/placeholder.png";
+                    }}
+                  />
+                </div>
               </Link>
             </div>
             
