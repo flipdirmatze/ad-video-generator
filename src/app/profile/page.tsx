@@ -86,6 +86,11 @@ export default function Profile() {
   // Plan-Eigenschaften
   const getPlanDetails = (plan: SubscriptionPlan) => {
     const planMap: Record<SubscriptionPlan, { label: string, color: string, description: string }> = {
+      'free': {
+        label: 'Free',
+        color: 'bg-gray-600',
+        description: 'Eingeschränkte Testversion'
+      },
       'starter': { 
         label: 'Starter', 
         color: 'bg-blue-600', 
