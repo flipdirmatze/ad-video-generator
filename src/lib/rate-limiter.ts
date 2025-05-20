@@ -144,7 +144,7 @@ export function cleanupLimiters() {
   // Einträge älter als 2 Stunden entfernen
   Object.keys(limiters).forEach(key => {
     const limiter = limiters[key];
-    // @ts-ignore - Zugriff auf interne Eigenschaften für Cleanup
+    // @ts-expect-error - Zugriff auf interne Eigenschaften für Cleanup
     const lastCheck = limiter.lastChecked || 0;
     
     if (now - lastCheck > 2 * 60 * 60 * 1000) {

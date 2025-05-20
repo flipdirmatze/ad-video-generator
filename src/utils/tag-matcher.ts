@@ -36,7 +36,7 @@ export function calculateSimilarity(keywords: string[], tags: string[]): number 
   const lowerTags = tags.map(t => t.toLowerCase());
   
   let matches = 0;
-  let totalPossibleMatches = Math.max(lowerKeywords.length, 1);
+  const totalPossibleMatches = Math.max(lowerKeywords.length, 1);
   
   // Für jedes Keyword prüfen, ob es in den Tags vorkommt
   for (const keyword of lowerKeywords) {
