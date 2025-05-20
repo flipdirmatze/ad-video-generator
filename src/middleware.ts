@@ -19,6 +19,7 @@ export async function middleware(request: NextRequest) {
                        path === '/auth/error' || 
                        path === '/pricing' || 
                        path.startsWith('/api/auth/') ||
+                       path.startsWith('/logos/') ||
                        path === '/';
 
   const token = await getToken({ req: request });
@@ -62,6 +63,6 @@ export async function middleware(request: NextRequest) {
 // Diese Middleware wird nur für die angegebenen Pfade ausgeführt
 export const config = {
   matcher: [
-    '/((?!api/batch-callback|_next/static|_next/image|favicon.ico|images).*)',
+    '/((?!api/batch-callback|_next/static|_next/image|favicon.ico|images|logos).*)',
   ],
 }; 
