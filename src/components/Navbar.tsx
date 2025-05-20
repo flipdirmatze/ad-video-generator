@@ -2,9 +2,9 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { useSession, signOut } from 'next-auth/react';
-import LogoDark from './logo/LogoDark';
 
 export default function Navbar() {
   const { data: session, status } = useSession();
@@ -27,8 +27,14 @@ export default function Navbar() {
         <div className="flex justify-between h-16">
           <div className="flex">
             <div className="flex-shrink-0 flex items-center">
-              <Link href="/" className="text-xl font-bold text-white">
-                <LogoDark width={160} height={40} />
+              <Link href="/" className="flex items-center">
+                <Image
+                  src="/logos/logo.svg"
+                  alt="CleverCut Logo"
+                  width={150}
+                  height={40}
+                  priority
+                />
               </Link>
             </div>
             
