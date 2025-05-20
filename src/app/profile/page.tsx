@@ -4,7 +4,7 @@ import { useSession, signOut } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { SubscriptionPlan } from '@/models/User';
+import { SubscriptionPlan, IUserLimits } from '@/models/User';
 
 type Project = {
   id: string;
@@ -111,6 +111,46 @@ export default function Profile() {
     return planMap[plan] || planMap.starter;
   };
 
+  // Standardlimits für verschiedene Abonnements wenn userLimits nicht verfügbar sind
+  const getDefaultPlanLimits = (plan: SubscriptionPlan): IUserLimits => {
+    const planLimits: Record<SubscriptionPlan, IUserLimits> = {
+      free: {
+        maxVideosPerMonth: 0,
+        maxVideoLength: 0,
+        maxStorageSpace: 0,
+        maxResolution: "360p",
+        maxUploadSize: 0,
+        allowedFeatures: []
+      },
+      starter: {
+        maxVideosPerMonth: 10,
+        maxVideoLength: 180, // 3 Minuten
+        maxStorageSpace: 1024 * 1024 * 1024 * 2, // 2 GB
+        maxResolution: "720p", // SD
+        maxUploadSize: 150 * 1024 * 1024, // 150MB
+        allowedFeatures: ["templates"]
+      },
+      pro: {
+        maxVideosPerMonth: 50,
+        maxVideoLength: 600, // 10 Minuten
+        maxStorageSpace: 1024 * 1024 * 1024 * 10, // 10 GB
+        maxResolution: "1080p", // HD
+        maxUploadSize: 500 * 1024 * 1024, // 500MB
+        allowedFeatures: ["templates"]
+      },
+      business: {
+        maxVideosPerMonth: 200,
+        maxVideoLength: 1800, // 30 Minuten
+        maxStorageSpace: 1024 * 1024 * 1024 * 50, // 50 GB
+        maxResolution: "2160p", // 4K
+        maxUploadSize: 2 * 1024 * 1024 * 1024, // 2GB
+        allowedFeatures: ["templates"]
+      }
+    };
+    
+    return planLimits[plan];
+  };
+
   if (status === 'loading' || loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -124,8 +164,8 @@ export default function Profile() {
 
   const userPlan = session?.user?.subscriptionPlan as SubscriptionPlan || 'starter';
   const planDetails = getPlanDetails(userPlan);
-  const userLimits = session?.user?.limits;
-  const userStats = session?.user?.stats;
+  const userLimits = session?.user?.limits || getDefaultPlanLimits(userPlan);
+  const userStats = session?.user?.stats || { totalVideosCreated: 0, totalStorage: 0, lastActive: new Date() };
 
   return (
     <div className="container mx-auto px-4 py-12">
@@ -204,12 +244,12 @@ export default function Profile() {
                 <div className="p-3 bg-gray-800 rounded-lg">
                   <p className="text-gray-400 text-xs mb-1">Videos erstellt</p>
                   <p className="text-xl font-semibold">{userStats?.totalVideosCreated || 0}</p>
-                  <p className="text-xs text-gray-500">von {userLimits?.maxVideosPerMonth || 5} pro Monat</p>
+                  <p className="text-xs text-gray-500">von {userLimits?.maxVideosPerMonth} pro Monat</p>
                 </div>
                 <div className="p-3 bg-gray-800 rounded-lg">
                   <p className="text-gray-400 text-xs mb-1">Speicherplatz</p>
                   <p className="text-xl font-semibold">{formatBytes(userStats?.totalStorage || 0)}</p>
-                  <p className="text-xs text-gray-500">von {formatBytes(userLimits?.maxStorageSpace || 0)}</p>
+                  <p className="text-xs text-gray-500">von {formatBytes(userLimits?.maxStorageSpace)}</p>
                 </div>
               </div>
 
@@ -363,7 +403,7 @@ export default function Profile() {
                           <div className="flex justify-between items-center mb-1">
                             <span className="text-sm text-gray-400">Videos pro Monat</span>
                             <span className="text-sm font-medium">
-                              {userStats?.totalVideosCreated || 0} / {userLimits?.maxVideosPerMonth || 5}
+                              {userStats?.totalVideosCreated || 0} / {userLimits?.maxVideosPerMonth}
                             </span>
                           </div>
                           <div className="w-full bg-gray-700 rounded-full h-2.5">
@@ -371,7 +411,7 @@ export default function Profile() {
                               className="bg-purple-600 h-2.5 rounded-full" 
                               style={{ 
                                 width: `${Math.min(
-                                  ((userStats?.totalVideosCreated || 0) / (userLimits?.maxVideosPerMonth || 5)) * 100, 
+                                  ((userStats?.totalVideosCreated || 0) / (userLimits?.maxVideosPerMonth || 1)) * 100, 
                                   100
                                 )}%` 
                               }}
@@ -383,7 +423,7 @@ export default function Profile() {
                           <div className="flex justify-between items-center mb-1">
                             <span className="text-sm text-gray-400">Speicherplatz</span>
                             <span className="text-sm font-medium">
-                              {formatBytes(userStats?.totalStorage || 0)} / {formatBytes(userLimits?.maxStorageSpace || 0)}
+                              {formatBytes(userStats?.totalStorage || 0)} / {formatBytes(userLimits?.maxStorageSpace)}
                             </span>
                           </div>
                           <div className="w-full bg-gray-700 rounded-full h-2.5">
