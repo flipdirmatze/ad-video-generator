@@ -168,12 +168,20 @@ export default function Home() {
               {/* Partner/Client Logos */}
               <div className="mt-10 pt-6 border-t border-white/10">
                 <p className="text-sm text-white/50 mb-4">Vertraut von führenden Unternehmen</p>
-                <div className="flex flex-wrap gap-6 items-center opacity-70">
-                  {/* Placeholder logos - replace with actual partner logos */}
-                  <div className="h-6 w-20 bg-white/20 rounded"></div>
-                  <div className="h-6 w-24 bg-white/20 rounded"></div>
-                  <div className="h-6 w-16 bg-white/20 rounded"></div>
-                  <div className="h-6 w-28 bg-white/20 rounded"></div>
+                <div className="flex flex-wrap gap-6 items-center">
+                  {/* Styled logo placeholders with gradients */}
+                  <div className="h-8 px-4 py-1 bg-gradient-to-r from-blue-500/20 to-blue-700/20 rounded-md border border-blue-500/30 flex items-center justify-center">
+                    <span className="text-blue-300 font-semibold">TechCorp</span>
+                  </div>
+                  <div className="h-8 px-4 py-1 bg-gradient-to-r from-purple-500/20 to-purple-700/20 rounded-md border border-purple-500/30 flex items-center justify-center">
+                    <span className="text-purple-300 font-semibold">MediaPro</span>
+                  </div>
+                  <div className="h-8 px-4 py-1 bg-gradient-to-r from-green-500/20 to-green-700/20 rounded-md border border-green-500/30 flex items-center justify-center">
+                    <span className="text-green-300 font-semibold">EcoSmart</span>
+                  </div>
+                  <div className="h-8 px-4 py-1 bg-gradient-to-r from-amber-500/20 to-amber-700/20 rounded-md border border-amber-500/30 flex items-center justify-center">
+                    <span className="text-amber-300 font-semibold">GoldFinance</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -183,20 +191,48 @@ export default function Home() {
               <div className="grid grid-cols-2 gap-4">
                 {/* Video Thumbnails - Replace with actual video thumbnails */}
                 <div className="aspect-[9/16] bg-gray-800 rounded-lg overflow-hidden relative group">
+                  <Image 
+                    src="/images/video-placeholder.svg"
+                    alt="Social Media Ad"
+                    fill
+                    className="object-cover"
+                  />
                   <div className="absolute inset-0 bg-gradient-to-b from-transparent to-gray-900/80"></div>
                   <div className="absolute bottom-2 left-2 text-xs bg-white/20 backdrop-blur-sm px-2 py-1 rounded-full">00:15</div>
+                  <div className="absolute top-2 right-2 bg-primary/80 text-xs px-2 py-1 rounded-full">Social Media</div>
                 </div>
                 <div className="aspect-[9/16] bg-gray-800 rounded-lg overflow-hidden relative group mt-8">
+                  <Image 
+                    src="/images/video-placeholder.svg"
+                    alt="E-Commerce Ad"
+                    fill
+                    className="object-cover"
+                  />
                   <div className="absolute inset-0 bg-gradient-to-b from-transparent to-gray-900/80"></div>
                   <div className="absolute bottom-2 left-2 text-xs bg-white/20 backdrop-blur-sm px-2 py-1 rounded-full">00:30</div>
+                  <div className="absolute top-2 right-2 bg-secondary/80 text-xs px-2 py-1 rounded-full">E-Commerce</div>
                 </div>
                 <div className="aspect-[9/16] bg-gray-800 rounded-lg overflow-hidden relative group -mt-12">
+                  <Image 
+                    src="/images/video-placeholder.svg"
+                    alt="Product Demo"
+                    fill
+                    className="object-cover"
+                  />
                   <div className="absolute inset-0 bg-gradient-to-b from-transparent to-gray-900/80"></div>
                   <div className="absolute bottom-2 left-2 text-xs bg-white/20 backdrop-blur-sm px-2 py-1 rounded-full">00:20</div>
+                  <div className="absolute top-2 right-2 bg-blue-500/80 text-xs px-2 py-1 rounded-full">Product Demo</div>
                 </div>
                 <div className="aspect-[9/16] bg-gray-800 rounded-lg overflow-hidden relative group">
+                  <Image 
+                    src="/images/video-placeholder.svg"
+                    alt="Brand Story"
+                    fill
+                    className="object-cover"
+                  />
                   <div className="absolute inset-0 bg-gradient-to-b from-transparent to-gray-900/80"></div>
                   <div className="absolute bottom-2 left-2 text-xs bg-white/20 backdrop-blur-sm px-2 py-1 rounded-full">00:25</div>
+                  <div className="absolute top-2 right-2 bg-amber-500/80 text-xs px-2 py-1 rounded-full">Brand Story</div>
                 </div>
               </div>
             </div>
