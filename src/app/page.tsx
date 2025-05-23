@@ -5,6 +5,7 @@ import { ArrowRightIcon, CheckCircleIcon, SparklesIcon, VideoCameraIcon, Speaker
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
+import Image from 'next/image'
 
 type WorkflowStatus = {
   voiceover: boolean;
@@ -91,127 +92,114 @@ export default function Home() {
 
   return (
     <div className="relative">
-      {/* Hero Section */}
-      <section className="relative overflow-hidden py-20">
+      {/* Hero Section - Updated to match reference design */}
+      <section className="relative overflow-hidden py-12 md:py-20">
         <div className="absolute inset-0 bg-purple-glow opacity-30" />
         <div className="absolute -top-40 -right-40 w-80 h-80 bg-primary/20 rounded-full filter blur-3xl animate-pulse-slow" />
         <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-secondary/20 rounded-full filter blur-3xl animate-pulse-slow" />
         
-        <div className="container relative pt-10 pb-20 md:pt-20 md:pb-32">
-          <div className="flex flex-col items-center text-center">
-            <div className="inline-flex items-center px-4 py-2 rounded-full bg-white/5 backdrop-blur-sm border border-white/10 mb-8">
-              <SparklesIcon className="h-5 w-5 text-primary mr-2" />
-              <span className="text-sm font-medium">AI-Powered Marketing Videos</span>
-            </div>
-            
-            <h1 className="max-w-4xl text-4xl font-bold tracking-tight sm:text-6xl md:text-7xl bg-gradient-to-r from-white via-primary-light/80 to-white bg-clip-text text-transparent animate-float">
-              Generate High-Converting Ad Videos in Minutes
-            </h1>
-            <p className="mt-6 max-w-2xl text-lg text-white/70">
-              The ultimate SaaS tool for performance marketers and media buyers. Create professional ad videos from a text script using your own tagged video footage.
-            </p>
-            
-            {/* Subscription Warning for authenticated users without a plan */}
-            {status === 'authenticated' && !hasActiveSubscription && (
-              <div className="mt-6 w-full max-w-md bg-amber-500/20 border border-amber-500/40 p-4 rounded-lg">
-                <div className="flex items-start">
-                  <svg className="h-6 w-6 text-amber-500 mr-3 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                  </svg>
-                  <div>
-                    <p className="text-white font-medium">Kein aktives Abonnement</p>
-                    <p className="text-white/80 text-sm mt-1">
-                      Du benötigst ein aktives Abonnement, um Videos zu erstellen. Wähle einen Plan, um alle Funktionen freizuschalten.
-                    </p>
-                    <Link href="/pricing" className="inline-block mt-2 text-sm text-amber-400 hover:text-amber-300 font-medium">
-                      Zu den Abonnements →
-                    </Link>
+        <div className="container relative mx-auto px-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
+            {/* Left Column - Text and CTA */}
+            <div className="flex flex-col">
+              <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight bg-gradient-to-r from-white via-primary-light/80 to-white bg-clip-text text-transparent">
+                AI Video Software für Social Media Content
+              </h1>
+              
+              <p className="mt-6 text-lg text-white/70">
+                Erstelle professionelle Werbevideos aus einem Textskript mit deinem eigenen getaggten Videomaterial in wenigen Minuten.
+              </p>
+              
+              {/* Subscription Warning for authenticated users without a plan */}
+              {status === 'authenticated' && !hasActiveSubscription && (
+                <div className="mt-6 w-full bg-amber-500/20 border border-amber-500/40 p-4 rounded-lg">
+                  <div className="flex items-start">
+                    <svg className="h-6 w-6 text-amber-500 mr-3 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                    <div>
+                      <p className="text-white font-medium">Kein aktives Abonnement</p>
+                      <p className="text-white/80 text-sm mt-1">
+                        Du benötigst ein aktives Abonnement, um Videos zu erstellen. Wähle einen Plan, um alle Funktionen freizuschalten.
+                      </p>
+                      <Link href="/pricing" className="inline-block mt-2 text-sm text-amber-400 hover:text-amber-300 font-medium">
+                        Zu den Abonnements →
+                      </Link>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
-            
-            {/* Progress Indicator for logged in users with subscription */}
-            {status === 'authenticated' && hasActiveSubscription && (workflowStatus.voiceover || workflowStatus.videos || workflowStatus.finalVideo) && (
-              <div className="mt-10 w-full max-w-md glass p-6 rounded-xl">
-                <div className="flex justify-between mb-3">
-                  <span className="text-sm font-medium text-white/80">Your Progress</span>
-                  <button 
-                    onClick={handleReset}
-                    className="text-sm text-primary-light hover:text-primary transition-colors"
-                  >
-                    Start New
-                  </button>
-                </div>
-                <div className="bg-white/10 rounded-full h-3 mb-5">
-                  <div 
-                    className="bg-gradient-to-r from-primary to-primary-light h-3 rounded-full transition-all duration-500 animate-glow"
-                    style={{ 
-                      width: `${
-                        (workflowStatus.voiceover ? 33 : 0) + 
-                        (workflowStatus.videos ? 33 : 0) + 
-                        (workflowStatus.finalVideo ? 34 : 0)
-                      }%` 
-                    }}
-                  ></div>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <div className={`flex items-center ${workflowStatus.voiceover ? 'text-primary' : 'text-white/50'}`}>
-                    {workflowStatus.voiceover ? 
-                      <CheckCircleIcon className="h-5 w-5 mr-2" /> : 
-                      <SpeakerWaveIcon className="h-5 w-5 mr-2" />
-                    }
-                    Voiceover
-                  </div>
-                  <div className={`flex items-center ${workflowStatus.videos ? 'text-primary' : 'text-white/50'}`}>
-                    {workflowStatus.videos ? 
-                      <CheckCircleIcon className="h-5 w-5 mr-2" /> : 
-                      <VideoCameraIcon className="h-5 w-5 mr-2" />
-                    }
-                    Videos
-                  </div>
-                  <div className={`flex items-center ${workflowStatus.finalVideo ? 'text-primary' : 'text-white/50'}`}>
-                    {workflowStatus.finalVideo ? 
-                      <CheckCircleIcon className="h-5 w-5 mr-2" /> : 
-                      <SparklesIcon className="h-5 w-5 mr-2" />
-                    }
-                    Final Ad
-                  </div>
-                </div>
-              </div>
-            )}
-            
-            {/* Sign up/Log in options for non-authenticated users */}
-            {status !== 'authenticated' && (
-              <div className="mt-10 flex flex-col sm:flex-row gap-4">
-                <Link
-                  href="/auth/signup"
-                  className="inline-flex items-center px-8 py-4 text-lg font-medium text-white bg-gradient-to-r from-primary to-primary-light rounded-xl shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 transform hover:scale-105 transition-all duration-300"
-                >
-                  Create Account
-                  <ArrowRightIcon className="ml-2 h-5 w-5" />
-                </Link>
-                <Link
-                  href="/auth/signin"
-                  className="inline-flex items-center px-8 py-4 text-lg font-medium text-white bg-gray-800 hover:bg-gray-700 rounded-xl shadow-lg shadow-gray-800/20 hover:shadow-xl hover:shadow-gray-700/30 transform hover:scale-105 transition-all duration-300"
-                >
-                  Sign In
-                </Link>
-              </div>
-            )}
-            
-            {/* CTA button for authenticated users */}
-            {status === 'authenticated' && (
-              <div className="mt-10">
+              )}
+              
+              {/* CTA Buttons */}
+              <div className="mt-8 flex flex-col sm:flex-row gap-4">
                 <Link
                   href={getNextStep()}
-                  className="inline-flex items-center px-8 py-4 text-lg font-medium text-white bg-gradient-to-r from-primary to-primary-light rounded-xl shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 transform hover:scale-105 transition-all duration-300"
+                  className="inline-flex items-center justify-center px-8 py-4 text-lg font-medium text-white bg-gradient-to-r from-primary to-primary-light rounded-xl shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 transform hover:scale-105 transition-all duration-300"
                 >
                   {getButtonText()}
                   <ArrowRightIcon className="ml-2 h-5 w-5" />
                 </Link>
+                
+                <Link
+                  href="/demo"
+                  className="inline-flex items-center justify-center px-8 py-4 text-lg font-medium text-white bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-xl shadow-lg shadow-gray-800/20 hover:shadow-xl hover:shadow-gray-700/30 transform hover:scale-105 transition-all duration-300"
+                >
+                  Demo Test
+                </Link>
               </div>
-            )}
+              
+              {/* User Avatars and Social Proof */}
+              <div className="mt-10">
+                <div className="flex items-center">
+                  <div className="flex -space-x-2">
+                    {/* Placeholder avatars - replace with actual user avatars if available */}
+                    <div className="w-8 h-8 rounded-full bg-primary-light border-2 border-gray-900"></div>
+                    <div className="w-8 h-8 rounded-full bg-purple-500 border-2 border-gray-900"></div>
+                    <div className="w-8 h-8 rounded-full bg-blue-500 border-2 border-gray-900"></div>
+                    <div className="w-8 h-8 rounded-full bg-pink-500 border-2 border-gray-900"></div>
+                    <div className="w-8 h-8 rounded-full bg-gray-700 border-2 border-gray-900 flex items-center justify-center text-xs text-white">+</div>
+                  </div>
+                  <span className="ml-3 text-sm text-white/70">
+                    <span className="font-semibold text-white">5,000+</span> zufriedene Nutzer
+                  </span>
+                </div>
+              </div>
+              
+              {/* Partner/Client Logos */}
+              <div className="mt-10 pt-6 border-t border-white/10">
+                <p className="text-sm text-white/50 mb-4">Vertraut von führenden Unternehmen</p>
+                <div className="flex flex-wrap gap-6 items-center opacity-70">
+                  {/* Placeholder logos - replace with actual partner logos */}
+                  <div className="h-6 w-20 bg-white/20 rounded"></div>
+                  <div className="h-6 w-24 bg-white/20 rounded"></div>
+                  <div className="h-6 w-16 bg-white/20 rounded"></div>
+                  <div className="h-6 w-28 bg-white/20 rounded"></div>
+                </div>
+              </div>
+            </div>
+            
+            {/* Right Column - Video Grid */}
+            <div className="hidden lg:block">
+              <div className="grid grid-cols-2 gap-4">
+                {/* Video Thumbnails - Replace with actual video thumbnails */}
+                <div className="aspect-[9/16] bg-gray-800 rounded-lg overflow-hidden relative group">
+                  <div className="absolute inset-0 bg-gradient-to-b from-transparent to-gray-900/80"></div>
+                  <div className="absolute bottom-2 left-2 text-xs bg-white/20 backdrop-blur-sm px-2 py-1 rounded-full">00:15</div>
+                </div>
+                <div className="aspect-[9/16] bg-gray-800 rounded-lg overflow-hidden relative group mt-8">
+                  <div className="absolute inset-0 bg-gradient-to-b from-transparent to-gray-900/80"></div>
+                  <div className="absolute bottom-2 left-2 text-xs bg-white/20 backdrop-blur-sm px-2 py-1 rounded-full">00:30</div>
+                </div>
+                <div className="aspect-[9/16] bg-gray-800 rounded-lg overflow-hidden relative group -mt-12">
+                  <div className="absolute inset-0 bg-gradient-to-b from-transparent to-gray-900/80"></div>
+                  <div className="absolute bottom-2 left-2 text-xs bg-white/20 backdrop-blur-sm px-2 py-1 rounded-full">00:20</div>
+                </div>
+                <div className="aspect-[9/16] bg-gray-800 rounded-lg overflow-hidden relative group">
+                  <div className="absolute inset-0 bg-gradient-to-b from-transparent to-gray-900/80"></div>
+                  <div className="absolute bottom-2 left-2 text-xs bg-white/20 backdrop-blur-sm px-2 py-1 rounded-full">00:25</div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </section>
