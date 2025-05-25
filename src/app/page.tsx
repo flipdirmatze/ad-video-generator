@@ -188,9 +188,9 @@ export default function Home() {
             
             {/* Right Column - Video Grid */}
             <div className="hidden lg:block">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-4 max-w-[500px] mx-auto">
                 {/* Video Thumbnails - Replace with actual video thumbnails */}
-                <div className="aspect-[9/16] bg-gray-800 rounded-lg overflow-hidden relative group">
+                <div className="aspect-[9/16] bg-gray-800 rounded-lg overflow-hidden relative group h-[220px]">
                   <Image 
                     src="/images/video-placeholder.svg"
                     alt="Social Media Ad"
@@ -201,7 +201,7 @@ export default function Home() {
                   <div className="absolute bottom-2 left-2 text-xs bg-white/20 backdrop-blur-sm px-2 py-1 rounded-full">00:15</div>
                   <div className="absolute top-2 right-2 bg-primary/80 text-xs px-2 py-1 rounded-full">Social Media</div>
                 </div>
-                <div className="aspect-[9/16] bg-gray-800 rounded-lg overflow-hidden relative group mt-8">
+                <div className="aspect-[9/16] bg-gray-800 rounded-lg overflow-hidden relative group mt-6 h-[220px]">
                   <Image 
                     src="/images/video-placeholder.svg"
                     alt="E-Commerce Ad"
@@ -212,7 +212,7 @@ export default function Home() {
                   <div className="absolute bottom-2 left-2 text-xs bg-white/20 backdrop-blur-sm px-2 py-1 rounded-full">00:30</div>
                   <div className="absolute top-2 right-2 bg-secondary/80 text-xs px-2 py-1 rounded-full">E-Commerce</div>
                 </div>
-                <div className="aspect-[9/16] bg-gray-800 rounded-lg overflow-hidden relative group -mt-12">
+                <div className="aspect-[9/16] bg-gray-800 rounded-lg overflow-hidden relative group -mt-8 h-[220px]">
                   <Image 
                     src="/images/video-placeholder.svg"
                     alt="Product Demo"
@@ -223,7 +223,7 @@ export default function Home() {
                   <div className="absolute bottom-2 left-2 text-xs bg-white/20 backdrop-blur-sm px-2 py-1 rounded-full">00:20</div>
                   <div className="absolute top-2 right-2 bg-blue-500/80 text-xs px-2 py-1 rounded-full">Product Demo</div>
                 </div>
-                <div className="aspect-[9/16] bg-gray-800 rounded-lg overflow-hidden relative group">
+                <div className="aspect-[9/16] bg-gray-800 rounded-lg overflow-hidden relative group h-[220px]">
                   <Image 
                     src="/images/video-placeholder.svg"
                     alt="Brand Story"
