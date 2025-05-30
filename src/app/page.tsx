@@ -473,10 +473,10 @@ export default function Home() {
         <div className="container">
           <div className="text-center mb-16">
             <h2 className="text-3xl font-bold sm:text-4xl bg-gradient-to-r from-white to-primary bg-clip-text text-transparent">
-              Choose Your Plan
+              Wähle deinen Plan
             </h2>
             <p className="mt-4 text-lg text-white/70 max-w-2xl mx-auto">
-              Find the perfect plan for your video creation needs
+              Finde den perfekten Plan für deine Video-Erstellung
             </p>
           </div>
           
@@ -490,32 +490,32 @@ export default function Home() {
                 </div>
                 <div className="flex items-end gap-2 mb-6">
                   <span className="text-4xl font-bold">€19</span>
-                  <span className="text-white/60 mb-1">/month</span>
+                  <span className="text-white/60 mb-1">/Monat</span>
                 </div>
                 <p className="text-white/70 mb-8">
-                  Perfect for individuals just getting started with video ads
+                  Perfekt für Einsteiger, die gerade mit Video-Ads beginnen
                 </p>
                 
                 <ul className="space-y-4 mb-8 flex-grow">
                   <li className="flex">
                     <CheckCircleIcon className="h-6 w-6 text-blue-400 mr-2 flex-shrink-0" />
-                    <span>10 videos per month</span>
+                    <span>10 Videos pro Monat</span>
                   </li>
                   <li className="flex">
                     <CheckCircleIcon className="h-6 w-6 text-blue-400 mr-2 flex-shrink-0" />
-                    <span>150MB max upload size</span>
+                    <span>150MB maximale Upload-Größe</span>
                   </li>
                   <li className="flex">
                     <CheckCircleIcon className="h-6 w-6 text-blue-400 mr-2 flex-shrink-0" />
-                    <span>2GB total storage space</span>
+                    <span>2GB Gesamtspeicherplatz</span>
                   </li>
                   <li className="flex">
                     <CheckCircleIcon className="h-6 w-6 text-blue-400 mr-2 flex-shrink-0" />
-                    <span>720p video resolution (SD)</span>
+                    <span>720p Videoauflösung (SD)</span>
                   </li>
                   <li className="flex">
                     <CheckCircleIcon className="h-6 w-6 text-blue-400 mr-2 flex-shrink-0" />
-                    <span>3 minutes max video length</span>
+                    <span>3 Minuten maximale Videolänge</span>
                   </li>
                 </ul>
                 
@@ -523,7 +523,7 @@ export default function Home() {
                   href="/auth/signup?plan=starter"
                   className="w-full py-3 text-center text-white font-medium bg-blue-600 hover:bg-blue-500 rounded-xl transition-colors"
                 >
-                  Get Started
+                  Jetzt starten
                 </Link>
               </div>
             </div>
@@ -537,36 +537,36 @@ export default function Home() {
                   Pro
                 </div>
                 <div className="absolute top-8 right-8">
-                  <span className="px-3 py-1 text-xs bg-purple-500 text-white rounded-full">Popular</span>
+                  <span className="px-3 py-1 text-xs bg-purple-500 text-white rounded-full">Beliebt</span>
                 </div>
                 <div className="flex items-end gap-2 mb-6">
                   <span className="text-4xl font-bold">€49</span>
-                  <span className="text-white/60 mb-1">/month</span>
+                  <span className="text-white/60 mb-1">/Monat</span>
                 </div>
                 <p className="text-white/70 mb-8">
-                  Ideal for marketers and content creators with regular needs
+                  Ideal für Marketer und Content-Ersteller mit regelmäßigem Bedarf
                 </p>
                 
                 <ul className="space-y-4 mb-8 flex-grow">
                   <li className="flex">
                     <CheckCircleIcon className="h-6 w-6 text-purple-400 mr-2 flex-shrink-0" />
-                    <span>50 videos per month</span>
+                    <span>50 Videos pro Monat</span>
                   </li>
                   <li className="flex">
                     <CheckCircleIcon className="h-6 w-6 text-purple-400 mr-2 flex-shrink-0" />
-                    <span>500MB max upload size</span>
+                    <span>500MB maximale Upload-Größe</span>
                   </li>
                   <li className="flex">
                     <CheckCircleIcon className="h-6 w-6 text-purple-400 mr-2 flex-shrink-0" />
-                    <span>10GB total storage space</span>
+                    <span>10GB Gesamtspeicherplatz</span>
                   </li>
                   <li className="flex">
                     <CheckCircleIcon className="h-6 w-6 text-purple-400 mr-2 flex-shrink-0" />
-                    <span>1080p video resolution (HD)</span>
+                    <span>1080p Videoauflösung (HD)</span>
                   </li>
                   <li className="flex">
                     <CheckCircleIcon className="h-6 w-6 text-purple-400 mr-2 flex-shrink-0" />
-                    <span>10 minutes max video length</span>
+                    <span>10 Minuten maximale Videolänge</span>
                   </li>
                 </ul>
                 
@@ -574,7 +574,7 @@ export default function Home() {
                   href="/auth/signup?plan=pro"
                   className="w-full py-3 text-center text-white font-medium bg-gradient-to-r from-purple-600 to-purple-500 hover:from-purple-500 hover:to-purple-400 rounded-xl transition-all shadow-lg shadow-purple-600/20"
                 >
-                  Choose Pro
+                  Pro wählen
                 </Link>
               </div>
             </div>
@@ -588,32 +588,32 @@ export default function Home() {
                 </div>
                 <div className="flex items-end gap-2 mb-6">
                   <span className="text-4xl font-bold">€99</span>
-                  <span className="text-white/60 mb-1">/month</span>
+                  <span className="text-white/60 mb-1">/Monat</span>
                 </div>
                 <p className="text-white/70 mb-8">
-                  For professional teams and businesses with high volume needs
+                  Für professionelle Teams und Unternehmen mit hohem Volumen
                 </p>
                 
                 <ul className="space-y-4 mb-8 flex-grow">
                   <li className="flex">
                     <CheckCircleIcon className="h-6 w-6 text-amber-400 mr-2 flex-shrink-0" />
-                    <span>200 videos per month</span>
+                    <span>200 Videos pro Monat</span>
                   </li>
                   <li className="flex">
                     <CheckCircleIcon className="h-6 w-6 text-amber-400 mr-2 flex-shrink-0" />
-                    <span>2GB max upload size</span>
+                    <span>2GB maximale Upload-Größe</span>
                   </li>
                   <li className="flex">
                     <CheckCircleIcon className="h-6 w-6 text-amber-400 mr-2 flex-shrink-0" />
-                    <span>50GB total storage space</span>
+                    <span>50GB Gesamtspeicherplatz</span>
                   </li>
                   <li className="flex">
                     <CheckCircleIcon className="h-6 w-6 text-amber-400 mr-2 flex-shrink-0" />
-                    <span>4K video resolution (2160p)</span>
+                    <span>4K Videoauflösung (2160p)</span>
                   </li>
                   <li className="flex">
                     <CheckCircleIcon className="h-6 w-6 text-amber-400 mr-2 flex-shrink-0" />
-                    <span>30 minutes max video length</span>
+                    <span>30 Minuten maximale Videolänge</span>
                   </li>
                 </ul>
                 
@@ -621,7 +621,7 @@ export default function Home() {
                   href="/auth/signup?plan=business"
                   className="w-full py-3 text-center text-white font-medium bg-amber-600 hover:bg-amber-500 rounded-xl transition-colors"
                 >
-                  Choose Business
+                  Business wählen
                 </Link>
               </div>
             </div>
@@ -629,8 +629,8 @@ export default function Home() {
           
           <div className="mt-12 text-center">
             <p className="text-white/60 max-w-2xl mx-auto">
-              All plans include access to our AI-powered video generation, voiceover creation, and intelligent video matching. Need a custom plan for your enterprise? 
-              <Link href="/contact" className="text-primary ml-1 hover:underline">Contact us</Link>.
+              Alle Pläne beinhalten Zugang zu unserer KI-gestützten Videoerstellung, Voiceover-Generierung und intelligentem Video-Matching. Benötigst du einen individuellen Plan für dein Unternehmen? 
+              <Link href="/contact" className="text-primary ml-1 hover:underline">Kontaktiere uns</Link>.
             </p>
           </div>
         </div>
