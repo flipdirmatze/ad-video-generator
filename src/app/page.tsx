@@ -352,10 +352,10 @@ export default function Home() {
         <div className="container">
           <div className="text-center mb-16">
             <h2 className="text-3xl font-bold sm:text-4xl bg-gradient-to-r from-white to-primary-light bg-clip-text text-transparent">
-              How It Works
+              So funktioniert's
             </h2>
             <p className="mt-4 text-lg text-white/70 max-w-2xl mx-auto">
-              Create professional ad videos in four simple steps
+              In vier einfachen Schritten zur fertigen Werbeanzeige mit KI
             </p>
           </div>
           
@@ -365,13 +365,10 @@ export default function Home() {
               <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center mb-6">
                 <UserPlusIcon className="h-8 w-8 text-primary" />
               </div>
-              <h3 className="text-xl font-bold mb-3">Create Account</h3>
+              <h3 className="text-xl font-bold mb-3">🟣 Account erstellen</h3>
               <p className="text-white/70 flex-grow">
-                Sign up for your free account to get access to all features.
+                Registriere dich kostenlos, um Zugriff auf Clevercut zu erhalten und einen passenden Plan auszuwählen.
               </p>
-              <Link href="/auth/signup" className="mt-6 text-primary hover:text-primary-light transition-colors">
-                Sign Up →
-              </Link>
             </div>
             
             {/* Step 2 */}
@@ -379,13 +376,10 @@ export default function Home() {
               <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center mb-6">
                 <SpeakerWaveIcon className="h-8 w-8 text-primary" />
               </div>
-              <h3 className="text-xl font-bold mb-3">Create Voiceover</h3>
+              <h3 className="text-xl font-bold mb-3">🟣 Voiceover generieren</h3>
               <p className="text-white/70 flex-grow">
-                Generate a professional voiceover from your script using advanced AI technology.
+                Wandle dein Skript in ein professionelles Voiceover um – mithilfe fortschrittlicher KI-Technologie.
               </p>
-              <Link href="/auth/signin" className="mt-6 text-primary hover:text-primary-light transition-colors">
-                Start with Voiceover →
-              </Link>
             </div>
             
             {/* Step 3 */}
@@ -396,13 +390,10 @@ export default function Home() {
                   <TagIcon className="h-4 w-4 text-secondary absolute -right-1 -top-1" />
                 </div>
               </div>
-              <h3 className="text-xl font-bold mb-3">Upload & Tag Videos</h3>
+              <h3 className="text-xl font-bold mb-3">🟣 Videos hochladen & taggen</h3>
               <p className="text-white/70 flex-grow">
-                Upload your video clips and tag them with relevant keywords for intelligent matching.
+                Lade deine eigenen Clips hoch und versehe sie mit Keywords für intelligentes Szenen-Matching.
               </p>
-              <Link href="/auth/signin" className="mt-6 text-primary hover:text-primary-light transition-colors">
-                Upload Videos →
-              </Link>
             </div>
             
             {/* Step 4 */}
@@ -410,13 +401,10 @@ export default function Home() {
               <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center mb-6">
                 <SparklesIcon className="h-8 w-8 text-primary" />
               </div>
-              <h3 className="text-xl font-bold mb-3">Generate Final Ad</h3>
+              <h3 className="text-xl font-bold mb-3">🟣 Finale Ad generieren</h3>
               <p className="text-white/70 flex-grow">
-                Our AI automatically matches your script with the perfect video clips to create your final ad.
+                Clevercut kombiniert dein Skript mit den passenden Szenen und erstellt automatisch eine fertige Ad.
               </p>
-              <Link href="/auth/signin" className="mt-6 text-primary hover:text-primary-light transition-colors">
-                Go to Editor →
-              </Link>
             </div>
           </div>
         </div>
