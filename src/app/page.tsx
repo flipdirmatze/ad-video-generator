@@ -365,7 +365,7 @@ export default function Home() {
               <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center mb-6">
                 <UserPlusIcon className="h-8 w-8 text-primary" />
               </div>
-              <h3 className="text-xl font-bold mb-3">🟣 Account erstellen</h3>
+              <h3 className="text-xl font-bold mb-3">1. Account erstellen</h3>
               <p className="text-white/70 flex-grow">
                 Registriere dich kostenlos, um Zugriff auf Clevercut zu erhalten und einen passenden Plan auszuwählen.
               </p>
@@ -376,7 +376,7 @@ export default function Home() {
               <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center mb-6">
                 <SpeakerWaveIcon className="h-8 w-8 text-primary" />
               </div>
-              <h3 className="text-xl font-bold mb-3">🟣 Voiceover generieren</h3>
+              <h3 className="text-xl font-bold mb-3">2. Voiceover generieren</h3>
               <p className="text-white/70 flex-grow">
                 Wandle dein Skript in ein professionelles Voiceover um – mithilfe fortschrittlicher KI-Technologie.
               </p>
@@ -390,7 +390,7 @@ export default function Home() {
                   <TagIcon className="h-4 w-4 text-secondary absolute -right-1 -top-1" />
                 </div>
               </div>
-              <h3 className="text-xl font-bold mb-3">🟣 Videos hochladen & taggen</h3>
+              <h3 className="text-xl font-bold mb-3">3. Videos hochladen & taggen</h3>
               <p className="text-white/70 flex-grow">
                 Lade deine eigenen Clips hoch und versehe sie mit Keywords für intelligentes Szenen-Matching.
               </p>
@@ -401,7 +401,7 @@ export default function Home() {
               <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center mb-6">
                 <SparklesIcon className="h-8 w-8 text-primary" />
               </div>
-              <h3 className="text-xl font-bold mb-3">🟣 Finale Ad generieren</h3>
+              <h3 className="text-xl font-bold mb-3">4. Finale Ad generieren</h3>
               <p className="text-white/70 flex-grow">
                 Clevercut kombiniert dein Skript mit den passenden Szenen und erstellt automatisch eine fertige Ad.
               </p>
