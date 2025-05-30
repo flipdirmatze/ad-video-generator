@@ -750,10 +750,10 @@ export default function Home() {
         <div className="container">
           <div className="card-gradient p-10 md:p-16 text-center">
             <h2 className="text-3xl font-bold mb-6 bg-gradient-to-r from-white to-primary-light bg-clip-text text-transparent">
-              Ready to Create Better Ads?
+              Bereit für bessere Ads?
             </h2>
             <p className="text-lg text-white/70 mb-8 max-w-2xl mx-auto">
-              Join now and start creating high-converting ad videos with your own footage in minutes.
+              Starte jetzt und erstelle hochkonvertierende Werbeanzeigen mit deinem eigenen Videomaterial in Minuten.
             </p>
             <Link
               href={getNextStep()}
