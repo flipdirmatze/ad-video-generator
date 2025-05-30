@@ -187,10 +187,10 @@ export default function Home() {
             </div>
             
             {/* Right Column - Video Grid */}
-            <div className="mt-8 lg:mt-0">
-              <div className="grid grid-cols-2 gap-6 max-w-[500px] mx-auto">
-                {/* Social Media Video */}
-                <div className="aspect-[9/16] bg-gray-800 rounded-lg overflow-hidden relative group h-[260px]">
+            <div className="hidden lg:block">
+              <div className="grid grid-cols-3 gap-4 max-w-[850px] mx-auto">
+                {/* Actual video elements instead of image placeholders */}
+                <div className="aspect-video bg-gray-800 rounded-lg overflow-hidden relative group">
                   <video
                     className="absolute inset-0 w-full h-full object-cover"
                     poster="/images/video-placeholder.svg"
@@ -208,14 +208,13 @@ export default function Home() {
                   <div className="absolute bottom-3 left-3 text-xs bg-white/20 backdrop-blur-sm px-2 py-1 rounded-full">00:15</div>
                   <div className="absolute top-3 right-3 bg-primary/80 text-xs px-2 py-1 rounded-full">Social Media</div>
                   <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                    <svg className="w-14 h-14 text-white" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+                    <svg className="w-12 h-12 text-white" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
                       <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd"></path>
                     </svg>
                   </div>
                 </div>
                 
-                {/* E-Commerce Video */}
-                <div className="aspect-[9/16] bg-gray-800 rounded-lg overflow-hidden relative group h-[260px] mt-10">
+                <div className="aspect-video bg-gray-800 rounded-lg overflow-hidden relative group">
                   <video
                     className="absolute inset-0 w-full h-full object-cover"
                     poster="/images/video-placeholder.svg"
@@ -233,14 +232,13 @@ export default function Home() {
                   <div className="absolute bottom-3 left-3 text-xs bg-white/20 backdrop-blur-sm px-2 py-1 rounded-full">00:30</div>
                   <div className="absolute top-3 right-3 bg-secondary/80 text-xs px-2 py-1 rounded-full">E-Commerce</div>
                   <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                    <svg className="w-14 h-14 text-white" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+                    <svg className="w-12 h-12 text-white" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
                       <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd"></path>
                     </svg>
                   </div>
                 </div>
                 
-                {/* Product Demo Video */}
-                <div className="aspect-[9/16] bg-gray-800 rounded-lg overflow-hidden relative group h-[260px] -mt-10">
+                <div className="aspect-video bg-gray-800 rounded-lg overflow-hidden relative group">
                   <video
                     className="absolute inset-0 w-full h-full object-cover"
                     poster="/images/video-placeholder.svg"
@@ -258,32 +256,7 @@ export default function Home() {
                   <div className="absolute bottom-3 left-3 text-xs bg-white/20 backdrop-blur-sm px-2 py-1 rounded-full">00:20</div>
                   <div className="absolute top-3 right-3 bg-blue-500/80 text-xs px-2 py-1 rounded-full">Product Demo</div>
                   <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                    <svg className="w-14 h-14 text-white" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
-                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd"></path>
-                    </svg>
-                  </div>
-                </div>
-                
-                {/* Brand Story Video */}
-                <div className="aspect-[9/16] bg-gray-800 rounded-lg overflow-hidden relative group h-[260px]">
-                  <video
-                    className="absolute inset-0 w-full h-full object-cover"
-                    poster="/images/video-placeholder.svg"
-                    preload="metadata"
-                    muted
-                    playsInline
-                    onClick={(e) => e.currentTarget.play()}
-                    onMouseOver={(e) => e.currentTarget.play()}
-                    onMouseOut={(e) => {e.currentTarget.pause(); e.currentTarget.currentTime = 0;}}
-                  >
-                    <source src="/path-to-your-video4.mp4" type="video/mp4" />
-                    Your browser does not support the video tag.
-                  </video>
-                  <div className="absolute inset-0 bg-gradient-to-b from-transparent to-gray-900/80 pointer-events-none"></div>
-                  <div className="absolute bottom-3 left-3 text-xs bg-white/20 backdrop-blur-sm px-2 py-1 rounded-full">00:25</div>
-                  <div className="absolute top-3 right-3 bg-amber-500/80 text-xs px-2 py-1 rounded-full">Brand Story</div>
-                  <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                    <svg className="w-14 h-14 text-white" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+                    <svg className="w-12 h-12 text-white" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
                       <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd"></path>
                     </svg>
                   </div>
