@@ -636,6 +636,115 @@ export default function Home() {
         </div>
       </section>
 
+      {/* FAQ Section */}
+      <section className="py-20 bg-white/5">
+        <div className="container max-w-4xl mx-auto">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl font-bold sm:text-4xl bg-gradient-to-r from-white to-primary bg-clip-text text-transparent">
+              Noch Fragen?
+            </h2>
+            <p className="mt-4 text-lg text-white/70 max-w-2xl mx-auto">
+              Alles was du über unseren Service wissen musst
+            </p>
+          </div>
+          
+          <div className="space-y-4">
+            {/* FAQ Item 1 */}
+            <div className="card-gradient rounded-xl overflow-hidden">
+              <details className="group">
+                <summary className="flex items-center justify-between p-6 cursor-pointer">
+                  <h3 className="text-xl font-medium">Wie realistisch sind die KI-Videos?</h3>
+                  <span className="transition-transform duration-300 group-open:rotate-180">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-white/70" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </span>
+                </summary>
+                <div className="p-6 pt-0 text-white/70">
+                  <p>
+                    Unsere KI erstellt keine komplett generierten Videos, sondern setzt auf dein eigenes Videomaterial. 
+                    Wir kombinieren KI-Technologie zum intelligenten Matching deiner Szenen mit deinem Skript, 
+                    wodurch die Videos nicht nur realistisch sind, sondern zu 100% deine eigene Markenidentität widerspiegeln.
+                  </p>
+                </div>
+              </details>
+            </div>
+            
+            {/* FAQ Item 2 */}
+            <div className="card-gradient rounded-xl overflow-hidden">
+              <details className="group">
+                <summary className="flex items-center justify-between p-6 cursor-pointer">
+                  <h3 className="text-xl font-medium">Wie lange dauert es, ein Video zu erstellen?</h3>
+                  <span className="transition-transform duration-300 group-open:rotate-180">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-white/70" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </span>
+                </summary>
+                <div className="p-6 pt-0 text-white/70">
+                  <p>
+                    Von der Eingabe deines Skripts bis zum fertigen Video dauert es in der Regel nur wenige Minuten.
+                    Der genaue Zeitaufwand hängt von der Länge deines Videos und der Komplexität des Skripts ab, 
+                    aber selbst komplexere Projekte sind in unter 10 Minuten fertig – ein Bruchteil der Zeit, 
+                    die du mit traditioneller Videobearbeitung verbringen würdest.
+                  </p>
+                </div>
+              </details>
+            </div>
+            
+            {/* FAQ Item 3 */}
+            <div className="card-gradient rounded-xl overflow-hidden">
+              <details className="group">
+                <summary className="flex items-center justify-between p-6 cursor-pointer">
+                  <h3 className="text-xl font-medium">Wer besitzt die Rechte an den erstellten Videos?</h3>
+                  <span className="transition-transform duration-300 group-open:rotate-180">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-white/70" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </span>
+                </summary>
+                <div className="p-6 pt-0 text-white/70">
+                  <p>
+                    Du behältst 100% der Rechte an allen erstellten Videos. Da du dein eigenes Videomaterial 
+                    verwendest und wir lediglich die Werkzeuge zum intelligenten Zusammenfügen bereitstellen, 
+                    bleiben alle Urheberrechte vollständig bei dir. Du kannst die Videos ohne Einschränkungen 
+                    für alle kommerziellen und nicht-kommerziellen Zwecke nutzen.
+                  </p>
+                </div>
+              </details>
+            </div>
+            
+            {/* FAQ Item 4 */}
+            <div className="card-gradient rounded-xl overflow-hidden">
+              <details className="group">
+                <summary className="flex items-center justify-between p-6 cursor-pointer">
+                  <h3 className="text-xl font-medium">Was passiert, wenn ich alle meine Video-Generierungen aufgebraucht habe?</h3>
+                  <span className="transition-transform duration-300 group-open:rotate-180">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-white/70" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </span>
+                </summary>
+                <div className="p-6 pt-0 text-white/70">
+                  <p>
+                    Wenn du das monatliche Limit an Video-Generierungen in deinem Plan erreicht hast, 
+                    hast du drei Möglichkeiten: Warten bis zum nächsten Abrechnungszyklus, ein Upgrade 
+                    auf einen höheren Plan durchführen oder zusätzliche Video-Credits erwerben. 
+                    Für Teams mit höherem Bedarf bieten wir auch maßgeschneiderte Enterprise-Pläne an.
+                  </p>
+                </div>
+              </details>
+            </div>
+          </div>
+          
+          <div className="mt-10 text-center">
+            <Link href="/faq" className="text-primary hover:text-primary-light transition-colors">
+              Alle FAQs anzeigen →
+            </Link>
+          </div>
+        </div>
+      </section>
+
       {/* CTA Section */}
       <section className="py-20">
         <div className="container">
