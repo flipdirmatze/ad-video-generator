@@ -165,6 +165,86 @@ export default function Home() {
                 </div>
               </div>
               
+              {/* Video Grid - Mobile Version */}
+              <div className="mt-8 block lg:hidden">
+                <div className="grid grid-cols-3 gap-3 sm:gap-4 max-w-full mx-auto">
+                  {/* Video 1 */}
+                  <div className="aspect-[9/16] bg-gray-800 rounded-lg overflow-hidden relative group">
+                    <video
+                      className="absolute inset-0 w-full h-full object-cover"
+                      poster="/images/video-placeholder.svg"
+                      preload="metadata"
+                      muted
+                      playsInline
+                      onClick={(e) => e.currentTarget.play()}
+                      onMouseOver={(e) => e.currentTarget.play()}
+                      onMouseOut={(e) => {e.currentTarget.pause(); e.currentTarget.currentTime = 0;}}
+                    >
+                      <source src="/path-to-your-video1.mp4" type="video/mp4" />
+                      Your browser does not support the video tag.
+                    </video>
+                    <div className="absolute inset-0 bg-gradient-to-b from-transparent to-gray-900/80 pointer-events-none"></div>
+                    <div className="absolute bottom-2 left-2 text-xs bg-white/20 backdrop-blur-sm px-1.5 py-0.5 rounded-full">00:15</div>
+                    <div className="absolute top-2 right-2 text-xs bg-primary/80 px-1.5 py-0.5 rounded-full">Social</div>
+                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                      <svg className="w-8 h-8 sm:w-12 sm:h-12 text-white" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd"></path>
+                      </svg>
+                    </div>
+                  </div>
+                  
+                  {/* Video 2 */}
+                  <div className="aspect-[9/16] bg-gray-800 rounded-lg overflow-hidden relative group">
+                    <video
+                      className="absolute inset-0 w-full h-full object-cover"
+                      poster="/images/video-placeholder.svg"
+                      preload="metadata"
+                      muted
+                      playsInline
+                      onClick={(e) => e.currentTarget.play()}
+                      onMouseOver={(e) => e.currentTarget.play()}
+                      onMouseOut={(e) => {e.currentTarget.pause(); e.currentTarget.currentTime = 0;}}
+                    >
+                      <source src="/path-to-your-video2.mp4" type="video/mp4" />
+                      Your browser does not support the video tag.
+                    </video>
+                    <div className="absolute inset-0 bg-gradient-to-b from-transparent to-gray-900/80 pointer-events-none"></div>
+                    <div className="absolute bottom-2 left-2 text-xs bg-white/20 backdrop-blur-sm px-1.5 py-0.5 rounded-full">00:30</div>
+                    <div className="absolute top-2 right-2 text-xs bg-secondary/80 px-1.5 py-0.5 rounded-full">E-Commerce</div>
+                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                      <svg className="w-8 h-8 sm:w-12 sm:h-12 text-white" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd"></path>
+                      </svg>
+                    </div>
+                  </div>
+                  
+                  {/* Video 3 */}
+                  <div className="aspect-[9/16] bg-gray-800 rounded-lg overflow-hidden relative group">
+                    <video
+                      className="absolute inset-0 w-full h-full object-cover"
+                      poster="/images/video-placeholder.svg"
+                      preload="metadata"
+                      muted
+                      playsInline
+                      onClick={(e) => e.currentTarget.play()}
+                      onMouseOver={(e) => e.currentTarget.play()}
+                      onMouseOut={(e) => {e.currentTarget.pause(); e.currentTarget.currentTime = 0;}}
+                    >
+                      <source src="/path-to-your-video3.mp4" type="video/mp4" />
+                      Your browser does not support the video tag.
+                    </video>
+                    <div className="absolute inset-0 bg-gradient-to-b from-transparent to-gray-900/80 pointer-events-none"></div>
+                    <div className="absolute bottom-2 left-2 text-xs bg-white/20 backdrop-blur-sm px-1.5 py-0.5 rounded-full">00:20</div>
+                    <div className="absolute top-2 right-2 text-xs bg-blue-500/80 px-1.5 py-0.5 rounded-full">Features</div>
+                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                      <svg className="w-8 h-8 sm:w-12 sm:h-12 text-white" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd"></path>
+                      </svg>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
               {/* Partner/Client Logos */}
               <div className="mt-10 pt-6 border-t border-white/10">
                 <p className="text-sm text-white/50 mb-4">Vertraut von führenden Unternehmen</p>
@@ -186,8 +266,8 @@ export default function Home() {
               </div>
             </div>
             
-            {/* Right Column - Video Grid */}
-            <div className="mt-10 lg:mt-0">
+            {/* Right Column - Video Grid (Desktop only) */}
+            <div className="hidden lg:block">
               <div className="grid grid-cols-3 gap-3 sm:gap-4 max-w-full mx-auto">
                 {/* Actual video elements instead of image placeholders */}
                 <div className="aspect-[9/16] bg-gray-800 rounded-lg overflow-hidden relative group">
