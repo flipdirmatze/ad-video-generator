@@ -415,10 +415,10 @@ export default function Home() {
         <div className="container">
           <div className="text-center mb-12">
             <h2 className="text-3xl font-bold sm:text-4xl bg-gradient-to-r from-white to-secondary bg-clip-text text-transparent">
-              Why Choose Our Platform
+              Warum Clevercut?
             </h2>
             <p className="mt-4 text-lg text-white/70 max-w-2xl mx-auto">
-              Create high-converting ads faster and more effectively than ever
+              Entwickelt für Brands und Media Buyer, die Ergebnisse wollen – keine Spielerei.
             </p>
           </div>
           
@@ -427,12 +427,13 @@ export default function Home() {
             <div className="card-gradient p-8 flex flex-col items-center text-center transform hover:scale-105 transition-transform duration-300">
               <div className="w-16 h-16 rounded-full bg-secondary/20 flex items-center justify-center mb-6">
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
                 </svg>
               </div>
-              <h3 className="text-xl font-bold mb-3">Save Time</h3>
+              <h3 className="text-xl font-bold mb-3">Optimiert für Leads & Sales</h3>
               <p className="text-white/70">
-                Generate high-quality ad videos in minutes, not hours. Our AI matches your script with the perfect video segments automatically.
+                Unsere Nutzer setzen Clevercut gezielt ein für Conversion-Kampagnen im E-Commerce & B2B.
+                Beispielwerte: +23 % ROAS, -40 % CPM durch schnellere Creative Tests.
               </p>
             </div>
             
@@ -440,12 +441,13 @@ export default function Home() {
             <div className="card-gradient p-8 flex flex-col items-center text-center transform hover:scale-105 transition-transform duration-300">
               <div className="w-16 h-16 rounded-full bg-secondary/20 flex items-center justify-center mb-6">
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                 </svg>
               </div>
-              <h3 className="text-xl font-bold mb-3">Use Your Own Footage</h3>
+              <h3 className="text-xl font-bold mb-3">Endlich das Beste aus vorhandenem Material rausholen</h3>
               <p className="text-white/70">
-                Unlike other solutions that use generic stock videos, our platform lets you use your own branded footage with intelligent tagging.
+                Du hast bereits unzählige Clips vom Produkt?
+                Clevercut macht daraus in Minuten neue Ad-Variationen – statt stundenlangem Schnitt in Premiere.
               </p>
             </div>
             
@@ -453,12 +455,13 @@ export default function Home() {
             <div className="card-gradient p-8 flex flex-col items-center text-center transform hover:scale-105 transition-transform duration-300">
               <div className="w-16 h-16 rounded-full bg-secondary/20 flex items-center justify-center mb-6">
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               </div>
-              <h3 className="text-xl font-bold mb-3">Higher Conversion Rates</h3>
+              <h3 className="text-xl font-bold mb-3">Enorme Zeitersparnis</h3>
               <p className="text-white/70">
-                Create ads that convert better by perfectly matching your message with relevant visuals through our intelligent tagging system.
+                Keine Timeline, kein Herumziehen von Clips:
+                Script + getaggte Videos = automatisch geschnittenes Creative in Minuten statt Stunden.
               </p>
             </div>
           </div>
