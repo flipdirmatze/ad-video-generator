@@ -5,10 +5,14 @@ import { generateVerificationToken, getTokenExpiryDate } from '@/lib/token-utils
 import { sendVerificationEmail } from '@/lib/email-sender';
 import { withApiRateLimit } from '@/lib/api-rate-limiter';
 
+// Bonus-Code für kostenlosen Premium-Zugang
+const PROMO_CODE = 'EARLY2025';
+const PROMO_PLAN = 'pro'; // Pro-Plan für frühe Nutzer
+
 // Wrap the original handler with rate limiting
 const originalPostHandler = async (request: NextRequest) => {
   try {
-    const { email, password, name } = await request.json();
+    const { email, password, name, bonusCode } = await request.json();
 
     // Validate inputs
     if (!email || !password || !name) {
@@ -39,15 +43,27 @@ const originalPostHandler = async (request: NextRequest) => {
     const verificationToken = generateVerificationToken();
     const verificationTokenExpires = getTokenExpiryDate();
     
-    // Create user with verification token and free plan
+    // Prüfe, ob ein gültiger Bonus-Code eingegeben wurde
+    const isValidPromoCode = bonusCode === PROMO_CODE;
+    
+    // Bestimme Abonnementplan und Status basierend auf dem Bonus-Code
+    const subscriptionPlan = isValidPromoCode ? PROMO_PLAN : 'free';
+    const subscriptionActive = isValidPromoCode;
+    
+    // Hole die Limits für den ausgewählten Plan
+    const { default: User } = await import('@/models/User');
+    const dummyUser = new User();
+    const planLimits = dummyUser.schema.path('limits').default();
+    
+    // Create user with verification token and appropriate plan
     const newUser = new db({
       email,
       password: hashedPassword,
       name,
       createdAt: new Date(),
       role: 'user',
-      subscriptionPlan: 'free',
-      subscriptionActive: false,
+      subscriptionPlan,
+      subscriptionActive,
       stats: {
         totalVideosCreated: 0,
         totalStorage: 0,
@@ -58,6 +74,14 @@ const originalPostHandler = async (request: NextRequest) => {
       verificationTokenExpires
     });
     
+    // Wenn ein gültiger Promo-Code eingegeben wurde, aktualisiere die Limits
+    if (isValidPromoCode) {
+      newUser.limits = User.schema.methods.updateLimitsForPlan.call(
+        { limits: {} }, 
+        PROMO_PLAN
+      );
+    }
+    
     const result = await newUser.save();
     
     // Send verification email
@@ -67,15 +91,25 @@ const originalPostHandler = async (request: NextRequest) => {
       verificationToken
     });
     
+    // Erstelle eine passende Erfolgsmeldung je nach Bonus-Code
+    let message = 'Registration successful. Please check your email to verify your account.';
+    if (isValidPromoCode) {
+      message += ' Your account has been activated with the Pro plan for free as an early user!';
+    } else {
+      message += ' After verification, you will need to select a subscription plan to use the service.';
+    }
+    
     return NextResponse.json(
       { 
         success: true, 
         user: { 
           id: result._id,
           email,
-          name 
+          name,
+          subscriptionPlan,
+          subscriptionActive
         },
-        message: 'Registration successful. Please check your email to verify your account. After verification, you will need to select a subscription plan to use the service.'
+        message
       },
       { status: 201 }
     );
