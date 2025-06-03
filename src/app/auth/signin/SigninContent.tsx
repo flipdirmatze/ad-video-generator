@@ -60,7 +60,7 @@ export default function SigninContent() {
         return;
       }
 
-      router.push('/pricing');
+      router.push('/');
       router.refresh();
     } catch (err) {
       console.error('Sign in error:', err);
@@ -70,7 +70,7 @@ export default function SigninContent() {
   };
 
   const handleGoogleSignIn = () => {
-    signIn('google', { callbackUrl: '/pricing' });
+    signIn('google', { callbackUrl: '/' });
   };
 
   return (
