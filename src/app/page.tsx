@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, Suspense } from 'react'
 import { ArrowRightIcon, CheckCircleIcon, SparklesIcon, VideoCameraIcon, SpeakerWaveIcon, TagIcon, UserPlusIcon } from '@heroicons/react/24/outline'
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
@@ -13,7 +13,8 @@ type WorkflowStatus = {
   finalVideo: boolean;
 }
 
-export default function Home() {
+// Main component that will be wrapped in Suspense
+function HomeContent() {
   const { data: session, status } = useSession();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -769,5 +770,18 @@ export default function Home() {
         </div>
       </section>
     </div>
+  );
+}
+
+// Export the default component with Suspense
+export default function Home() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-pulse text-primary">Laden...</div>
+      </div>
+    }>
+      <HomeContent />
+    </Suspense>
   );
 }
