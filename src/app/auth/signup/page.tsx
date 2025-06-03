@@ -3,74 +3,118 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
+import { CheckCircleIcon, XCircleIcon } from '@heroicons/react/20/solid';
+import { signIn } from 'next-auth/react';
 
 export default function SignUp() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [bonusCode, setBonusCode] = useState('');
+  const [bonusCodeValid, setBonusCodeValid] = useState<boolean | null>(null);
+  const [bonusCodeMessage, setBonusCodeMessage] = useState<string | null>(null);
+  const [bonusCodePlan, setBonusCodePlan] = useState<string | null>(null);
   const router = useRouter();
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsLoading(true);
-    setError('');
-    setSuccess('');
+    setError(null);
 
-    // Validate inputs
+    const formData = new FormData(e.currentTarget);
+    const name = formData.get('name') as string;
+    const email = formData.get('email') as string;
+    const password = formData.get('password') as string;
+    const confirmPassword = formData.get('confirmPassword') as string;
+    const code = bonusCode.trim();
+
+    // Validierungen
+    if (!name || !email || !password || !confirmPassword) {
+      setError('Bitte fülle alle Pflichtfelder aus');
+      setIsLoading(false);
+      return;
+    }
+
     if (password !== confirmPassword) {
-      setError('Passwords do not match');
+      setError('Passwörter stimmen nicht überein');
       setIsLoading(false);
       return;
     }
 
     if (password.length < 8) {
-      setError('Password must be at least 8 characters long');
+      setError('Das Passwort muss mindestens 8 Zeichen lang sein');
       setIsLoading(false);
       return;
     }
 
     try {
-      // Register user
-      const response = await fetch('/api/auth/register', {
+      // Registrierung durchführen
+      const registerResponse = await fetch('/api/auth/register', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          name,
-          email,
-          password,
-        }),
+        body: JSON.stringify({ name, email, password }),
       });
 
-      const data = await response.json();
+      const registerData = await registerResponse.json();
 
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to register');
+      if (!registerResponse.ok) {
+        throw new Error(registerData.error || 'Registrierung fehlgeschlagen');
       }
 
-      // Zeige Erfolgsmeldung an
-      setSuccess(data.message || 'Registration successful! Please check your email to verify your account.');
+      // Wenn ein Bonus-Code eingegeben wurde und gültig ist, diesen einlösen
+      if (code && bonusCodeValid) {
+        // Zuerst einloggen
+        const signInResult = await signIn('credentials', {
+          email,
+          password,
+          redirect: false,
+        });
+
+        if (signInResult?.error) {
+          throw new Error('Anmeldung nach Registrierung fehlgeschlagen');
+        }
+
+        // Dann den Bonus-Code einlösen
+        const redeemResponse = await fetch('/api/bonus-code/redeem', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ code }),
+        });
+
+        const redeemData = await redeemResponse.json();
+
+        if (!redeemResponse.ok || !redeemData.success) {
+          console.warn('Bonus-Code konnte nicht eingelöst werden:', redeemData.reason);
+          // Wir setzen den Registrierungsprozess trotzdem fort
+        }
+      }
+
+      // Erfolgreiche Registrierung
+      setSuccess(true);
       
       // Formular zurücksetzen
-      setName('');
-      setEmail('');
-      setPassword('');
-      setConfirmPassword('');
+      e.currentTarget.reset();
+      setBonusCode('');
+      setBonusCodeValid(null);
+      setBonusCodeMessage(null);
       
-      // Nach 5 Sekunden zur Login-Seite weiterleiten
+      // Nach 5 Sekunden zur Anmeldeseite weiterleiten
       setTimeout(() => {
         router.push('/auth/signin');
       }, 5000);
       
-    } catch (err: unknown) {
+    } catch (err: any) {
       console.error('Registration error:', err);
-      const errorMessage = err instanceof Error ? err.message : 'An unexpected error occurred. Please try again.';
-      setError(errorMessage);
+      setError(err.message || 'Ein Fehler ist aufgetreten');
     } finally {
       setIsLoading(false);
     }
@@ -78,6 +122,43 @@ export default function SignUp() {
 
   const handleGoogleSignIn = () => {
     window.location.href = '/api/auth/signin/google';
+  };
+
+  // Funktion zum Überprüfen des Bonus-Codes
+  const validateBonusCode = async (code: string) => {
+    if (!code) {
+      setBonusCodeValid(null);
+      setBonusCodeMessage(null);
+      setBonusCodePlan(null);
+      return;
+    }
+    
+    try {
+      const response = await fetch('/api/bonus-code/validate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ code }),
+      });
+      
+      const data = await response.json();
+      
+      if (data.valid) {
+        setBonusCodeValid(true);
+        setBonusCodeMessage(`Gültiger Code für ${data.durationInDays} Tage ${data.plan}-Zugang!`);
+        setBonusCodePlan(data.plan);
+      } else {
+        setBonusCodeValid(false);
+        setBonusCodeMessage(data.reason || 'Ungültiger Code');
+        setBonusCodePlan(null);
+      }
+    } catch (err) {
+      console.error('Error validating bonus code:', err);
+      setBonusCodeValid(false);
+      setBonusCodeMessage('Fehler bei der Überprüfung des Codes');
+      setBonusCodePlan(null);
+    }
   };
 
   return (
@@ -169,6 +250,34 @@ export default function SignUp() {
               className="mt-1 w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
               placeholder="Confirm your password"
             />
+          </div>
+
+          <div>
+            <label htmlFor="bonusCode" className="block text-sm font-medium text-gray-300">
+              Bonus-Code (optional)
+            </label>
+            <input
+              id="bonusCode"
+              name="bonusCode"
+              type="text"
+              value={bonusCode}
+              onChange={(e) => setBonusCode(e.target.value)}
+              onBlur={() => validateBonusCode(bonusCode)}
+              className={`mt-1 w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent ${
+                bonusCodeValid === true
+                  ? 'border-green-500 focus:border-green-500 focus:ring-green-500'
+                  : bonusCodeValid === false
+                  ? 'border-red-500 focus:border-red-500 focus:ring-red-500'
+                  : ''
+              }`}
+            />
+            {bonusCodeMessage && (
+              <p className={`mt-1 text-sm ${
+                bonusCodeValid ? 'text-green-500' : 'text-red-500'
+              }`}>
+                {bonusCodeMessage}
+              </p>
+            )}
           </div>
 
           <div>
