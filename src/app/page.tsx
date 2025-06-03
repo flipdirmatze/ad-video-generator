@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react'
 import { ArrowRightIcon, CheckCircleIcon, SparklesIcon, VideoCameraIcon, SpeakerWaveIcon, TagIcon, UserPlusIcon } from '@heroicons/react/24/outline'
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Image from 'next/image'
 
 type WorkflowStatus = {
@@ -16,14 +16,35 @@ type WorkflowStatus = {
 export default function Home() {
   const { data: session, status } = useSession();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [workflowStatus, setWorkflowStatus] = useState<WorkflowStatus>({
     voiceover: false,
     videos: false,
     finalVideo: false
   });
+  const [showSubscriptionWarning, setShowSubscriptionWarning] = useState(false);
 
   // Check if user has an active subscription
   const hasActiveSubscription = session?.user?.subscriptionActive && session?.user?.subscriptionPlan !== 'free';
+
+  // Check for subscription_required parameter in URL
+  useEffect(() => {
+    if (searchParams.get('subscription_required') === 'true') {
+      setShowSubscriptionWarning(true);
+      
+      // Remove the parameter from URL after showing the warning
+      const url = new URL(window.location.href);
+      url.searchParams.delete('subscription_required');
+      window.history.replaceState({}, '', url.toString());
+      
+      // Auto-hide the warning after 5 seconds
+      const timer = setTimeout(() => {
+        setShowSubscriptionWarning(false);
+      }, 5000);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [searchParams]);
 
   // Check localStorage for workflow progress
   useEffect(() => {
@@ -92,6 +113,28 @@ export default function Home() {
 
   return (
     <div className="relative">
+      {/* Subscription Warning Alert */}
+      {showSubscriptionWarning && (
+        <div className="fixed top-20 left-0 right-0 mx-auto w-full max-w-md z-50 animate-slide-down">
+          <div className="bg-gradient-to-r from-yellow-600 to-red-600 text-white p-4 rounded-lg shadow-lg flex items-center justify-between">
+            <div className="flex items-center">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              <span>Diese Funktion erfordert ein aktives Abonnement</span>
+            </div>
+            <button 
+              onClick={() => setShowSubscriptionWarning(false)}
+              className="text-white hover:text-gray-200"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Hero Section - Updated to match reference design */}
       <section className="relative overflow-hidden py-12 md:py-20">
         <div className="absolute inset-0 bg-purple-glow opacity-30" />

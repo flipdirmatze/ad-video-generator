@@ -53,7 +53,9 @@ export async function middleware(request: NextRequest) {
 
     // Wenn eine Route ein Abonnement erfordert, aber der Benutzer keines hat
     if (requiresSubscription && !hasActiveSubscription && path !== '/pricing') {
-      return NextResponse.redirect(new URL('/pricing', request.url));
+      const redirectUrl = new URL('/', request.url);
+      redirectUrl.searchParams.set('subscription_required', 'true');
+      return NextResponse.redirect(redirectUrl);
     }
   }
 
