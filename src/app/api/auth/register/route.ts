@@ -50,11 +50,6 @@ const originalPostHandler = async (request: NextRequest) => {
     const subscriptionPlan = isValidPromoCode ? PROMO_PLAN : 'free';
     const subscriptionActive = isValidPromoCode;
     
-    // Hole die Limits für den ausgewählten Plan
-    const { default: User } = await import('@/models/User');
-    const dummyUser = new User();
-    const planLimits = dummyUser.schema.path('limits').default();
-    
     // Create user with verification token and appropriate plan
     const newUser = new db({
       email,
@@ -76,10 +71,15 @@ const originalPostHandler = async (request: NextRequest) => {
     
     // Wenn ein gültiger Promo-Code eingegeben wurde, aktualisiere die Limits
     if (isValidPromoCode) {
-      newUser.limits = User.schema.methods.updateLimitsForPlan.call(
-        { limits: {} }, 
-        PROMO_PLAN
-      );
+      // Direkt die Pro-Plan-Limits definieren, basierend auf den Werten aus User.ts
+      newUser.limits = {
+        maxVideosPerMonth: 50,
+        maxVideoLength: 600, // 10 Minuten
+        maxStorageSpace: 1024 * 1024 * 1024 * 10, // 10 GB
+        maxResolution: "1080p", // HD
+        maxUploadSize: 500 * 1024 * 1024, // 500MB
+        allowedFeatures: ["templates"]
+      };
     }
     
     const result = await newUser.save();
