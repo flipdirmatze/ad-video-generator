@@ -335,9 +335,8 @@ export async function POST(request: NextRequest) {
     const command = new SubmitJobCommand({
       jobName,
       jobQueue: process.env.AWS_BATCH_JOB_QUEUE || '',
-      // Stelle sicher, dass eine Fargate-kompatible Job-Definition verwendet wird
-      // Verwende die neue v2 Fargate Job-Definition, die wir gerade erstellt haben
-      jobDefinition: 'video-processor-job-fargate-v2',
+      // Verwende die Umgebungsvariable statt hardcoded value
+      jobDefinition: process.env.AWS_BATCH_JOB_DEFINITION || '',
       containerOverrides: {
         environment
       }

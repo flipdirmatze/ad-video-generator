@@ -127,11 +127,22 @@ export const submitAwsBatchJob = async (
     if (!response.ok) {
       let errorData;
       try {
-        errorData = await response.json();
+        const responseText = await response.text();
+        console.log('Raw error response:', responseText);
+        
+        if (responseText.trim()) {
+          errorData = JSON.parse(responseText);
+        } else {
+          errorData = { error: 'Empty response from server', status: response.status };
+        }
         console.error('AWS Batch API error response:', errorData);
       } catch (parseError) {
         console.error('Failed to parse error response:', parseError);
-        errorData = { error: 'Unknown error', status: response.status };
+        errorData = { 
+          error: 'Failed to parse server response', 
+          status: response.status,
+          statusText: response.statusText
+        };
       }
       
       throw new Error(
