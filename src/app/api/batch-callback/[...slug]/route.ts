@@ -19,9 +19,10 @@ type BatchCallbackRequest = {
 /**
  * Diese API-Route wird vom AWS Batch-Job aufgerufen, wenn der Job beendet wurde.
  * Sie aktualisiert den Status des Projekts in der Datenbank und setzt den Output-URL.
+ * Sie verwendet eine Catch-All Route, um Anfragen mit und ohne Trailing Slash zu akzeptieren.
  */
 export async function POST(request: NextRequest) {
-  console.log('Batch callback received');
+  console.log('Batch callback received (catch-all)');
   
   try {
     const data: BatchCallbackRequest = await request.json();
