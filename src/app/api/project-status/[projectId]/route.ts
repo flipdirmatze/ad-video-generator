@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import dbConnect from '@/lib/mongoose';
 import ProjectModel, { IProject } from '@/models/Project';
-import { getJobStatus } from '@/utils/aws-batch-utils';
+import { getJobStatusDirect } from '@/utils/aws-batch-utils';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 import mongoose from 'mongoose';
@@ -133,8 +133,8 @@ export async function GET(
           });
         }
         
-        // Rufe den Status des AWS Batch-Jobs ab
-        const jobStatus = await getJobStatus(jobIdToUse, session.user.id);
+        // Hole den aktuellen Job-Status von AWS Batch
+        const jobStatus = await getJobStatusDirect(jobIdToUse);
         console.log(`AWS Batch job status for ${jobIdToUse}: ${jobStatus}`);
 
         // Berechne den Fortschritt basierend auf dem Job-Status
