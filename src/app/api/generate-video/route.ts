@@ -9,7 +9,7 @@ import Voiceover from '@/models/Voiceover';
 import { generateUniqueFileName, getS3Url } from '@/lib/storage';
 import { Types } from 'mongoose';
 import { NextRequest } from 'next/server';
-import { submitAwsBatchJob, BatchJobTypes } from '@/utils/aws-batch-utils';
+import { submitAwsBatchJobDirect, BatchJobTypes } from '@/utils/aws-batch-utils';
 import mongoose from 'mongoose';
 
 // Typ für eingehende Video-Segment-Daten
@@ -486,7 +486,7 @@ export async function POST(request: Request) {
 
       console.log('Submitting AWS Batch job with params:', additionalParams);
       
-      const batchResponse = await submitAwsBatchJob(
+      const batchResponse = await submitAwsBatchJobDirect(
         BatchJobTypes.GENERATE_FINAL,
         firstVideoUrl, 
         finalOutputKey, // <<< Übergebe den korrekten Key aus dem Projekt

@@ -55,18 +55,18 @@ export interface VideoInfo {
 }
 
 /**
- * Ruft die AWS Batch API auf, um einen Videoverarbeitungsjob einzureichen
+ * DIREKTE AWS Batch Submission (ohne API-Route)
+ * Verwendet direkt die AWS SDK statt über unsere API zu gehen
  */
-export const submitAwsBatchJob = async (
+export const submitAwsBatchJobDirect = async (
   jobType: BatchJobType,
   inputVideoUrl: string,
   outputKey?: string,
   additionalParams?: Record<string, string | number | boolean | object>
 ): Promise<BatchJobResult> => {
-  // Bestimme die Basis-URL für API-Aufrufe (nur Server-seitig)
-  const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || 'https://clevercut.app').replace(/\/+$/, '');
-
   try {
+    const { BatchClient, SubmitJobCommand } = require('@aws-sdk/client-batch');
+    
     // Validiere den Job-Typ
     const validJobTypes = Object.values(BatchJobTypes);
     if (!validJobTypes.includes(jobType)) {
@@ -80,97 +80,68 @@ export const submitAwsBatchJob = async (
       throw new Error('Input video URL is required');
     }
 
-    console.log(`Submitting AWS Batch job to ${baseUrl}/api/aws-batch with job type ${jobType}`);
+    console.log(`Submitting AWS Batch job directly with job type ${jobType}`);
     console.log('Input video URL:', inputVideoUrl);
     console.log('Output key:', outputKey || 'Not provided');
-    
+
+    const batchClient = new BatchClient({
+      region: process.env.AWS_REGION,
+      credentials: {
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+      }
+    });
+
     // Hole die Benutzer-ID aus den additionalParams, falls vorhanden
     const userId = additionalParams?.USER_ID || 'system';
     
-    // Erstelle die Anfrage an unsere API-Route mit Fargate-Flag
-    const requestOptions = {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': process.env.API_SECRET_KEY || 'internal-api-call',
-        'Authorization': `Bearer ${userId}`
-      },
-      body: JSON.stringify({
-        jobType,
-        inputVideoUrl,
-        outputKey,
-        additionalParams: {
-          ...additionalParams,
-          // Zusätzliches Flag hinzufügen, damit die API weiß, dass dies ein Fargate-Job ist
-          USE_FARGATE: true
+    // Generiere einen eindeutigen Job-Namen
+    const jobName = `video-${jobType}-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    
+    // Erstelle Environment-Variablen
+    let environment: { name: string; value: string }[] = [];
+    
+    // Basis-Umgebungsvariablen
+    environment.push({ name: 'JOB_TYPE', value: jobType });
+    environment.push({ name: 'INPUT_VIDEO_URL', value: inputVideoUrl });
+    environment.push({ name: 'USER_ID', value: userId });
+    environment.push({ name: 'S3_BUCKET', value: process.env.S3_BUCKET_NAME || '' });
+    environment.push({ name: 'AWS_REGION', value: process.env.AWS_REGION || 'eu-central-1' });
+    
+    // Output Key setzen
+    if (outputKey) {
+      environment.push({ name: 'OUTPUT_KEY', value: outputKey });
+    }
+    
+    // Zusätzliche Parameter hinzufügen
+    if (additionalParams) {
+      Object.entries(additionalParams).forEach(([key, value]) => {
+        if (key !== 'OUTPUT_KEY' && value !== undefined && value !== null) {
+          const stringValue = typeof value === 'string' ? value : JSON.stringify(value);
+          environment.push({ name: key, value: stringValue });
         }
-      } as BatchJobParams),
-      // Erhöhe das Timeout für die Anfrage
-      signal: AbortSignal.timeout(30000) // 30 Sekunden Timeout
-    };
-    
-    console.log('Sending request to AWS Batch API with options:', {
-      url: `${baseUrl}/api/aws-batch`,
-      method: requestOptions.method,
-      headers: {
-        'Content-Type': requestOptions.headers['Content-Type'],
-        'x-api-key': requestOptions.headers['x-api-key'],
-        'Authorization': 'Bearer [userId]' // Maskiere die tatsächliche ID im Log
-      },
-      bodyLength: requestOptions.body.length
-    });
-    
-    const response = await fetch(`${baseUrl}/api/aws-batch`, requestOptions);
+      });
+    }
 
-    console.log('AWS Batch API response status:', response.status);
-    
-    if (!response.ok) {
-      let errorData;
-      try {
-        const responseText = await response.text();
-        console.log('Raw error response:', responseText);
-        
-        if (responseText.trim()) {
-          errorData = JSON.parse(responseText);
-        } else {
-          errorData = { error: 'Empty response from server', status: response.status };
-        }
-        console.error('AWS Batch API error response:', errorData);
-      } catch (parseError) {
-        console.error('Failed to parse error response:', parseError);
-        errorData = { 
-          error: 'Failed to parse server response', 
-          status: response.status,
-          statusText: response.statusText
-        };
+    const command = new SubmitJobCommand({
+      jobName,
+      jobQueue: process.env.AWS_BATCH_JOB_QUEUE,
+      jobDefinition: process.env.AWS_BATCH_JOB_DEFINITION,
+      containerOverrides: {
+        environment
       }
-      
-      throw new Error(
-        `AWS Batch API error: ${errorData.error || errorData.message || response.statusText} (Status: ${response.status})`
-      );
-    }
+    });
 
-    let data;
-    try {
-      data = await response.json();
-      console.log('AWS Batch API success response:', data);
-    } catch (parseError) {
-      console.error('Failed to parse success response:', parseError);
-      throw new Error('Failed to parse response from AWS Batch API');
-    }
-    
-    if (!data.jobId || !data.jobName) {
-      console.error('Invalid response from AWS Batch API:', data);
-      throw new Error('Invalid response from AWS Batch API: Missing jobId or jobName');
-    }
+    const response = await batchClient.send(command);
+    console.log('AWS Batch job submitted successfully:', response.jobId);
 
     return {
-      jobId: data.jobId,
-      jobName: data.jobName,
-      status: data.status
+      jobId: response.jobId,
+      jobName: response.jobName,
+      status: 'SUBMITTED'
     };
   } catch (error) {
-    console.error('Error submitting AWS Batch job:', error);
+    console.error('Error submitting AWS Batch job directly:', error);
     throw error instanceof Error 
       ? error 
       : new Error('Unknown error submitting AWS Batch job');
@@ -178,49 +149,43 @@ export const submitAwsBatchJob = async (
 };
 
 /**
- * Ruft den Status eines AWS Batch Jobs ab
+ * Ruft den Status eines AWS Batch Jobs ab - DIREKT über AWS SDK
  */
-export const getJobStatus = async (jobId: string, userId?: string): Promise<string> => {
-  // Bestimme die Basis-URL für API-Aufrufe (nur Server-seitig)
-  const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || 'https://clevercut.app').replace(/\/+$/, '');
-
+export const getJobStatusDirect = async (jobId: string): Promise<string> => {
   try {
-    console.log(`Fetching job status for job ${jobId} from ${baseUrl}/api/aws-batch`);
+    const { BatchClient, DescribeJobsCommand } = require('@aws-sdk/client-batch');
     
-    // Verwende die übergebene Benutzer-ID oder 'system' als Fallback
-    const authUserId = userId || 'system';
-    
-    const response = await fetch(
-      `${baseUrl}/api/aws-batch?jobId=${jobId}`,
-      {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': process.env.API_SECRET_KEY || 'internal-api-call',
-          'Authorization': `Bearer ${authUserId}`
-        },
-        // Erhöhe das Timeout für die Anfrage
-        signal: AbortSignal.timeout(30000) // 30 Sekunden Timeout
+    const batchClient = new BatchClient({
+      region: process.env.AWS_REGION,
+      credentials: {
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
       }
-    );
+    });
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(
-        `Failed to get job status: ${errorData.error || errorData.message || response.statusText}`
-      );
-    }
-
-    const data = await response.json();
+    console.log(`Fetching job status for job ${jobId} directly from AWS`);
     
-    // Wenn der Job fehlgeschlagen ist und einen Grund hat, füge ihn der Fehlermeldung hinzu
-    if (data.status === 'failed' && (data.reason || data.error)) {
-      return `failed: ${data.reason || data.error || 'Unknown error'}`;
+    const command = new DescribeJobsCommand({
+      jobs: [jobId]
+    });
+    
+    const response = await batchClient.send(command);
+    
+    if (!response.jobs || response.jobs.length === 0) {
+      throw new Error(`Job ${jobId} not found`);
     }
     
-    return data.status;
+    const job = response.jobs[0];
+    const status = job.status?.toLowerCase() || 'unknown';
+    
+    // Wenn der Job fehlgeschlagen ist und einen Grund hat, füge ihn hinzu
+    if (status === 'failed' && job.statusReason) {
+      return `failed: ${job.statusReason}`;
+    }
+    
+    return status;
   } catch (error) {
-    console.error('Error getting job status:', error);
+    console.error('Error getting job status directly:', error);
     throw error instanceof Error 
       ? error 
       : new Error('Unknown error getting job status');
@@ -286,7 +251,7 @@ export const combineVideosWithVoiceover = async (
   
   try {
     // Sende den Job an AWS Batch anstatt lokale Verarbeitung
-    const jobResult = await submitAwsBatchJob(
+    const jobResult = await submitAwsBatchJobDirect(
       BatchJobTypes.ADD_VOICEOVER,
       videoSegments[0].url, // Erster Videoclip als Referenz
       outputFileName,
@@ -302,7 +267,7 @@ export const combineVideosWithVoiceover = async (
       const interval = setInterval(async () => {
         try {
           // Verwende die Job-ID als Benutzer-ID für die Authentifizierung
-          const status = await getJobStatus(jobResult.jobId, jobResult.jobId);
+          const status = await getJobStatusDirect(jobResult.jobId);
           
           switch (status.toLowerCase()) {
             case 'running':
@@ -357,7 +322,7 @@ export const concatVideosWithoutReencoding = async (
   console.log(`Concatenating ${videoPaths.length} videos via AWS Batch`);
   
   // Sende den Job an AWS Batch
-  const jobResult = await submitAwsBatchJob(
+  const jobResult = await submitAwsBatchJobDirect(
     BatchJobTypes.CONCAT,
     videoPaths[0], // Erster Videoclip als Referenz
     outputPath,
@@ -402,7 +367,7 @@ export const generateFinalVideo = async (
     }
 
     // Sende den Job an AWS Batch
-    const jobResult = await submitAwsBatchJob(
+    const jobResult = await submitAwsBatchJobDirect(
       BatchJobTypes.GENERATE_FINAL,
       templateData.baseVideoUrl || templateData.segments[0].url,
       outputFileName,
