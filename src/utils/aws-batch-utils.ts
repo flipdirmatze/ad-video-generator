@@ -3,6 +3,7 @@
  * Ersatz für lokale FFmpeg-Verarbeitung zugunsten von AWS Batch
  */
 import { v4 as uuidv4 } from 'uuid';
+import { BatchClient, SubmitJobCommand, DescribeJobsCommand } from '@aws-sdk/client-batch';
 
 // Definiere valide Job-Typen als Enum
 export const BatchJobTypes = {
@@ -65,8 +66,6 @@ export const submitAwsBatchJobDirect = async (
   additionalParams?: Record<string, string | number | boolean | object>
 ): Promise<BatchJobResult> => {
   try {
-    const { BatchClient, SubmitJobCommand } = require('@aws-sdk/client-batch');
-    
     // Validiere den Job-Typ
     const validJobTypes = Object.values(BatchJobTypes);
     if (!validJobTypes.includes(jobType)) {
@@ -80,12 +79,17 @@ export const submitAwsBatchJobDirect = async (
       throw new Error('Input video URL is required');
     }
 
+    // Validiere AWS-Credentials
+    if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY) {
+      throw new Error('AWS credentials are not configured');
+    }
+
     console.log(`Submitting AWS Batch job directly with job type ${jobType}`);
     console.log('Input video URL:', inputVideoUrl);
     console.log('Output key:', outputKey || 'Not provided');
 
     const batchClient = new BatchClient({
-      region: process.env.AWS_REGION,
+      region: process.env.AWS_REGION || 'eu-central-1',
       credentials: {
         accessKeyId: process.env.AWS_ACCESS_KEY_ID,
         secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
@@ -99,12 +103,12 @@ export const submitAwsBatchJobDirect = async (
     const jobName = `video-${jobType}-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
     
     // Erstelle Environment-Variablen
-    let environment: { name: string; value: string }[] = [];
+    const environment: { name: string; value: string }[] = [];
     
     // Basis-Umgebungsvariablen
     environment.push({ name: 'JOB_TYPE', value: jobType });
     environment.push({ name: 'INPUT_VIDEO_URL', value: inputVideoUrl });
-    environment.push({ name: 'USER_ID', value: userId });
+    environment.push({ name: 'USER_ID', value: String(userId) });
     environment.push({ name: 'S3_BUCKET', value: process.env.S3_BUCKET_NAME || '' });
     environment.push({ name: 'AWS_REGION', value: process.env.AWS_REGION || 'eu-central-1' });
     
@@ -123,6 +127,14 @@ export const submitAwsBatchJobDirect = async (
       });
     }
 
+    // Validiere AWS Batch-Konfiguration
+    if (!process.env.AWS_BATCH_JOB_QUEUE) {
+      throw new Error('AWS_BATCH_JOB_QUEUE environment variable is not set');
+    }
+    if (!process.env.AWS_BATCH_JOB_DEFINITION) {
+      throw new Error('AWS_BATCH_JOB_DEFINITION environment variable is not set');
+    }
+
     const command = new SubmitJobCommand({
       jobName,
       jobQueue: process.env.AWS_BATCH_JOB_QUEUE,
@@ -136,8 +148,8 @@ export const submitAwsBatchJobDirect = async (
     console.log('AWS Batch job submitted successfully:', response.jobId);
 
     return {
-      jobId: response.jobId,
-      jobName: response.jobName,
+      jobId: response.jobId || '',
+      jobName: response.jobName || jobName,
       status: 'SUBMITTED'
     };
   } catch (error) {
@@ -153,10 +165,13 @@ export const submitAwsBatchJobDirect = async (
  */
 export const getJobStatusDirect = async (jobId: string): Promise<string> => {
   try {
-    const { BatchClient, DescribeJobsCommand } = require('@aws-sdk/client-batch');
-    
+    // Validiere AWS-Credentials
+    if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY) {
+      throw new Error('AWS credentials are not configured');
+    }
+
     const batchClient = new BatchClient({
-      region: process.env.AWS_REGION,
+      region: process.env.AWS_REGION || 'eu-central-1',
       credentials: {
         accessKeyId: process.env.AWS_ACCESS_KEY_ID,
         secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
