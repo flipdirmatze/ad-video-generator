@@ -65,6 +65,16 @@ export async function middleware(request: NextRequest) {
 // Diese Middleware wird nur für die angegebenen Pfade ausgeführt
 export const config = {
   matcher: [
-    '/((?!api/batch-callback|_next/static|_next/image|favicon.ico|images|logos).*)',
+    /*
+     * Match all request paths except for the ones starting with:
+     * - api/auth (for NextAuth)
+     * - api/batch-callback (for AWS Batch callbacks - handles all subpaths)
+     * - _next/static (static files)
+     * - _next/image (image optimization files)
+     * - favicon.ico (favicon file)
+     * - images/ (image assets)
+     * - logos/ (logo assets)
+     */
+    '/((?!api/auth/|api/batch-callback/|_next/static|_next/image|favicon.ico|images/|logos/).*)',
   ],
 }; 
