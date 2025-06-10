@@ -268,228 +268,53 @@ export async function POST(request: Request) {
         templateDataPath: templateDataKey
       });
 
-      // Konstruiere die additionalParams für den AWS Batch Job
+      // Konstruiere die additionalParams für den AWS Batch Job.
+      // Nur noch absolut notwendige IDs und Pfade übergeben.
       const additionalParams: Record<string, any> = {
         USER_ID: session.user.id,
         PROJECT_ID: project._id.toString(),
-        TEMPLATE_DATA_PATH: templateDataKey, // Pfad zu den Template-Daten in S3
+        TEMPLATE_DATA_PATH: templateDataKey, // Der einzige Weg, um komplexe Daten zu übergeben
         TITLE: title,
-        // Für Abwärtskompatibilität mit bestehenden AWS Batch Container-Skripten
-        // setzen wir sowohl ein Verweis auf die S3-Template-Datei als auch die wichtigsten
-        // Daten direkt in TEMPLATE_DATA, damit der Container initial arbeiten kann
-        TEMPLATE_DATA: JSON.stringify({
-          type: 's3Path',
-          path: templateDataKey,
-          // Include essential data to avoid dependency on S3 loading
-          segments: videoSegments.slice(0, 5).map(s => ({
-            url: s.url,
-            startTime: s.startTime || 0,
-            duration: s.duration || 10,
-            position: s.position || 0
-          })), // Include first 5 segments with minimal data
-          segmentCount: videoSegments.length,
-          voiceoverText: voiceoverText || '',
-          addSubtitles: addSubtitles || false
-        })
       };
 
-      // Set subtitle options if enabled
-      if (addSubtitles && subtitleOptions) {
-        console.log('Adding subtitle options to batch parameters');
-        console.log('SUBTITLE OPTIONS DEBUG:', {
-          fontName: subtitleOptions.fontName,
-          fontSize: subtitleOptions.fontSize,
-          primaryColor: subtitleOptions.primaryColor,
-          backgroundColor: subtitleOptions.backgroundColor,
-          transparentCheck: subtitleOptions.backgroundColor === '#00000000',
-          position: subtitleOptions.position,
-          borderStyle: subtitleOptions.borderStyle
-        });
-        additionalParams.ADD_SUBTITLES = 'true';
-        additionalParams.SUBTITLE_TEXT = voiceoverText || '';
-        additionalParams.SUBTITLE_FONT_NAME = subtitleOptions.fontName || 'Arial';
-        additionalParams.SUBTITLE_FONT_SIZE = subtitleOptions.fontSize || 24;
-        additionalParams.SUBTITLE_PRIMARY_COLOR = subtitleOptions.primaryColor || '#FFFFFF';
-        additionalParams.SUBTITLE_BACKGROUND_COLOR = subtitleOptions.backgroundColor || '#00000000';
-        additionalParams.SUBTITLE_BORDER_STYLE = subtitleOptions.borderStyle || 3;
-        additionalParams.SUBTITLE_POSITION = subtitleOptions.position || 'bottom';
-      }
-
-      // Voiceover-URL direkt bereitstellen, wenn verfügbar
+      // Voiceover-Informationen als separate, kleine Variablen übergeben, falls vorhanden
       if (voiceoverId) {
-        try {
-          console.log(`Finding voiceover with ID: ${voiceoverId}`);
-          
-          // Stelle sicher, dass die DB-Verbindung hergestellt ist
-          await dbConnect();
-          
-          // Prüfe, ob das Voiceover-Modell existiert
-          console.log('Verfügbare Mongoose-Modelle:', Object.keys(mongoose.models).join(', '));
-          if (!mongoose.models.Voiceover) {
-            console.error('Voiceover-Modell ist nicht registriert, importiere es explizit');
-            // Stelle sicher, dass wir das importierte Voiceover-Modell verwenden
+        additionalParams.VOICEOVER_ID = voiceoverId;
+        
+        interface VoiceoverDoc {
+          path?: string;
+          wordTimestamps?: any[];
+        }
+        
+        const voiceover = await Voiceover.findById(voiceoverId).lean<VoiceoverDoc>();
+        
+        if (voiceover?.path) {
+          additionalParams.VOICEOVER_KEY = voiceover.path;
+        }
+
+        // Wort-Zeitstempel IMMER als S3-Pfad übergeben, nie direkt
+        if (voiceover?.wordTimestamps && voiceover.wordTimestamps.length > 0) {
+          console.log(`Uploading ${voiceover.wordTimestamps.length} word timestamps to S3 to avoid size limits.`);
+          try {
+            const timestampsJson = JSON.stringify(voiceover.wordTimestamps);
+            const timestampS3Key = `timestamps/${voiceoverId}_timestamps.json`;
+            const buffer = Buffer.from(timestampsJson);
+            await uploadToS3(buffer, timestampS3Key, 'application/json');
+            additionalParams.WORD_TIMESTAMPS_PATH = timestampS3Key;
+            console.log('Successfully uploaded timestamps to S3:', timestampS3Key);
+          } catch (s3Error) {
+            console.error('Error uploading timestamps to S3:', s3Error);
+            // Fahre ohne Timestamps fort, wenn der Upload fehlschlägt
           }
-          
-          // Hole die Voiceover-Datei aus der Datenbank - direkt über das importierte Modell
-          console.log('Suche Voiceover mit ID:', voiceoverId);
-          const voiceover = await Voiceover.findById(voiceoverId);
-          
-          console.log('Voiceover-Abfrageergebnis:', voiceover ? 'gefunden' : 'nicht gefunden');
-          
-          if (voiceover) {
-            console.log('Voiceover found:', {
-              id: voiceover._id,
-              name: voiceover.name,
-              path: voiceover.path,
-              url: voiceover.url,
-              hasTimestamps: voiceover.wordTimestamps && voiceover.wordTimestamps.length > 0,
-              timestampsCount: voiceover.wordTimestamps ? voiceover.wordTimestamps.length : 0
-            });
-            
-            // DEBUG: Untersuche das Voiceover-Objekt genauer
-            console.log('VOICEOVER PROPERTIES:', Object.keys(voiceover));
-            console.log('VOICEOVER DOCUMENT STRUCTURE:');
-            try {
-              const voiceoverDoc = voiceover.toObject ? voiceover.toObject() : voiceover;
-              console.log(JSON.stringify(voiceoverDoc, null, 2).substring(0, 1000) + '...');
-              
-              console.log('DETAILED TIMESTAMP INFO:');
-              console.log('wordTimestamps exists:', 'wordTimestamps' in voiceoverDoc);
-              if ('wordTimestamps' in voiceoverDoc) {
-                console.log('wordTimestamps type:', typeof voiceoverDoc.wordTimestamps);
-                console.log('wordTimestamps is array:', Array.isArray(voiceoverDoc.wordTimestamps));
-                if (Array.isArray(voiceoverDoc.wordTimestamps)) {
-                  console.log('wordTimestamps length:', voiceoverDoc.wordTimestamps.length);
-                  if (voiceoverDoc.wordTimestamps.length > 0) {
-                    console.log('First timestamp:', JSON.stringify(voiceoverDoc.wordTimestamps[0]));
-                  }
-                }
-              }
-            } catch (debugError) {
-              console.error('Error during debug output:', debugError);
-            }
-            
-            if (voiceover.path) {
-              // Pass both the direct S3 URL and the file path for maximum compatibility
-              additionalParams.VOICEOVER_URL = getS3Url(voiceover.path);
-              additionalParams.VOICEOVER_KEY = voiceover.path;
-              
-              console.log('Adding voiceover to batch job:');
-              console.log('- VOICEOVER_URL:', additionalParams.VOICEOVER_URL);
-              console.log('- VOICEOVER_KEY:', additionalParams.VOICEOVER_KEY);
-              
-              // Übergebe Wort-Zeitstempel für Untertitel-Synchronisation, wenn verfügbar
-              if (voiceover.wordTimestamps && voiceover.wordTimestamps.length > 0) {
-                console.log(`Found ${voiceover.wordTimestamps.length} word timestamps for accurate subtitle synchronization`);
-                
-                // *** EXTREME DEBUG LOGGING ***
-                console.log('VOICEOVER OBJECT STRUCTURE:');
-                console.log(JSON.stringify(voiceover, null, 2).substring(0, 1000) + '...');
-                
-                // Detaillierte Debug-Ausgabe
-                console.log(`Type of wordTimestamps: ${typeof voiceover.wordTimestamps}`);
-                console.log(`Is array: ${Array.isArray(voiceover.wordTimestamps)}`);
-                
-                // Überprüfe die Timestamp-Struktur
-                const firstThree = voiceover.wordTimestamps.slice(0, 3);
-                console.log('First 3 timestamps structure check:');
-                console.log(JSON.stringify(firstThree, null, 2));
-                
-                // Konvertiere zu JSON-String
-                const timestampsJson = JSON.stringify(voiceover.wordTimestamps);
-                console.log(`JSON string length: ${timestampsJson.length} characters`);
-                
-                // *** DEBUG: ORIGINAL TIMESTAMPS JSON SAMPLE ***
-                console.log('TIMESTAMPS JSON SAMPLE (first 500 chars):');
-                console.log(timestampsJson.substring(0, 500));
-                
-                // Prüfe auf Maximalgröße (AWS Batch Environment Variable Limit)
-                const MAX_ENV_SIZE = 30000; // 30 KB ist ein konservatives Limit für Umgebungsvariablen
-                
-                if (timestampsJson.length > MAX_ENV_SIZE) {
-                  console.warn(`WARNING: Timestamps JSON string is ${timestampsJson.length} bytes, which exceeds env var limit of ${MAX_ENV_SIZE} bytes.`);
-                  console.log('Uploading timestamps to S3 instead of passing directly as env var.');
-                  
-                  // Hochladen der Timestamps als separate Datei nach S3
-                  try {
-                    const timestampS3Key = `timestamps/${voiceoverId}_timestamps.json`;
-                    
-                    // Hochladen zu S3
-                    const buffer = Buffer.from(timestampsJson);
-                    const s3Url = await uploadToS3(
-                      buffer,
-                      timestampS3Key,
-                      'application/json'
-                    );
-                    
-                    console.log(`Timestamps uploaded to S3: ${s3Url}`);
-                    
-                    // Nur den S3-Pfad als Umgebungsvariable übergeben
-                    additionalParams.WORD_TIMESTAMPS_PATH = timestampS3Key;
-                    console.log('Using S3 path for word timestamps:', timestampS3Key);
-                    
-                    // Für Debugging: Ausgabe der ersten paar Timestamps
-                    console.log('Sample timestamps (first 3):');
-                    voiceover.wordTimestamps.slice(0, 3).forEach((ts: any, i: number) => {
-                      console.log(`  ${i+1}: "${ts.word}" - ${ts.startTime}s to ${ts.endTime}s`);
-                    });
-                  } catch (s3Error) {
-                    console.error('Error uploading timestamps to S3:', s3Error);
-                    console.log('Falling back to simplified subtitle timing');
-                  }
-                } else {
-                  // Zeitstempel als JSON-String übergeben
-                  additionalParams.WORD_TIMESTAMPS = timestampsJson;
-                  
-                  // Für Debugging: Ausgabe der ersten paar Timestamps
-                  console.log('Sample timestamps (first 3):');
-                  voiceover.wordTimestamps.slice(0, 3).forEach((ts: any, i: number) => {
-                    console.log(`  ${i+1}: "${ts.word}" - ${ts.startTime}s to ${ts.endTime}s`);
-                  });
-                }
-              } else {
-                console.log('No word timestamps available for this voiceover, subtitles will use estimated timing');
-              }
-            } else {
-              console.error('Voiceover document has no path field:', voiceover);
-              // Trotzdem die ID übergeben als Fallback
-              additionalParams.VOICEOVER_ID = voiceoverId;
-              console.log('Added VOICEOVER_ID as fallback:', voiceoverId);
-            }
-          } else {
-            console.error(`Voiceover with ID ${voiceoverId} not found in database`);
-            // Trotzdem die ID übergeben als Fallback
-            additionalParams.VOICEOVER_ID = voiceoverId;
-            console.log('Added VOICEOVER_ID as fallback:', voiceoverId);
-          }
-        } catch (voiceoverError) {
-          console.error('Error getting voiceover:', voiceoverError);
-          // Trotzdem die ID übergeben als Fallback
-          additionalParams.VOICEOVER_ID = voiceoverId;
-          console.log('Added VOICEOVER_ID as fallback despite error:', voiceoverId);
         }
       }
-
-      // WICHTIG: Hier immer die Voiceover-ID direkt übergeben, unabhängig davon, ob wir die URL haben
-      if (voiceoverId && !additionalParams.VOICEOVER_ID) {
-        additionalParams.VOICEOVER_ID = voiceoverId;
-        console.log('Added VOICEOVER_ID directly:', voiceoverId);
-      }
-
-      console.log('Final batch parameters for voiceover:');
-      console.log('- VOICEOVER_URL:', additionalParams.VOICEOVER_URL || 'not set');
-      console.log('- VOICEOVER_KEY:', additionalParams.VOICEOVER_KEY || 'not set');
-      console.log('- VOICEOVER_ID:', additionalParams.VOICEOVER_ID || 'not set');
-
-      // Stelle sicher, dass OUTPUT_KEY NICHT in additionalParams ist, da er direkt übergeben wird
-      delete additionalParams.OUTPUT_KEY; 
-
-      console.log('Submitting AWS Batch job with params:', additionalParams);
+      
+      console.log('Final (minimal) params for AWS Batch job:', additionalParams);
       
       const batchResponse = await submitAwsBatchJobDirect(
         BatchJobTypes.GENERATE_FINAL,
         firstVideoUrl, 
-        finalOutputKey, // <<< Übergebe den korrekten Key aus dem Projekt
+        finalOutputKey,
         additionalParams
       );
       
