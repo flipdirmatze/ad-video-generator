@@ -135,7 +135,7 @@ export async function GET(
         
         // Hole den aktuellen Job-Status von AWS Batch
         const jobStatus = await getJobStatusDirect(jobIdToUse);
-        console.log(`AWS Batch job status for ${jobIdToUse}: ${jobStatus}`);
+        console.log(`[JobStatusDebug] Job ID: ${jobIdToUse}, Status from AWS: '${jobStatus}'`);
 
         // Berechne den Fortschritt basierend auf dem Job-Status
         let progress = 0;
@@ -143,40 +143,51 @@ export async function GET(
         let error = project.error;
 
         // Prüfe, ob der Status einen Fehler enthält (z.B. "failed: Essential container in task exited")
-        if (jobStatus.toLowerCase().startsWith('failed:')) {
+        const lowerCaseStatus = jobStatus.toLowerCase();
+        if (lowerCaseStatus.startsWith('failed:')) {
           const errorMessage = jobStatus.substring(7).trim(); // Entferne "failed: "
           newStatus = 'failed';
           error = errorMessage;
           progress = 0;
+          console.log(`[JobStatusDebug] Status is FAILED with reason. Error -> ${error}`);
         } else {
-          switch (jobStatus.toLowerCase()) {
+          console.log(`[JobStatusDebug] Evaluating status: '${lowerCaseStatus}'`);
+          switch (lowerCaseStatus) {
             case 'submitted':
               progress = 5;
+              console.log(`[JobStatusDebug] Status is SUBMITTED. Progress -> 5.`);
               break;
             case 'pending':
               progress = 10;
+              console.log(`[JobStatusDebug] Status is PENDING. Progress -> 10.`);
               break;
             case 'runnable':
               progress = 15;
+              console.log(`[JobStatusDebug] Status is RUNNABLE. Progress -> 15.`);
               break;
             case 'starting':
               progress = 20;
+              console.log(`[JobStatusDebug] Status is STARTING. Progress -> 20.`);
               break;
             case 'running':
               // Fortschritt zwischen 25% und 95% basierend auf der Zeit
               progress = Math.min(95, 25 + Math.floor(Math.random() * 70));
+              console.log(`[JobStatusDebug] Status is RUNNING. Random progress -> ${progress}.`);
               break;
             case 'succeeded':
               progress = 100;
               newStatus = 'completed';
+              console.log(`[JobStatusDebug] Status is SUCCEEDED. Progress -> 100.`);
               break;
             case 'failed':
               progress = 0;
               newStatus = 'failed';
               error = 'AWS Batch job failed';
+              console.log(`[JobStatusDebug] Status is FAILED. Progress -> 0.`);
               break;
             default:
               progress = project.progress || 0;
+              console.log(`[JobStatusDebug] Status is UNKNOWN ('${lowerCaseStatus}'). Keeping progress -> ${progress}.`);
           }
         }
 
