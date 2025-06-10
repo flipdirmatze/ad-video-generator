@@ -1,8 +1,9 @@
 /**
- * AWS Batch Utils
- * Ersatz für lokale FFmpeg-Verarbeitung zugunsten von AWS Batch
+ * FFmpeg-Utils für Videobearbeitung
+ * Diese Versionen sind AWS Batch-basiert
  */
 import { v4 as uuidv4 } from 'uuid';
+import { submitAwsBatchJobDirect, BatchJobTypes } from '@/utils/aws-batch-utils';
 
 /**
  * Interface für Videosegmente
@@ -26,47 +27,6 @@ export type VideoInfo = {
   format?: string;
   bitrate?: number;
   codec?: string;
-};
-
-/**
- * Ruft die AWS Batch API auf, um einen Videoverarbeitungsjob einzureichen
- */
-export const submitAwsBatchJob = async (
-  jobType: string,
-  inputVideoUrl: string,
-  outputKey?: string,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  additionalParams?: Record<string, any>
-): Promise<{ jobId: string; jobName: string }> => {
-  try {
-    // Erstelle die Anfrage an unsere API-Route
-    const response = await fetch('/api/aws-batch', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        jobType,
-        inputVideoUrl,
-        outputKey,
-        additionalParams,
-      }),
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(`AWS Batch API-Fehler: ${errorData.error || response.statusText}`);
-    }
-    
-    const data = await response.json();
-    return {
-      jobId: data.jobId,
-      jobName: data.jobName,
-    };
-  } catch (error) {
-    console.error('Fehler beim Senden des AWS Batch-Jobs:', error);
-    throw error;
-  }
 };
 
 /**
@@ -123,8 +83,8 @@ export const combineVideosWithVoiceover = async (
   console.log(`Combining videos with voiceover via AWS Batch: ${videoSegments.length} segments`);
   
   // Sende den Job an AWS Batch anstatt lokale Verarbeitung
-  const jobResult = await submitAwsBatchJob(
-    'add-voiceover',
+  const jobResult = await submitAwsBatchJobDirect(
+    BatchJobTypes.ADD_VOICEOVER,
     videoSegments[0].url, // Erster Videoclip als Referenz
     outputFileName,
     {
@@ -134,7 +94,7 @@ export const combineVideosWithVoiceover = async (
   );
 
   // Simuliere Fortschritt für die UI
-      if (progressCallback) {
+  if (progressCallback) {
     let progress = 0;
     const interval = setInterval(() => {
       progress += 5;
@@ -142,7 +102,7 @@ export const combineVideosWithVoiceover = async (
         progressCallback(progress);
       } else {
         clearInterval(interval);
-          }
+      }
     }, 500);
   }
   
@@ -166,8 +126,8 @@ export const concatVideosWithoutReencoding = async (
   console.log(`Concatenating ${videoPaths.length} videos via AWS Batch`);
   
   // Sende den Job an AWS Batch
-  const jobResult = await submitAwsBatchJob(
-    'concat',
+  const jobResult = await submitAwsBatchJobDirect(
+    BatchJobTypes.CONCAT,
     videoPaths[0], // Erster Videoclip als Referenz
     outputPath,
     {
@@ -189,8 +149,8 @@ export const generateFinalVideo = async (
   console.log(`Creating final video via AWS Batch`);
   
   // Sende den Job an AWS Batch
-  const jobResult = await submitAwsBatchJob(
-    'generate-final',
+  const jobResult = await submitAwsBatchJobDirect(
+    BatchJobTypes.GENERATE_FINAL,
     templateData.baseVideoUrl || '', // Basis-Video-URL als Referenz
     outputFileName,
     {

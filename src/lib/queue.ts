@@ -1,44 +1,37 @@
 /**
- * AWS Batch-basierte Warteschlange für Videobearbeitung
- * Diese Datei ersetzt die frühere BullMQ-Implementierung
+ * Queue-System für die Verarbeitung von Video-Jobs
+ * Diese Datei wird möglicherweise später für komplexere Job-Verwaltung verwendet
  */
 
-import { submitAwsBatchJob } from '@/utils/aws-batch-utils';
+import { submitAwsBatchJobDirect } from '@/utils/aws-batch-utils';
 
-/**
- * Fügt einen Videobearbeitungsjob zur AWS Batch-Warteschlange hinzu
- */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function addVideoGenerationJob(data: any) {
-  try {
-    // Extrahiere relevante Daten für den AWS Batch-Job
-    const { projectId, userId, segments, voiceoverUrl } = data;
-    
-    // Erstelle einen eindeutigen Output-Dateinamen
-    const outputFileName = `${projectId || 'project'}-${Date.now()}.mp4`;
-    
-    // Sende den Job an AWS Batch
-    const jobResult = await submitAwsBatchJob(
-      'generate-final',
-      // Wir verwenden die URL des ersten Segments als Eingabe-Referenz,
-      // aber AWS Batch verarbeitet alle Segmente
-      segments[0]?.videoUrl || '',
-      outputFileName,
-      {
-        PROJECT_ID: projectId,
-        USER_ID: userId,
-        SEGMENTS: JSON.stringify(segments),
-        VOICEOVER_URL: voiceoverUrl,
-      }
-    );
-    
-    // Gib ein ähnliches Objekt wie BullMQ zurück, um Kompatibilität zu wahren
-    return {
-      id: jobResult.jobId,
-      name: jobResult.jobName
-    };
-  } catch (error) {
-    console.error('Error adding job to AWS Batch:', error);
-    throw error;
-  }
-} 
+export interface VideoJobData {
+  userId: string;
+  projectId: string;
+  outputKey: string;
+  segments: Array<{
+    videoId: string;
+    url: string;
+    startTime: number;
+    duration: number;
+    position: number;
+  }>;
+}
+
+export const processVideoJob = async (jobData: VideoJobData) => {
+  console.log('Processing video job:', jobData);
+  
+  const jobResult = await submitAwsBatchJobDirect(
+    'generate-final',
+    jobData.segments[0].url, // Erste Video-URL als Input
+    jobData.outputKey,
+    {
+      SEGMENTS: JSON.stringify(jobData.segments),
+      USER_ID: jobData.userId,
+      PROJECT_ID: jobData.projectId
+    }
+  );
+  
+  console.log('Video job submitted to AWS Batch:', jobResult);
+  return jobResult;
+}; 

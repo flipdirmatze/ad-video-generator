@@ -6,7 +6,7 @@ import dbConnect from '@/lib/mongoose';
 import ProjectModel from '@/models/Project';
 import VideoModel from '@/models/Video';
 import { getS3Url, generateUniqueFileName, uploadToS3 } from '@/lib/storage';
-import { submitAwsBatchJob, BatchJobTypes } from '@/utils/aws-batch-utils';
+import { submitAwsBatchJobDirect, BatchJobTypes } from '@/utils/aws-batch-utils';
 import mongoose from 'mongoose';
 
 type VideoSegment = {
@@ -459,7 +459,7 @@ export async function POST(request: NextRequest) {
       });
       
       // Sende den Job an AWS Batch - verwende den bereits generierten outputKey
-      const jobResult = await submitAwsBatchJob(
+      const jobResult = await submitAwsBatchJobDirect(
         BatchJobTypes.GENERATE_FINAL,
         inputVideoUrl,
         outputKey, // Stelle sicher, dass dieser der mandantengetrennte Key ist
