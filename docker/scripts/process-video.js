@@ -877,65 +877,48 @@ async function generateFinalVideo() {
     }
   }
   
-  // 2. Trimme jedes Segment
-  console.log('Trimming segments...');
-  const trimPromises = [];
+  // 2. Trimme jedes Segment sequentiell, um Speicher zu schonen
+  console.log('Trimming segments sequentially to conserve memory...');
   const trimmedFiles = [];
   
-  for (let i = 0; i < segmentFiles.length; i++) {
-    const segment = segmentFiles[i];
+  for (const segment of segmentFiles) {
+    const i = segmentFiles.indexOf(segment);
     const outputFile = path.join(OUTPUT_DIR, `trimmed_${i}.mp4`);
     
-    console.log(`Preparing to trim segment ${i+1}/${segmentFiles.length}: startTime=${segment.startTime}, duration=${segment.duration}`);
+    console.log(`Trimming segment ${i + 1}/${segmentFiles.length}: startTime=${segment.startTime}, duration=${segment.duration}`);
     
-    // FFmpeg-Befehl zum Trimmen eines Segments
     const args = [
-      '-ss', segment.startTime.toString(), // Seek vor dem Input für schnelleres Trimmen
+      '-ss', segment.startTime.toString(),
       '-i', segment.file,
       '-t', segment.duration.toString(),
       '-c:v', 'libx264', 
-      '-preset', 'veryfast', // Schneller Preset für bessere Geschwindigkeit
-      '-crf', '23', // Bessere Qualität (niedrigerer Wert = höhere Qualität)
+      '-preset', 'veryfast',
+      '-crf', '23',
       '-pix_fmt', 'yuv420p',
       '-movflags', '+faststart',
       '-y',
       outputFile
     ];
-    
-    // Erstelle ein Promise für jede Trimming-Operation
-    const trimPromise = (async () => {
-      try {
-        await runFFmpeg(args);
-        console.log(`Successfully trimmed segment ${i+1}`);
-        
-        // Verify the trimmed file exists and has content
-        if (!fs.existsSync(outputFile) || fs.statSync(outputFile).size === 0) {
-          throw new Error(`Trimmed file is empty or does not exist: ${outputFile}`);
-        }
-        
-        return {
-          file: outputFile,
-          position: segment.position
-        };
-      } catch (error) {
-        console.error(`Error trimming segment ${i+1}:`, error.message);
-        throw new Error(`Failed to trim segment ${i+1}: ${error.message}`);
+
+    try {
+      await runFFmpeg(args);
+      console.log(`Successfully trimmed segment ${i + 1}`);
+      
+      if (!fs.existsSync(outputFile) || fs.statSync(outputFile).size === 0) {
+        throw new Error(`Trimmed file is empty or does not exist: ${outputFile}`);
       }
-    })();
-    
-    trimPromises.push(trimPromise);
+      
+      trimmedFiles.push({
+        file: outputFile,
+        position: segment.position
+      });
+    } catch (error) {
+      console.error(`Error trimming segment ${i + 1}:`, error.message);
+      throw new Error(`Failed to trim segment ${i + 1}: ${error.message}`);
+    }
   }
   
-  // Warte auf alle Trimming-Operationen
-  try {
-    console.log(`Waiting for ${trimPromises.length} trim operations to complete...`);
-    const results = await Promise.all(trimPromises);
-    trimmedFiles.push(...results);
-    console.log(`All ${trimmedFiles.length} segments trimmed successfully`);
-  } catch (error) {
-    console.error('Error during parallel trimming:', error.message);
-    throw error;
-  }
+  console.log(`All ${trimmedFiles.length} segments trimmed successfully`);
   
   // 3. Sortiere Segmente nach Position
   trimmedFiles.sort((a, b) => a.position - b.position);
