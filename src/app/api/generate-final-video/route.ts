@@ -1,25 +1,15 @@
 import { NextResponse } from 'next/server';
-import path from 'path';
-import fs from 'fs-extra';
 import { v4 as uuidv4 } from 'uuid';
 import { 
   VideoSegment,
-  combineVideosWithVoiceover,
-  generateFinalVideo
+  submitAwsBatchJobDirect,
+  BatchJobTypes
 } from '@/utils/aws-batch-utils';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { addVideoGenerationJob } from '@/lib/queue';
-import db from '@/lib/db';
-
-// Ensure the output directory exists
-async function ensureOutputDir() {
-  const outputDir = path.join(process.cwd(), 'public', 'outputs');
-  if (!fs.existsSync(outputDir)) {
-    await fs.mkdir(outputDir, { recursive: true });
-  }
-  return outputDir;
-}
+import dbConnect from '@/lib/mongoose';
+import ProjectModel from '@/models/Project';
+import { getS3Url } from '@/lib/storage';
 
 type VideoRequestSegment = {
   videoId: string;
@@ -54,6 +44,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
     
+    // Connect to database
+    await dbConnect();
+    
     // Get request data
     const data = await request.json();
     const { segments, voiceoverUrl, voiceoverScript } = data;
@@ -62,31 +55,61 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'No video segments provided' }, { status: 400 });
     }
     
-    // Create record in database using Mongoose instead of Prisma
-    const project = await db.project.create({
-      data: {
-        userId: session.user.id,
-        status: 'PROCESSING',
-        segments: segments,
-        voiceoverScript,
-        voiceoverUrl,
-      },
+    // Generate unique output key for the user
+    const outputKey = `users/${session.user.id}/final/${uuidv4()}.mp4`;
+    const outputUrl = getS3Url(outputKey);
+    
+    // Create record in database
+    const project = await ProjectModel.create({
+      userId: session.user.id,
+      title: 'Generated Video',
+      status: 'processing',
+      segments: segments.map((segment: VideoRequestSegment) => ({
+        videoId: segment.videoId,
+        startTime: segment.startTime,
+        duration: segment.duration,
+        position: segment.position
+      })),
+      outputKey,
+      outputUrl,
+      voiceoverId: voiceoverScript // Store script as voiceoverId for now
     });
     
-    // Add job to queue - using AWS Batch via queue abstraction
-    const job = await addVideoGenerationJob({
-      projectId: project.id,
-      userId: session.user.id,
-      segments,
-      voiceoverUrl,
-      voiceoverScript
+    // Prepare video segments for AWS Batch
+    const videoSegments: VideoSegment[] = segments.map((segment: VideoRequestSegment) => ({
+      videoId: segment.videoId,
+      url: '', // Will be resolved in AWS Batch
+      startTime: segment.startTime,
+      duration: segment.duration,
+      position: segment.position
+    }));
+    
+    // Submit job directly to AWS Batch
+    const jobResult = await submitAwsBatchJobDirect(
+      BatchJobTypes.GENERATE_FINAL,
+      voiceoverUrl || videoSegments[0]?.url || '',
+      outputKey,
+      {
+        PROJECT_ID: project._id.toString(),
+        USER_ID: session.user.id,
+        SEGMENTS: JSON.stringify(videoSegments),
+        VOICEOVER_URL: voiceoverUrl,
+        VOICEOVER_SCRIPT: voiceoverScript
+      }
+    );
+    
+    // Update project with job ID
+    await ProjectModel.findByIdAndUpdate(project._id, {
+      jobId: jobResult.jobId,
+      batchJobId: jobResult.jobId,
+      batchJobName: jobResult.jobName
     });
     
     return NextResponse.json({
       success: true,
       message: 'Video generation started on AWS Batch',
-      projectId: project.id,
-      jobId: job.id,
+      projectId: project._id.toString(),
+      jobId: jobResult.jobId,
       estimatedTime: "Your video will be processed on AWS Batch and will be ready in a few minutes"
     });
   } catch (error) {
