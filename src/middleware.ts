@@ -75,6 +75,6 @@ export const config = {
      * - images/ (image assets)
      * - logos/ (logo assets)
      */
-    '/((?!api/auth/|api/batch-callback/|_next/static|_next/image|favicon.ico|images/|logos/).*)',
+    '/((?!api/auth|api/batch-callback|_next/static|_next/image|favicon.ico|images|logos).*)',
   ],
 }; 
