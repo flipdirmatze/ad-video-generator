@@ -112,6 +112,10 @@ export const submitAwsBatchJobDirect = async (
     environment.push({ name: 'S3_BUCKET', value: process.env.S3_BUCKET_NAME || '' });
     environment.push({ name: 'AWS_REGION', value: process.env.AWS_REGION || 'eu-central-1' });
     
+    // Setze die Callback-URL dynamisch
+    const callbackUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'https://clevercut.app'}/api/batch-callback`;
+    environment.push({ name: 'BATCH_CALLBACK_URL', value: callbackUrl });
+    
     // Output Key setzen
     if (outputKey) {
       environment.push({ name: 'OUTPUT_KEY', value: outputKey });
