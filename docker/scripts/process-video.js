@@ -431,38 +431,57 @@ function generateSrtContent(subtitleText, duration, wordTimestamps = null) {
       srtIndex++;
     }
   } else {
-    // Code für den Fall ohne Zeitstempel - zeichenbasierte Strategie
-    console.log('No word timestamps available - using simple splitting strategy');
+    // Code für den Fall ohne Zeitstempel - wortbasierte Strategie
+    console.log('No word timestamps available - using smart word-wrapping strategy');
     
-    const sentences = subtitleText.split(/(?<=[.!?])\s+/);
-    let currentTime = 0;
-    const timePerChar = duration / subtitleText.length;
+    const words = subtitleText.split(/\s+/);
+    let lines = [];
+    let currentLine = '';
     
-    for (const sentence of sentences) {
-      if (!sentence.trim()) continue;
-      
-      // Teile in Zeilen bei maximaler Länge
-      let remainingSentence = sentence;
-      while (remainingSentence.length > 0) {
-        const lineLength = Math.min(remainingSentence.length, MAX_CHARS_PER_LINE);
-        const line = remainingSentence.substring(0, lineLength);
-        remainingSentence = remainingSentence.substring(lineLength).trim();
-        
-        const lineStart = currentTime;
-        const lineDuration = Math.max(MIN_DURATION, line.length * timePerChar);
-        
-        // Füge eine kleine Pause zwischen Untertiteln ein
-        currentTime += lineDuration + SUBTITLE_GAP;
-        
-        // Formatiere die Zeiten im SRT-Format
-        const startTimeFormatted = formatTime(lineStart);
-        const endTimeFormatted = formatTime(currentTime - SUBTITLE_GAP); // Ende ohne Pause
-        
-        // Füge den SRT-Eintrag hinzu
-        srtContent += `${srtIndex}\n${startTimeFormatted} --> ${endTimeFormatted}\n${line}\n\n`;
-        srtIndex++;
+    words.forEach(word => {
+      if ((currentLine + ' ' + word).trim().length > MAX_CHARS_PER_LINE) {
+        if (currentLine) {
+          lines.push(currentLine);
+        }
+        currentLine = word;
+      } else {
+        currentLine = (currentLine + ' ' + word).trim();
       }
+    });
+    
+    if (currentLine) {
+      lines.push(currentLine);
     }
+    
+    // Jetzt, da wir die Zeilen haben, verteilen wir die Dauer
+    let srtContent = '';
+    let srtIndex = 1;
+    let currentTime = 0;
+    // Gesamtanzahl der Zeichen als Basis für die Zeitverteilung
+    const totalChars = lines.join('').length;
+    
+    for (const line of lines) {
+      if (!line) continue;
+      
+      // Berechne die Dauer dieser Zeile proportional zu ihrer Länge
+      const lineDuration = Math.max(MIN_DURATION, (line.length / totalChars) * duration);
+      
+      const startTimeFormatted = formatTime(currentTime);
+      currentTime += lineDuration;
+      const endTimeFormatted = formatTime(currentTime);
+      
+      srtContent += `${srtIndex}\n${startTimeFormatted} --> ${endTimeFormatted}\n${line}\n\n`;
+      srtIndex++;
+      
+      // Füge eine kleine Pause hinzu, um Überlappungen zu vermeiden
+      currentTime += SUBTITLE_GAP;
+    }
+    
+    console.log('Generated SRT content successfully with word-wrapping');
+    console.log('SRT content preview:');
+    console.log(srtContent.split('\n\n').slice(0, 3).join('\n\n'));
+    
+    return srtContent;
   }
   
   console.log('Generated SRT content successfully');
