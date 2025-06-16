@@ -309,6 +309,20 @@ export async function POST(request: Request) {
         }
       }
       
+      // Füge Untertitel-Parameter hinzu, falls aktiviert.
+      // Der eigentliche Text kommt aus der templateData.json, um das Limit nicht zu überschreiten.
+      if (addSubtitles && subtitleOptions) {
+        console.log('Subtitles enabled. Adding subtitle parameters to the job.');
+        additionalParams.ADD_SUBTITLES = 'true';
+        // SUBTITLE_TEXT wird NICHT direkt übergeben. Das Skript holt es aus der S3-Datei.
+        additionalParams.SUBTITLE_FONT_NAME = subtitleOptions.fontName || 'Arial';
+        additionalParams.SUBTITLE_FONT_SIZE = subtitleOptions.fontSize || 24;
+        additionalParams.SUBTITLE_PRIMARY_COLOR = subtitleOptions.primaryColor || '#FFFFFF';
+        additionalParams.SUBTITLE_BACKGROUND_COLOR = subtitleOptions.backgroundColor || '#00000000';
+        additionalParams.SUBTITLE_BORDER_STYLE = subtitleOptions.borderStyle || 3;
+        additionalParams.SUBTITLE_POSITION = subtitleOptions.position || 'bottom';
+      }
+      
       console.log('Final (minimal) params for AWS Batch job:', additionalParams);
       
       const batchResponse = await submitAwsBatchJobDirect(
