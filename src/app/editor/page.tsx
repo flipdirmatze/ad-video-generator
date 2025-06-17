@@ -204,10 +204,11 @@ export default function EditorPage() {
     fontName: 'Arial',
     fontSize: 24,
     primaryColor: '#FFFFFF',
-    backgroundColor: '#00000000',
+    backgroundColor: '#00000080',
     borderStyle: 4,
     position: 'bottom',
-    transparentBackground: true
+    transparentBackground: false,
+    addOutline: true,
   })
   
   // Content states
@@ -1510,6 +1511,7 @@ export default function EditorPage() {
                                   className="mt-1 p-2 w-full text-sm rounded-md bg-gray-700 border-gray-600"
                                 >
                                   <option value="Arial">Arial (Standard)</option>
+                                  <option value="Montserrat">Montserrat</option>
                                   <option value="Helvetica">Helvetica</option>
                                   <option value="Verdana">Verdana</option>
                                   <option value="Georgia">Georgia</option>
@@ -1608,6 +1610,20 @@ export default function EditorPage() {
                                   <option value="middle">Mitte</option>
                                 </select>
                               </div>
+
+                              {/* Rahmen-Option */}
+                              <div className="flex items-center pt-4">
+                                <input
+                                  type="checkbox"
+                                  id="addOutline"
+                                  checked={subtitleOptions.addOutline}
+                                  onChange={(e) => setSubtitleOptions({...subtitleOptions, addOutline: e.target.checked})}
+                                  className="w-4 h-4 bg-gray-700 border-gray-600 rounded focus:ring-blue-600 ring-offset-gray-800 focus:ring-2"
+                                />
+                                <label htmlFor="addOutline" className="ml-2 text-xs font-medium">
+                                  Rahmen hinzufügen (bessere Lesbarkeit)
+                                </label>
+                              </div>
                             </div>
                             
                             <div className="mt-3 p-2 bg-gray-900 rounded border border-gray-700">
@@ -1619,8 +1635,7 @@ export default function EditorPage() {
                                   fontSize: `${subtitleOptions.fontSize}px`,
                                   color: subtitleOptions.primaryColor,
                                   backgroundColor: subtitleOptions.transparentBackground ? 'transparent' : (subtitleOptions.backgroundColor.substring(0, 7) + '80'),
-                                  borderRadius: subtitleOptions.borderStyle === 4 ? '4px' : '0',
-                                  textShadow: subtitleOptions.transparentBackground ? '0px 0px 3px #000, 0px 0px 2px #000' : 'none'
+                                  textShadow: subtitleOptions.addOutline ? '0px 0px 3px #000, 0px 0px 2px #000' : 'none'
                                 }}
                               >
                                 Beispieltext für Untertitel

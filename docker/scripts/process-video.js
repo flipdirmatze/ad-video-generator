@@ -1391,21 +1391,28 @@ async function generateFinalVideo() {
               backgroundColor.toLowerCase().includes('00000000') ||
               backgroundColor === 'transparent';
               
+            const addOutline = process.env.SUBTITLE_ADD_OUTLINE === 'true';
+              
             console.log(`Using subtitle position: ${position} (param: ${positionParam})`);
             console.log(`Background is transparent: ${hasTransparentBg}`);
+            console.log(`Adding outline: ${addOutline}`);
             
             // Erstelle neues Video mit Untertiteln
             const subtitledFile = path.join(OUTPUT_DIR, 'final_with_subtitles.mp4');
             
-            // Verbesserte FFmpeg-Parameter für Untertitel mit angepasster Schriftgröße
-            // Reduziere die Schriftgröße deutlich für bessere Lesbarkeit
-            const actualFontSize = 16; // Feste kleinere Schriftgröße statt einer variablen
+            const actualFontSize = 16;
             console.log(`Using font size: ${actualFontSize}`);
-            
-            const subtitleParams = hasTransparentBg 
-              ? `subtitles=${srtFile.replace(/\\/g, '/')}:force_style='FontName=${fontName},FontSize=${actualFontSize},PrimaryColour=${primaryColorFFmpeg},OutlineColour=&H000000,Outline=1,Shadow=1,BorderStyle=1,ShadowColour=&H000000,Alignment=2,MarginV=${positionParam}'` 
-              : `subtitles=${srtFile.replace(/\\/g, '/')}:force_style='FontName=${fontName},FontSize=${actualFontSize},PrimaryColour=${primaryColorFFmpeg},BackColour=${backgroundColorFFmpeg},BorderStyle=${borderStyle},Alignment=2,MarginV=${positionParam}'`;
-            
+
+            let styleOptions = `FontName=${fontName},FontSize=${actualFontSize},PrimaryColour=${primaryColorFFmpeg}`;
+
+            if (addOutline) {
+              styleOptions += ",OutlineColour=&H000000,BorderStyle=1,Outline=1";
+            } else if (!hasTransparentBg) {
+              styleOptions += `,BackColour=${backgroundColorFFmpeg},BorderStyle=${borderStyle}`;
+            }
+              
+            const subtitleParams = `subtitles=${srtFile.replace(/\\/g, '/')}:force_style='${styleOptions},Alignment=2,MarginV=${positionParam}'`;
+              
             console.log(`Using FFmpeg subtitle filter: ${subtitleParams}`);
             
             // Verwende -vf für Videofilter
@@ -1638,21 +1645,28 @@ async function generateFinalVideo() {
         backgroundColor.toLowerCase().includes('00000000') ||
         backgroundColor === 'transparent';
         
+      const addOutline = process.env.SUBTITLE_ADD_OUTLINE === 'true';
+              
       console.log(`Using subtitle position: ${position} (param: ${positionParam})`);
       console.log(`Background is transparent: ${hasTransparentBg}`);
+      console.log(`Adding outline: ${addOutline}`);
       
       // Erstelle neues Video mit Untertiteln
       const subtitledFile = path.join(OUTPUT_DIR, 'final_with_subtitles.mp4');
       
-      // Verbesserte FFmpeg-Parameter für Untertitel mit angepasster Schriftgröße
-      // Reduziere die Schriftgröße deutlich für bessere Lesbarkeit
-      const actualFontSize = 16; // Feste kleinere Schriftgröße statt einer variablen
+      const actualFontSize = 16;
       console.log(`Using font size: ${actualFontSize}`);
-      
-      const subtitleParams = hasTransparentBg 
-        ? `subtitles=${srtFile.replace(/\\/g, '/')}:force_style='FontName=${fontName},FontSize=${actualFontSize},PrimaryColour=${primaryColorFFmpeg},OutlineColour=&H000000,Outline=1,Shadow=1,BorderStyle=1,ShadowColour=&H000000,Alignment=2,MarginV=${positionParam}'` 
-        : `subtitles=${srtFile.replace(/\\/g, '/')}:force_style='FontName=${fontName},FontSize=${actualFontSize},PrimaryColour=${primaryColorFFmpeg},BackColour=${backgroundColorFFmpeg},BorderStyle=${borderStyle},Alignment=2,MarginV=${positionParam}'`;
-      
+
+      let styleOptions = `FontName=${fontName},FontSize=${actualFontSize},PrimaryColour=${primaryColorFFmpeg}`;
+
+      if (addOutline) {
+        styleOptions += ",OutlineColour=&H000000,BorderStyle=1,Outline=1";
+      } else if (!hasTransparentBg) {
+        styleOptions += `,BackColour=${backgroundColorFFmpeg},BorderStyle=${borderStyle}`;
+      }
+        
+      const subtitleParams = `subtitles=${srtFile.replace(/\\/g, '/')}:force_style='${styleOptions},Alignment=2,MarginV=${positionParam}'`;
+        
       console.log(`Using FFmpeg subtitle filter: ${subtitleParams}`);
       
       // Verwende -vf für Videofilter

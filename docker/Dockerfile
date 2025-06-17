@@ -20,7 +20,7 @@ RUN apt-get update && apt-get install -y \
 RUN pip3 install --no-cache-dir awscli --break-system-packages
 
 # Kopiere die Schriftart und aktualisiere den Font-Cache
-COPY Montserrat-Bold.ttf /usr/share/fonts/truetype/montserrat/
+COPY docker/Montserrat-Bold.ttf /usr/share/fonts/truetype/montserrat/
 RUN fc-cache -f -v
 
 # Setze das Arbeitsverzeichnis
