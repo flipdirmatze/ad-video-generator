@@ -41,7 +41,7 @@ const ADD_SUBTITLES = process.env.ADD_SUBTITLES === 'true';
 const SUBTITLE_TEXT = process.env.SUBTITLE_TEXT || '';
 
 // Untertitel-Styling-Optionen aus Umgebungsvariablen
-const SUBTITLE_FONT_NAME = process.env.SUBTITLE_FONT_NAME || 'Arial';
+const SUBTITLE_FONT_NAME = process.env.SUBTITLE_FONT_NAME || 'Montserrat';
 const SUBTITLE_FONT_SIZE = process.env.SUBTITLE_FONT_SIZE || '24';
 const SUBTITLE_PRIMARY_COLOR = process.env.SUBTITLE_PRIMARY_COLOR || '#FFFFFF';
 const SUBTITLE_BACKGROUND_COLOR = process.env.SUBTITLE_BACKGROUND_COLOR || '#80000000';

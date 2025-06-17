@@ -8,20 +8,22 @@ ENV BATCH_CALLBACK_ENABLED=true
 
 # WICHTIG: BATCH_CALLBACK_SECRET muss bei der Ausführung mit einem gültigen Wert überschrieben werden
 
-# Installiere notwendige Abhängigkeiten und FFmpeg
+# Installiere FFmpeg und andere notwendige Tools
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     python3 \
     python3-pip \
-    python3-venv \
-    curl \
-    && apt-get clean \
+    fontconfig \
     && rm -rf /var/lib/apt/lists/*
 
-# Installiere AWS CLI mit der --break-system-packages Option
+# Installiere AWS CLI
 RUN pip3 install --no-cache-dir awscli --break-system-packages
 
-# Arbeitsverzeichnis erstellen
+# Kopiere die Schriftart und aktualisiere den Font-Cache
+COPY Montserrat-Bold.ttf /usr/share/fonts/truetype/montserrat/
+RUN fc-cache -f -v
+
+# Setze das Arbeitsverzeichnis
 WORKDIR /app
 
 # Package.json und package-lock.json kopieren
