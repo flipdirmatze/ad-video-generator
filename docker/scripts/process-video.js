@@ -1406,7 +1406,9 @@ async function generateFinalVideo() {
             let styleOptions = `FontName=${fontName},FontSize=${actualFontSize},PrimaryColour=${primaryColorFFmpeg}`;
 
             if (addOutline) {
-              styleOptions += ",OutlineColour=&H000000,BorderStyle=1,Outline=1";
+              const outlineWidth = process.env.SUBTITLE_OUTLINE_WIDTH || '2';
+              const outlineColor = (process.env.SUBTITLE_OUTLINE_COLOR || '#000000').replace('#', '&H00');
+              styleOptions += `,OutlineColour=${outlineColor},BorderStyle=1,Outline=${outlineWidth}`;
             } else if (!hasTransparentBg) {
               styleOptions += `,BackColour=${backgroundColorFFmpeg},BorderStyle=${borderStyle}`;
             }
@@ -1660,9 +1662,11 @@ async function generateFinalVideo() {
       let styleOptions = `FontName=${fontName},FontSize=${actualFontSize},PrimaryColour=${primaryColorFFmpeg}`;
 
       if (addOutline) {
-        styleOptions += ",OutlineColour=&H000000,BorderStyle=1,Outline=1";
+        const outlineWidth = process.env.SUBTITLE_OUTLINE_WIDTH || '2';
+        const outlineColor = (process.env.SUBTITLE_OUTLINE_COLOR || '#000000').replace('#', '&H00');
+        styleOptions += `,OutlineColour=${outlineColor},BorderStyle=1,Outline=${outlineWidth}`;
       } else if (!hasTransparentBg) {
-        styleOptions += `,BackColour=${backgroundColorFFmpeg},BorderStyle=${borderStyle}`;
+        styleOptions += `,BackColour=${backgroundColorFFmpeg},BorderStyle=1`;
       }
         
       const subtitleParams = `subtitles=${srtFile.replace(/\\/g, '/')}:force_style='${styleOptions},Alignment=2,MarginV=${positionParam}'`;

@@ -37,6 +37,8 @@ type VideoGenerationRequest = {
     borderStyle: number;
     position: string;
     addOutline: boolean;
+    outlineWidth?: number;
+    outlineColor?: string;
   }; // Untertitel-Optionen
 };
 
@@ -319,9 +321,12 @@ export async function POST(request: Request) {
         additionalParams.SUBTITLE_PRIMARY_COLOR = subtitleOptions.primaryColor || '#FFFFFF';
         additionalParams.SUBTITLE_BACKGROUND_COLOR = subtitleOptions.backgroundColor || '#00000000';
         additionalParams.SUBTITLE_POSITION = subtitleOptions.position || 'bottom';
-        additionalParams.SUBTITLE_BORDER_STYLE = subtitleOptions.borderStyle || 3;
-        // Neue Option für den Rahmen übergeben
         additionalParams.SUBTITLE_ADD_OUTLINE = String(subtitleOptions.addOutline);
+        // Neue Parameter für Rahmen-Dicke und -Farbe
+        if (subtitleOptions.addOutline) {
+          additionalParams.SUBTITLE_OUTLINE_WIDTH = subtitleOptions.outlineWidth || 2;
+          additionalParams.SUBTITLE_OUTLINE_COLOR = subtitleOptions.outlineColor || '#000000';
+        }
       }
       
       console.log('Final (minimal) params for AWS Batch job:', additionalParams);

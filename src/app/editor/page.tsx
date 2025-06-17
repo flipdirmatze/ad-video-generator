@@ -209,6 +209,8 @@ export default function EditorPage() {
     position: 'bottom',
     transparentBackground: false,
     addOutline: true,
+    outlineWidth: 2,
+    outlineColor: '#000000',
   })
   
   // Content states
@@ -1612,7 +1614,7 @@ export default function EditorPage() {
                               </div>
 
                               {/* Rahmen-Option */}
-                              <div className="flex items-center pt-4">
+                              <div className="flex items-center pt-4 col-span-1 sm:col-span-2">
                                 <input
                                   type="checkbox"
                                   id="addOutline"
@@ -1624,6 +1626,42 @@ export default function EditorPage() {
                                   Rahmen hinzufügen (bessere Lesbarkeit)
                                 </label>
                               </div>
+
+                              {/* Nur anzeigen, wenn Rahmen aktiviert ist */}
+                              {subtitleOptions.addOutline && (
+                                <>
+                                  {/* Rahmen-Dicke */}
+                                  <div>
+                                    <label htmlFor="outlineWidth" className="block text-xs font-medium">
+                                      Rahmen-Dicke
+                                    </label>
+                                    <input
+                                      type="range"
+                                      id="outlineWidth"
+                                      min="1"
+                                      max="5"
+                                      step="0.5"
+                                      value={subtitleOptions.outlineWidth}
+                                      onChange={(e) => setSubtitleOptions({...subtitleOptions, outlineWidth: parseFloat(e.target.value)})}
+                                      className="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer"
+                                    />
+                                  </div>
+
+                                  {/* Rahmen-Farbe */}
+                                  <div>
+                                    <label htmlFor="outlineColor" className="block text-xs font-medium">
+                                      Rahmen-Farbe
+                                    </label>
+                                    <input
+                                      type="color"
+                                      id="outlineColor"
+                                      value={subtitleOptions.outlineColor}
+                                      onChange={(e) => setSubtitleOptions({...subtitleOptions, outlineColor: e.target.value})}
+                                      className="h-8 w-8 rounded border border-gray-600"
+                                    />
+                                  </div>
+                                </>
+                              )}
                             </div>
                             
                             <div className="mt-3 p-2 bg-gray-900 rounded border border-gray-700">
@@ -1635,7 +1673,9 @@ export default function EditorPage() {
                                   fontSize: `${subtitleOptions.fontSize}px`,
                                   color: subtitleOptions.primaryColor,
                                   backgroundColor: subtitleOptions.transparentBackground ? 'transparent' : (subtitleOptions.backgroundColor.substring(0, 7) + '80'),
-                                  textShadow: subtitleOptions.addOutline ? '0px 0px 3px #000, 0px 0px 2px #000' : 'none'
+                                  textShadow: subtitleOptions.addOutline 
+                                    ? `${subtitleOptions.outlineColor} 0px 0px ${subtitleOptions.outlineWidth}px, ${subtitleOptions.outlineColor} 0px 0px ${subtitleOptions.outlineWidth}px, ${subtitleOptions.outlineColor} 0px 0px ${subtitleOptions.outlineWidth}px, ${subtitleOptions.outlineColor} 0px 0px ${subtitleOptions.outlineWidth}px`
+                                    : 'none'
                                 }}
                               >
                                 Beispieltext für Untertitel
