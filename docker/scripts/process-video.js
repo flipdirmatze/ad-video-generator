@@ -489,18 +489,18 @@ function generateSrtContent(subtitleText, duration, wordTimestamps = null) {
 }
 
 /**
- * Konvertiert SRT-Untertitel in das ASS-Format mit benutzerdefinierten Styles
- * ASS bietet bessere Kontrolle für transparente Hintergründe
+ * Konvertiert SRT-Untertitel in das ASS-Format für hochwertiges Rendering.
+ * Diese Methode bietet eine präzisere Kontrolle über das Aussehen als der Standard-Subtitles-Filter.
  */
-function convertSrtToAss(srtContent, fontName, fontSize, primaryColor, backgroundColor, borderStyle, hasTransparentBg) {
-  console.log('Converting SRT to ASS format for better transparency control');
-  
-  // Entferne das &H-Präfix für die ASS-Datei
-  let primaryColorAss = primaryColor.replace('&H00', '&H');
-  let backgroundColorAss = backgroundColor;
-  
-  // ASS-Header erzeugen mit höherer Auflösung für bessere Qualität
-  let assContent = `[Script Info]
+function convertSrtToAss(srtContent, fontName, fontSize, position) {
+  console.log('Converting SRT to ASS format for high-quality rendering');
+
+  // Vertikale Position basierend auf der Einstellung anpassen
+  const marginV = position === 'bottom' ? 90 : (position === 'top' ? 15 : 50);
+
+  // Definiere den ASS-Header mit einem präzisen Stil für optimale Lesbarkeit.
+  // Wir verwenden eine saubere Outline ohne Schatten und einen engeren Zeichenabstand.
+  const assHeader = `[Script Info]
 ScriptType: v4.00+
 PlayResX: 1920
 PlayResY: 1080
@@ -508,86 +508,32 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-`;
-
-  // Style-Definition für optimale Lesbarkeit
-  // Bei transparenten Hintergründen benötigen wir eine dickere, aber subtilere Outline
-  // und einen sanfteren Schatten für bessere Lesbarkeit auf allen Hintergründen
-  
-  // Bold-Parameter für bessere Lesbarkeit (1=true, 0=false)
-  let boldParam = 1;
-  
-  // Optimierte Parameter für transparenten Hintergrund
-  let outlineSize = hasTransparentBg ? 2.2 : 0.5;  // Dickere Outline bei transparentem Hintergrund
-  let shadowSize = hasTransparentBg ? 1.2 : 0.2;   // Leichter Schatten bei transparentem Hintergrund
-  let assBackColor = hasTransparentBg ? "&H00FFFFFF" : backgroundColorAss; // Vollständig transparent
-  let assBorderStyle = 1; // Immer Outline+Shadow für konsistentes Aussehen
-  
-  // MarginV - Abstand vom unteren/oberen Rand in Pixeln
-  // Höherer Wert für mehr Abstand bei "bottom" position
-  let marginV = 30;
-  
-  // Alignment: 2=bottom, 8=top, 5=middle; wir verwenden immer bottom für bessere Lesbarkeit
-  let alignmentValue = 2;
-  
-  assContent += `Style: Default,${fontName},${fontSize},${primaryColorAss},${primaryColorAss},&H000000,${assBackColor},${boldParam},0,0,0,100,100,0,0,${assBorderStyle},${outlineSize},${shadowSize},${alignmentValue},20,20,${marginV},1
+Style: Default,${fontName},${fontSize},&H00FFFFFF,&H00000000,&H00000000,&H00000000,-1,0,0,0,100,100,-0.5,0,1,1.5,0,2,20,20,${marginV},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 `;
 
-  // SRT-Parser mit verbesserter Zeitgenauigkeit
-  // Wir behalten die exakten Zeitstempel bei, ohne Verschiebung
-  const srtLines = srtContent.split("\n");
-  let lineIndex = 0;
-  let eventId = 1;
-  
-  while (lineIndex < srtLines.length) {
-    // Überspringe leere Zeilen
-    if (!srtLines[lineIndex].trim()) {
-      lineIndex++;
-      continue;
-    }
-    
-    // Wir erwarten, dass jeder Eintrag mit einer Nummer beginnt
-    if (!/^\d+$/.test(srtLines[lineIndex].trim())) {
-      lineIndex++;
-      continue;
-    }
-    
-    lineIndex++; // Zur Zeitstempelzeile
-    
-    if (lineIndex >= srtLines.length) break;
-    
-    // Format: 00:00:00,000 --> 00:00:00,000
-    const timeLine = srtLines[lineIndex].trim();
-    const timeMatch = timeLine.match(/(\d+:\d+:\d+,\d+)\s+-->\s+(\d+:\d+:\d+,\d+)/);
-    
-    if (!timeMatch) {
-      lineIndex++;
-      continue;
-    }
-    
-    // Konvertiere SRT-Zeitformat zu ASS-Zeitformat (Komma zu Punkt) ohne Verschiebung
-    const startTime = timeMatch[1].replace(',', '.');
-    const endTime = timeMatch[2].replace(',', '.');
-    
-    lineIndex++; // Zur Textzeile
-    
-    let text = "";
-    // Lese alle Textzeilen bis zur nächsten leeren Zeile
-    while (lineIndex < srtLines.length && srtLines[lineIndex].trim() !== "") {
-      text += (text ? "\\N" : "") + srtLines[lineIndex].trim();
-      lineIndex++;
-    }
-    
-    // ASS-Ereigniszeile erzeugen
-    assContent += `Dialogue: 0,${startTime},${endTime},Default,,0,0,0,,${text}\n`;
-    
-    eventId++;
-  }
-  
-  return assContent;
+  // Konvertiere die SRT-Einträge in ASS-Dialogzeilen.
+  const srtLines = srtContent.trim().split(/\r?\n\r?\n/);
+  const assEvents = srtLines.map(entry => {
+    const lines = entry.split(/\r?\n/);
+    if (lines.length < 3) return '';
+
+    const timeLine = lines[1];
+    const textLines = lines.slice(2).join('\\N'); // Benutze \\N für Zeilenumbrüche in ASS
+
+    const timeMatch = timeLine.match(/(\d{2}:\d{2}:\d{2},\d{3})\s+-->\s+(\d{2}:\d{2}:\d{2},\d{3})/);
+    if (!timeMatch) return '';
+
+    // Konvertiere Zeitformat von SRT (00:00:00,000) zu ASS (0:00:00.00)
+    const startTime = timeMatch[1].replace(',', '.').replace(/^0/, '');
+    const endTime = timeMatch[2].replace(',', '.').replace(/^0/, '');
+
+    return `Dialogue: 0,${startTime},${endTime},Default,,0,0,0,,${textLines}`;
+  }).join('\n');
+
+  return assHeader + assEvents;
 }
 
 /**
@@ -1353,41 +1299,17 @@ async function generateFinalVideo() {
             // Generiere SRT-Inhalt
             const srtContent = generateSrtContent(subtitleText, 2.5, wordTimestamps);
             
-            // Schreibe SRT-Datei
-            fs.writeFileSync(srtFile, srtContent);
-            console.log(`Created SRT file for subtitles at ${srtFile}`);
-            console.log('SRT file stats:', fs.statSync(srtFile).size, 'bytes');
-            
-            // Setze Positionsparameter je nach gewählter Position
-            let positionParam = '';
-            if (position === 'top') {
-              positionParam = '15';
-            } else if (position === 'middle') {
-              positionParam = '50';
-            } else {
-              // Position "bottom" bedeutet eigentlich "lower-third" (unteres Drittel)
-              positionParam = '90';
-            }
-            
-            console.log(`Using subtitle position: ${position} (param: ${positionParam})`);
+            // Konvertiere SRT zu ASS für besseres Rendering
+            const assContent = convertSrtToAss(srtContent, fontName, fontSize, position);
+            const assFile = path.join(TEMP_DIR, 'subtitles.ass');
+            fs.writeFileSync(assFile, assContent);
+            console.log(`Created ASS file for subtitles at ${assFile}`);
             
             // Erstelle neues Video mit Untertiteln
             const subtitledFile = path.join(OUTPUT_DIR, 'final_with_subtitles.mp4');
+            const subtitleParams = `ass=${assFile.replace(/\\/g, '/')}`;
             
-            const styleOptions =
-              `FontName=${fontName},` +
-              `FontSize=${fontSize},` +
-              `PrimaryColour=&H00FFFFFF,` + // Weiß
-              `OutlineColour=&H00000000,` + // Schwarz
-              `BackColour=&HFF000000,` + // Transparenter Schatten
-              `BorderStyle=1,` +
-              `Outline=1.2,` +
-              `Shadow=0,` +
-              `Spacing=-0.5`;
-              
-            const subtitleParams = `subtitles=${srtFile.replace(/\\/g, '/')}:force_style='${styleOptions},Alignment=2,MarginV=${positionParam}'`;
-              
-            console.log(`Using FFmpeg subtitle filter: ${subtitleParams}`);
+            console.log(`Using FFmpeg ASS filter: ${subtitleParams}`);
             
             // Verwende -vf für Videofilter
             await runFFmpeg([
@@ -1584,45 +1506,21 @@ async function generateFinalVideo() {
       // Generiere SRT-Inhalt
       const srtContent = generateSrtContent(subtitleText, 2.5, wordTimestamps);
       
-      // Schreibe SRT-Datei
-      fs.writeFileSync(srtFile, srtContent);
-      console.log(`Created SRT file for subtitles at ${srtFile}`);
-      console.log('SRT file stats:', fs.statSync(srtFile).size, 'bytes');
-      
-      // Setze Positionsparameter je nach gewählter Position
-      let positionParam = '';
-      if (position === 'top') {
-        positionParam = '15';
-      } else if (position === 'middle') {
-        positionParam = '50';
-      } else {
-        // Position "bottom" bedeutet eigentlich "lower-third" (unteres Drittel)
-        positionParam = '90';
-      }
-      
-      console.log(`Using subtitle position: ${position} (param: ${positionParam})`);
+      // Konvertiere SRT zu ASS für besseres Rendering
+      const assContent = convertSrtToAss(srtContent, fontName, fontSize, position);
+      const assFile = path.join(TEMP_DIR, 'subtitles.ass');
+      fs.writeFileSync(assFile, assContent);
+      console.log(`Created ASS file for subtitles at ${assFile}`);
       
       // Erstelle neues Video mit Untertiteln
       const subtitledFile = path.join(OUTPUT_DIR, 'final_with_subtitles.mp4');
+      const subtitleParams = `ass=${assFile.replace(/\\/g, '/')}`;
       
-      const styleOptions =
-        `FontName=${fontName},` +
-        `FontSize=${fontSize},` +
-        `PrimaryColour=&H00FFFFFF,` + // Weiß
-        `OutlineColour=&H00000000,` + // Schwarz
-        `BackColour=&HFF000000,` + // Transparenter Schatten
-        `BorderStyle=1,` +
-        `Outline=1.2,` +
-        `Shadow=0,` +
-        `Spacing=-0.5`;
-        
-      const subtitleParams = `subtitles=${srtFile.replace(/\\/g, '/')}:force_style='${styleOptions},Alignment=2,MarginV=${positionParam}'`;
-        
-      console.log(`Using FFmpeg subtitle filter: ${subtitleParams}`);
+      console.log(`Using FFmpeg ASS filter: ${subtitleParams}`);
       
       // Verwende -vf für Videofilter
       await runFFmpeg([
-        '-i', finalFile,
+        '-i', concatenatedFile, // Hier concatenatedFile verwenden
         '-vf', subtitleParams,
         '-c:v', 'libx264',
         '-preset', 'medium',
