@@ -491,11 +491,11 @@ export default function VoiceoverPage() {
       <div className="container mx-auto py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto">
           <h1 className="text-3xl font-bold tracking-tight text-white sm:text-4xl">
-            Generate a Voiceover
+            Generiere ein KI-Voiceover
           </h1>
           <p className="mt-4 text-lg text-white/60">
-            Write your script below and generate a professional voiceover using AI.
-            This voiceover will be used for your video.
+            Gib hier dein Skript ein und erstelle ein professionelles Voiceover mit KI.
+            Dieses Voiceover wird für dein Video verwendet.
           </p>
 
           <div className="mt-8">
