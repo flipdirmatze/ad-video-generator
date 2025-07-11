@@ -1366,7 +1366,7 @@ async function generateFinalVideo() {
               positionParam = '50';
             } else {
               // Position "bottom" bedeutet eigentlich "lower-third" (unteres Drittel)
-              positionParam = '100';
+              positionParam = '90';
             }
             
             console.log(`Using subtitle position: ${position} (param: ${positionParam})`);
@@ -1380,9 +1380,8 @@ async function generateFinalVideo() {
               `PrimaryColour=&H00FFFFFF,` + // Weiß
               `OutlineColour=&H00000000,` + // Schwarz
               `BorderStyle=1,` + // Umriss + Schatten
-              `Outline=1.5,` +
-              `Shadow=0,` +
-              `Spacing=-0.5`;
+              `Outline=1,` +
+              `Shadow=0`;
               
             const subtitleParams = `subtitles=${srtFile.replace(/\\/g, '/')}:force_style='${styleOptions},Alignment=2,MarginV=${positionParam}'`;
               
@@ -1596,7 +1595,7 @@ async function generateFinalVideo() {
         positionParam = '50';
       } else {
         // Position "bottom" bedeutet eigentlich "lower-third" (unteres Drittel)
-        positionParam = '100';
+        positionParam = '90';
       }
       
       console.log(`Using subtitle position: ${position} (param: ${positionParam})`);
@@ -1610,9 +1609,8 @@ async function generateFinalVideo() {
         `PrimaryColour=&H00FFFFFF,` + // Weiß
         `OutlineColour=&H00000000,` + // Schwarz
         `BorderStyle=1,` + // Umriss + Schatten
-        `Outline=1.5,` +
-        `Shadow=0,` +
-        `Spacing=-0.5`;
+        `Outline=1,` +
+        `Shadow=0`;
         
       const subtitleParams = `subtitles=${srtFile.replace(/\\/g, '/')}:force_style='${styleOptions},Alignment=2,MarginV=${positionParam}'`;
         
