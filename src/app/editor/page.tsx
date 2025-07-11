@@ -1531,6 +1531,7 @@ export default function EditorPage() {
                                   fontSize: `20px`,
                                   color: subtitleOptions.primaryColor,
                                   textShadow: '-1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000',
+                                  letterSpacing: '-0.5px',
                                 }}
                               >
                                 Beispieltext für Untertitel

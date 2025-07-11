@@ -1379,9 +1379,11 @@ async function generateFinalVideo() {
               `FontSize=${fontSize},` +
               `PrimaryColour=&H00FFFFFF,` + // Weiß
               `OutlineColour=&H00000000,` + // Schwarz
-              `BorderStyle=1,` + // Umriss + Schatten
-              `Outline=1,` +
-              `Shadow=0`;
+              `BackColour=&HFF000000,` + // Transparenter Schatten
+              `BorderStyle=1,` +
+              `Outline=1.2,` +
+              `Shadow=0,` +
+              `Spacing=-0.5`;
               
             const subtitleParams = `subtitles=${srtFile.replace(/\\/g, '/')}:force_style='${styleOptions},Alignment=2,MarginV=${positionParam}'`;
               
@@ -1608,9 +1610,11 @@ async function generateFinalVideo() {
         `FontSize=${fontSize},` +
         `PrimaryColour=&H00FFFFFF,` + // Weiß
         `OutlineColour=&H00000000,` + // Schwarz
-        `BorderStyle=1,` + // Umriss + Schatten
-        `Outline=1,` +
-        `Shadow=0`;
+        `BackColour=&HFF000000,` + // Transparenter Schatten
+        `BorderStyle=1,` +
+        `Outline=1.2,` +
+        `Shadow=0,` +
+        `Spacing=-0.5`;
         
       const subtitleParams = `subtitles=${srtFile.replace(/\\/g, '/')}:force_style='${styleOptions},Alignment=2,MarginV=${positionParam}'`;
         
