@@ -125,7 +125,7 @@ Anpassungen der Untertitel-Optionen können über die Umgebungsvariablen gesteue
 |----------|----------|-------------|
 | ADD_SUBTITLES | false | Aktiviert die Untertitel |
 | SUBTITLE_FONT_NAME | Arial | Schriftart |
-| SUBTITLE_FONT_SIZE | 24 | Schriftgröße |
+| SUBTITLE_FONT_SIZE | 20 | Schriftgröße |
 | SUBTITLE_POSITION | bottom | Position (bottom, middle, top) |
 
 ## Wichtige Umgebungsvariablen

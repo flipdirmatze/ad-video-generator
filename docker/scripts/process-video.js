@@ -42,7 +42,7 @@ const SUBTITLE_TEXT = process.env.SUBTITLE_TEXT || '';
 
 // Untertitel-Styling-Optionen aus Umgebungsvariablen
 const SUBTITLE_FONT_NAME = process.env.SUBTITLE_FONT_NAME || 'Montserrat';
-const SUBTITLE_FONT_SIZE = process.env.SUBTITLE_FONT_SIZE || '24';
+const SUBTITLE_FONT_SIZE = process.env.SUBTITLE_FONT_SIZE || '20';
 const SUBTITLE_POSITION = process.env.SUBTITLE_POSITION || 'bottom';
 
 // Logge alle Umgebungsvariablen für Debugging (ohne sensible Daten)
@@ -1366,7 +1366,7 @@ async function generateFinalVideo() {
               positionParam = '50';
             } else {
               // Position "bottom" bedeutet eigentlich "lower-third" (unteres Drittel)
-              positionParam = '70';
+              positionParam = '50';
             }
             
             console.log(`Using subtitle position: ${position} (param: ${positionParam})`);
@@ -1381,7 +1381,7 @@ async function generateFinalVideo() {
               `OutlineColour=&H00000000,` + // Schwarz
               `BorderStyle=1,` + // Umriss + Schatten
               `Outline=1.8,` +
-              `Shadow=1`;
+              `Shadow=0`;
               
             const subtitleParams = `subtitles=${srtFile.replace(/\\/g, '/')}:force_style='${styleOptions},Alignment=2,MarginV=${positionParam}'`;
               
@@ -1595,7 +1595,7 @@ async function generateFinalVideo() {
         positionParam = '50';
       } else {
         // Position "bottom" bedeutet eigentlich "lower-third" (unteres Drittel)
-        positionParam = '70';
+        positionParam = '50';
       }
       
       console.log(`Using subtitle position: ${position} (param: ${positionParam})`);
@@ -1610,7 +1610,7 @@ async function generateFinalVideo() {
         `OutlineColour=&H00000000,` + // Schwarz
         `BorderStyle=1,` + // Umriss + Schatten
         `Outline=1.8,` +
-        `Shadow=1`;
+        `Shadow=0`;
         
       const subtitleParams = `subtitles=${srtFile.replace(/\\/g, '/')}:force_style='${styleOptions},Alignment=2,MarginV=${positionParam}'`;
         

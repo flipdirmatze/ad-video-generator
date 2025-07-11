@@ -202,7 +202,7 @@ export default function EditorPage() {
   const [addCaptions, setAddCaptions] = useState(false)
   const [subtitleOptions, setSubtitleOptions] = useState({
     fontName: 'Arial',
-    fontSize: 24,
+    fontSize: 20,
     position: 'bottom',
     primaryColor: '#FFFFFF', // Behalten für die Vorschau
   })
@@ -1120,7 +1120,7 @@ export default function EditorPage() {
         subtitleOptions: addCaptions 
           ? { 
               fontName: subtitleOptions.fontName,
-              fontSize: 24,
+              fontSize: 20,
               position: 'bottom'
             } 
           : undefined
@@ -1529,7 +1529,7 @@ export default function EditorPage() {
                                 className="mt-2 p-2 rounded text-center"
                                 style={{
                                   fontFamily: subtitleOptions.fontName,
-                                  fontSize: `24px`,
+                                  fontSize: `20px`,
                                   color: subtitleOptions.primaryColor,
                                   textShadow: '1px 1px 3px #000000, -1px -1px 3px #000000, 1px -1px 3px #000000, -1px 1px 3px #000000',
                                 }}
