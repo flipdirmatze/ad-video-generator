@@ -201,7 +201,7 @@ export default function EditorPage() {
   const [shouldAutoGenerate, setShouldAutoGenerate] = useState(false)
   const [addCaptions, setAddCaptions] = useState(false)
   const [subtitleOptions, setSubtitleOptions] = useState({
-    fontName: 'Arial',
+    fontName: 'Montserrat',
     fontSize: 20,
     position: 'bottom',
     primaryColor: '#FFFFFF', // Behalten für die Vorschau
@@ -1512,7 +1512,6 @@ export default function EditorPage() {
                                   onChange={(e) => setSubtitleOptions({...subtitleOptions, fontName: e.target.value})}
                                   className="mt-1 p-2 w-full text-sm rounded-md bg-gray-700 border-gray-600"
                                 >
-                                  <option value="Arial">Arial (Standard)</option>
                                   <option value="Montserrat">Montserrat</option>
                                   <option value="Helvetica">Helvetica</option>
                                   <option value="Verdana">Verdana</option>
@@ -1531,7 +1530,7 @@ export default function EditorPage() {
                                   fontFamily: subtitleOptions.fontName,
                                   fontSize: `20px`,
                                   color: subtitleOptions.primaryColor,
-                                  textShadow: '1px 1px 3px #000000, -1px -1px 3px #000000, 1px -1px 3px #000000, -1px 1px 3px #000000',
+                                  textShadow: '1px 1px 2px #000000, -1px -1px 2px #000000, 1px -1px 2px #000000, -1px 1px 2px #000000',
                                 }}
                               >
                                 Beispieltext für Untertitel

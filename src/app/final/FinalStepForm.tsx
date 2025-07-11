@@ -20,7 +20,7 @@ type FinalStepFormProps = {
 
 // Vordefinierte Schriftarten für Untertitel
 const SUBTITLE_FONTS = [
-  { id: 'Arial', name: 'Arial (Standard)' },
+  { id: 'Montserrat', name: 'Montserrat' },
   { id: 'Helvetica', name: 'Helvetica' },
   { id: 'Verdana', name: 'Verdana' },
   { id: 'Georgia', name: 'Georgia' },
@@ -44,7 +44,7 @@ export default function FinalStepForm({ onSubmit }: FinalStepFormProps) {
     watermarkText: '',
     addSubtitles: false,
     subtitleOptions: {
-      fontName: 'Arial',
+      fontName: 'Montserrat',
       fontSize: 20,
       position: 'bottom'
     },
@@ -69,7 +69,7 @@ export default function FinalStepForm({ onSubmit }: FinalStepFormProps) {
     const finalOptions = {
       ...options,
       subtitleOptions: options.addSubtitles ? {
-        fontName: options.subtitleOptions?.fontName || 'Arial',
+        fontName: options.subtitleOptions?.fontName || 'Montserrat',
         fontSize: 20,
         position: 'bottom'
       } : undefined

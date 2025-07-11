@@ -124,7 +124,7 @@ Anpassungen der Untertitel-Optionen können über die Umgebungsvariablen gesteue
 | Variable | Standard | Beschreibung |
 |----------|----------|-------------|
 | ADD_SUBTITLES | false | Aktiviert die Untertitel |
-| SUBTITLE_FONT_NAME | Arial | Schriftart |
+| SUBTITLE_FONT_NAME | Montserrat | Schriftart |
 | SUBTITLE_FONT_SIZE | 20 | Schriftgröße |
 | SUBTITLE_POSITION | bottom | Position (bottom, middle, top) |
 
