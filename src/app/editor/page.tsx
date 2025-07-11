@@ -203,14 +203,8 @@ export default function EditorPage() {
   const [subtitleOptions, setSubtitleOptions] = useState({
     fontName: 'Arial',
     fontSize: 24,
-    primaryColor: '#FFFFFF',
-    backgroundColor: '#00000080',
-    borderStyle: 4,
     position: 'bottom',
-    transparentBackground: false,
-    addOutline: true,
-    outlineWidth: 2,
-    outlineColor: '#000000',
+    primaryColor: '#FFFFFF', // Behalten für die Vorschau
   })
   
   // Content states
@@ -1123,7 +1117,13 @@ export default function EditorPage() {
       // Optionen für das generierte Video
       const videoOptions = {
         addSubtitles: addCaptions,
-        subtitleOptions: addCaptions ? subtitleOptions : undefined
+        subtitleOptions: addCaptions 
+          ? { 
+              fontName: subtitleOptions.fontName,
+              fontSize: 24,
+              position: 'bottom'
+            } 
+          : undefined
       };
 
       // API-Request zum Generieren des Videos
@@ -1521,147 +1521,6 @@ export default function EditorPage() {
                                   <option value="Times">Times</option>
                                 </select>
                               </div>
-                              
-                              {/* Schriftgröße */}
-                              <div>
-                                <label htmlFor="subtitleSize" className="block text-xs font-medium">
-                                  Schriftgröße
-                                </label>
-                                <select
-                                  id="subtitleSize"
-                                  value={subtitleOptions.fontSize}
-                                  onChange={(e) => setSubtitleOptions({...subtitleOptions, fontSize: parseInt(e.target.value)})}
-                                  className="mt-1 p-2 w-full text-sm rounded-md bg-gray-700 border-gray-600"
-                                >
-                                  {[18, 20, 22, 24, 26, 28, 30, 32, 36, 40].map(size => (
-                                    <option key={size} value={size}>
-                                      {size}px
-                                    </option>
-                                  ))}
-                                </select>
-                              </div>
-                              
-                              {/* Textfarbe */}
-                              <div>
-                                <label htmlFor="subtitleColor" className="block text-xs font-medium">
-                                  Textfarbe
-                                </label>
-                                <div className="flex items-center mt-1">
-                                  <input
-                                    type="color"
-                                    id="subtitleColor"
-                                    value={subtitleOptions.primaryColor}
-                                    onChange={(e) => setSubtitleOptions({...subtitleOptions, primaryColor: e.target.value})}
-                                    className="h-8 w-8 rounded border border-gray-600"
-                                  />
-                                </div>
-                              </div>
-                              
-                              {/* Hintergrundfarbe */}
-                              <div>
-                                <label htmlFor="subtitleBgColor" className="block text-xs font-medium">
-                                  Hintergrundfarbe
-                                </label>
-                                <div className="flex items-center mt-1">
-                                  <input
-                                    type="checkbox"
-                                    id="transparentBg"
-                                    checked={subtitleOptions.transparentBackground}
-                                    onChange={(e) => {
-                                      const isTransparent = e.target.checked;
-                                      setSubtitleOptions({
-                                        ...subtitleOptions, 
-                                        transparentBackground: isTransparent,
-                                        backgroundColor: isTransparent ? '#00000000' : '#00000080'
-                                      });
-                                    }}
-                                    className="mr-2 checkbox checkbox-xs"
-                                  />
-                                  <label htmlFor="transparentBg" className="text-xs cursor-pointer mr-3">
-                                    Kein Hintergrund
-                                  </label>
-                                  
-                                  {!subtitleOptions.transparentBackground && (
-                                    <>
-                                      <input
-                                        type="color"
-                                        id="subtitleBgColor"
-                                        value={subtitleOptions.backgroundColor.substring(0, 7)}
-                                        onChange={(e) => setSubtitleOptions({...subtitleOptions, backgroundColor: e.target.value + '80'})}
-                                        className="h-8 w-8 rounded border border-gray-600"
-                                      />
-                                      <div className="text-xs text-white/50 ml-2">(mit 50% Transparenz)</div>
-                                    </>
-                                  )}
-                                </div>
-                              </div>
-                              
-                              {/* Position */}
-                              <div>
-                                <label htmlFor="subtitlePosition" className="block text-xs font-medium">
-                                  Position
-                                </label>
-                                <select
-                                  id="subtitlePosition"
-                                  value={subtitleOptions.position}
-                                  onChange={(e) => setSubtitleOptions({...subtitleOptions, position: e.target.value})}
-                                  className="mt-1 p-2 w-full text-sm rounded-md bg-gray-700 border-gray-600"
-                                >
-                                  <option value="bottom">Unten (Standard)</option>
-                                  <option value="top">Oben</option>
-                                  <option value="middle">Mitte</option>
-                                </select>
-                              </div>
-
-                              {/* Rahmen-Option */}
-                              <div className="flex items-center pt-4 col-span-1 sm:col-span-2">
-                                <input
-                                  type="checkbox"
-                                  id="addOutline"
-                                  checked={subtitleOptions.addOutline}
-                                  onChange={(e) => setSubtitleOptions({...subtitleOptions, addOutline: e.target.checked})}
-                                  className="w-4 h-4 bg-gray-700 border-gray-600 rounded focus:ring-blue-600 ring-offset-gray-800 focus:ring-2"
-                                />
-                                <label htmlFor="addOutline" className="ml-2 text-xs font-medium">
-                                  Rahmen hinzufügen (bessere Lesbarkeit)
-                                </label>
-                              </div>
-
-                              {/* Nur anzeigen, wenn Rahmen aktiviert ist */}
-                              {subtitleOptions.addOutline && (
-                                <>
-                                  {/* Rahmen-Dicke */}
-                                  <div>
-                                    <label htmlFor="outlineWidth" className="block text-xs font-medium">
-                                      Rahmen-Dicke
-                                    </label>
-                                    <input
-                                      type="range"
-                                      id="outlineWidth"
-                                      min="1"
-                                      max="5"
-                                      step="0.5"
-                                      value={subtitleOptions.outlineWidth}
-                                      onChange={(e) => setSubtitleOptions({...subtitleOptions, outlineWidth: parseFloat(e.target.value)})}
-                                      className="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer"
-                                    />
-                                  </div>
-
-                                  {/* Rahmen-Farbe */}
-                                  <div>
-                                    <label htmlFor="outlineColor" className="block text-xs font-medium">
-                                      Rahmen-Farbe
-                                    </label>
-                                    <input
-                                      type="color"
-                                      id="outlineColor"
-                                      value={subtitleOptions.outlineColor}
-                                      onChange={(e) => setSubtitleOptions({...subtitleOptions, outlineColor: e.target.value})}
-                                      className="h-8 w-8 rounded border border-gray-600"
-                                    />
-                                  </div>
-                                </>
-                              )}
                             </div>
                             
                             <div className="mt-3 p-2 bg-gray-900 rounded border border-gray-700">
@@ -1670,12 +1529,9 @@ export default function EditorPage() {
                                 className="mt-2 p-2 rounded text-center"
                                 style={{
                                   fontFamily: subtitleOptions.fontName,
-                                  fontSize: `${subtitleOptions.fontSize}px`,
+                                  fontSize: `24px`,
                                   color: subtitleOptions.primaryColor,
-                                  backgroundColor: subtitleOptions.transparentBackground ? 'transparent' : (subtitleOptions.backgroundColor.substring(0, 7) + '80'),
-                                  textShadow: subtitleOptions.addOutline 
-                                    ? `${subtitleOptions.outlineColor} 0px 0px ${subtitleOptions.outlineWidth}px, ${subtitleOptions.outlineColor} 0px 0px ${subtitleOptions.outlineWidth}px, ${subtitleOptions.outlineColor} 0px 0px ${subtitleOptions.outlineWidth}px, ${subtitleOptions.outlineColor} 0px 0px ${subtitleOptions.outlineWidth}px`
-                                    : 'none'
+                                  textShadow: '1px 1px 3px #000000, -1px -1px 3px #000000, 1px -1px 3px #000000, -1px 1px 3px #000000',
                                 }}
                               >
                                 Beispieltext für Untertitel

@@ -43,9 +43,6 @@ const SUBTITLE_TEXT = process.env.SUBTITLE_TEXT || '';
 // Untertitel-Styling-Optionen aus Umgebungsvariablen
 const SUBTITLE_FONT_NAME = process.env.SUBTITLE_FONT_NAME || 'Montserrat';
 const SUBTITLE_FONT_SIZE = process.env.SUBTITLE_FONT_SIZE || '24';
-const SUBTITLE_PRIMARY_COLOR = process.env.SUBTITLE_PRIMARY_COLOR || '#FFFFFF';
-const SUBTITLE_BACKGROUND_COLOR = process.env.SUBTITLE_BACKGROUND_COLOR || '#80000000';
-const SUBTITLE_BORDER_STYLE = process.env.SUBTITLE_BORDER_STYLE || '4';
 const SUBTITLE_POSITION = process.env.SUBTITLE_POSITION || 'bottom';
 
 // Logge alle Umgebungsvariablen für Debugging (ohne sensible Daten)
@@ -1201,7 +1198,7 @@ async function generateFinalVideo() {
           throw new Error(`Final file with voiceover is empty or does not exist: ${finalFile}`);
         }
         
-        // 7. Wenn Untertitel erwünscht sind, aber kein Voiceover vorhanden ist
+        // 7. Wenn Untertitel erwünscht sind, füge sie zum Video mit Voiceover hinzu
         if (ADD_SUBTITLES && (SUBTITLE_TEXT || TEMPLATE_DATA.voiceoverText)) {
           console.log('Adding subtitles to video...');
           
@@ -1216,9 +1213,6 @@ async function generateFinalVideo() {
           // Hole die Untertitel-Styling-Optionen
           let fontName = SUBTITLE_FONT_NAME;
           let fontSize = SUBTITLE_FONT_SIZE;
-          let primaryColor = SUBTITLE_PRIMARY_COLOR;
-          let backgroundColor = SUBTITLE_BACKGROUND_COLOR;
-          let borderStyle = parseInt(SUBTITLE_BORDER_STYLE);
           let position = SUBTITLE_POSITION;
           
           // Verwende Optionen aus TEMPLATE_DATA, wenn verfügbar
@@ -1226,20 +1220,10 @@ async function generateFinalVideo() {
             console.log('Using custom subtitle options from TEMPLATE_DATA');
             fontName = TEMPLATE_DATA.subtitleOptions.fontName || fontName;
             fontSize = TEMPLATE_DATA.subtitleOptions.fontSize || fontSize;
-            primaryColor = TEMPLATE_DATA.subtitleOptions.primaryColor || primaryColor;
-            backgroundColor = TEMPLATE_DATA.subtitleOptions.backgroundColor || backgroundColor;
-            borderStyle = TEMPLATE_DATA.subtitleOptions.borderStyle || borderStyle;
             position = TEMPLATE_DATA.subtitleOptions.position || position;
           }
           
-          // Konvertiere primäre Farbe in FFmpeg-Format (entferne #)
-          const primaryColorFFmpeg = primaryColor.replace('#', '&H00');
-          
-          // Konvertiere Hintergrundfarbe in FFmpeg-Format (entferne #)
-          const backgroundColorFFmpeg = backgroundColor.replace('#', '&H');
-          
-          console.log(`Using subtitle styling - Font: ${fontName}, Size: ${fontSize}, Color: ${primaryColorFFmpeg}, 
-            BG: ${backgroundColorFFmpeg}, Border: ${borderStyle}, Position: ${position}`);
+          console.log(`Using subtitle font: ${fontName}, size: ${fontSize}, position: ${position}`);
           
           // Erstelle temporäre SRT-Datei
           const srtFile = path.join(TEMP_DIR, 'subtitles.srt');
@@ -1385,33 +1369,19 @@ async function generateFinalVideo() {
               positionParam = '70';
             }
             
-            // Überprüfe transparent Background
-            const hasTransparentBg = 
-              backgroundColor === '#00000000' || 
-              backgroundColor.toLowerCase().includes('00000000') ||
-              backgroundColor === 'transparent';
-              
-            const addOutline = process.env.SUBTITLE_ADD_OUTLINE === 'true';
-              
             console.log(`Using subtitle position: ${position} (param: ${positionParam})`);
-            console.log(`Background is transparent: ${hasTransparentBg}`);
-            console.log(`Adding outline: ${addOutline}`);
             
             // Erstelle neues Video mit Untertiteln
             const subtitledFile = path.join(OUTPUT_DIR, 'final_with_subtitles.mp4');
             
-            const actualFontSize = 16;
-            console.log(`Using font size: ${actualFontSize}`);
-
-            let styleOptions = `FontName=${fontName},FontSize=${actualFontSize},PrimaryColour=${primaryColorFFmpeg}`;
-
-            if (addOutline) {
-              const outlineWidth = process.env.SUBTITLE_OUTLINE_WIDTH || '2';
-              const outlineColor = (process.env.SUBTITLE_OUTLINE_COLOR || '#000000').replace('#', '&H00');
-              styleOptions += `,OutlineColour=${outlineColor},BorderStyle=1,Outline=${outlineWidth}`;
-            } else if (!hasTransparentBg) {
-              styleOptions += `,BackColour=${backgroundColorFFmpeg},BorderStyle=${borderStyle}`;
-            }
+            const styleOptions =
+              `FontName=${fontName},` +
+              `FontSize=${fontSize},` +
+              `PrimaryColour=&H00FFFFFF,` + // Weiß
+              `OutlineColour=&H00000000,` + // Schwarz
+              `BorderStyle=1,` + // Umriss + Schatten
+              `Outline=1.8,` +
+              `Shadow=1`;
               
             const subtitleParams = `subtitles=${srtFile.replace(/\\/g, '/')}:force_style='${styleOptions},Alignment=2,MarginV=${positionParam}'`;
               
@@ -1472,9 +1442,6 @@ async function generateFinalVideo() {
     // Hole die Untertitel-Styling-Optionen
     let fontName = SUBTITLE_FONT_NAME;
     let fontSize = SUBTITLE_FONT_SIZE;
-    let primaryColor = SUBTITLE_PRIMARY_COLOR;
-    let backgroundColor = SUBTITLE_BACKGROUND_COLOR;
-    let borderStyle = parseInt(SUBTITLE_BORDER_STYLE);
     let position = SUBTITLE_POSITION;
     
     // Verwende Optionen aus TEMPLATE_DATA, wenn verfügbar
@@ -1482,20 +1449,10 @@ async function generateFinalVideo() {
       console.log('Using custom subtitle options from TEMPLATE_DATA');
       fontName = TEMPLATE_DATA.subtitleOptions.fontName || fontName;
       fontSize = TEMPLATE_DATA.subtitleOptions.fontSize || fontSize;
-      primaryColor = TEMPLATE_DATA.subtitleOptions.primaryColor || primaryColor;
-      backgroundColor = TEMPLATE_DATA.subtitleOptions.backgroundColor || backgroundColor;
-      borderStyle = TEMPLATE_DATA.subtitleOptions.borderStyle || borderStyle;
       position = TEMPLATE_DATA.subtitleOptions.position || position;
     }
     
-    // Konvertiere primäre Farbe in FFmpeg-Format (entferne #)
-    const primaryColorFFmpeg = primaryColor.replace('#', '&H00');
-    
-    // Konvertiere Hintergrundfarbe in FFmpeg-Format (entferne #)
-    const backgroundColorFFmpeg = backgroundColor.replace('#', '&H');
-    
-    console.log(`Using subtitle styling - Font: ${fontName}, Size: ${fontSize}, Color: ${primaryColorFFmpeg}, 
-      BG: ${backgroundColorFFmpeg}, Border: ${borderStyle}, Position: ${position}`);
+    console.log(`Using subtitle font: ${fontName}, size: ${fontSize}, position: ${position}`);
     
     // Erstelle temporäre SRT-Datei
     const srtFile = path.join(TEMP_DIR, 'subtitles.srt');
@@ -1641,33 +1598,19 @@ async function generateFinalVideo() {
         positionParam = '70';
       }
       
-      // Überprüfe transparent Background
-      const hasTransparentBg = 
-        backgroundColor === '#00000000' || 
-        backgroundColor.toLowerCase().includes('00000000') ||
-        backgroundColor === 'transparent';
-        
-      const addOutline = process.env.SUBTITLE_ADD_OUTLINE === 'true';
-              
       console.log(`Using subtitle position: ${position} (param: ${positionParam})`);
-      console.log(`Background is transparent: ${hasTransparentBg}`);
-      console.log(`Adding outline: ${addOutline}`);
       
       // Erstelle neues Video mit Untertiteln
       const subtitledFile = path.join(OUTPUT_DIR, 'final_with_subtitles.mp4');
       
-      const actualFontSize = 16;
-      console.log(`Using font size: ${actualFontSize}`);
-
-      let styleOptions = `FontName=${fontName},FontSize=${actualFontSize},PrimaryColour=${primaryColorFFmpeg}`;
-
-      if (addOutline) {
-        const outlineWidth = process.env.SUBTITLE_OUTLINE_WIDTH || '2';
-        const outlineColor = (process.env.SUBTITLE_OUTLINE_COLOR || '#000000').replace('#', '&H00');
-        styleOptions += `,OutlineColour=${outlineColor},BorderStyle=1,Outline=${outlineWidth}`;
-      } else if (!hasTransparentBg) {
-        styleOptions += `,BackColour=${backgroundColorFFmpeg},BorderStyle=1`;
-      }
+      const styleOptions =
+        `FontName=${fontName},` +
+        `FontSize=${fontSize},` +
+        `PrimaryColour=&H00FFFFFF,` + // Weiß
+        `OutlineColour=&H00000000,` + // Schwarz
+        `BorderStyle=1,` + // Umriss + Schatten
+        `Outline=1.8,` +
+        `Shadow=1`;
         
       const subtitleParams = `subtitles=${srtFile.replace(/\\/g, '/')}:force_style='${styleOptions},Alignment=2,MarginV=${positionParam}'`;
         

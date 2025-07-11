@@ -420,9 +420,6 @@ export async function POST(request: NextRequest) {
         if (data.options.subtitleOptions) {
           jobParams.SUBTITLE_FONT_NAME = data.options.subtitleOptions.fontName;
           jobParams.SUBTITLE_FONT_SIZE = data.options.subtitleOptions.fontSize.toString();
-          jobParams.SUBTITLE_PRIMARY_COLOR = data.options.subtitleOptions.primaryColor;
-          jobParams.SUBTITLE_BACKGROUND_COLOR = data.options.subtitleOptions.backgroundColor;
-          jobParams.SUBTITLE_BORDER_STYLE = data.options.subtitleOptions.borderStyle.toString();
           jobParams.SUBTITLE_POSITION = data.options.subtitleOptions.position;
         }
       }

@@ -126,9 +126,6 @@ Anpassungen der Untertitel-Optionen können über die Umgebungsvariablen gesteue
 | ADD_SUBTITLES | false | Aktiviert die Untertitel |
 | SUBTITLE_FONT_NAME | Arial | Schriftart |
 | SUBTITLE_FONT_SIZE | 24 | Schriftgröße |
-| SUBTITLE_PRIMARY_COLOR | #FFFFFF | Textfarbe (HEX) |
-| SUBTITLE_BACKGROUND_COLOR | #80000000 | Hintergrundfarbe (HEX mit Alpha) |
-| SUBTITLE_BORDER_STYLE | 4 | Rahmenstil (1-4) |
 | SUBTITLE_POSITION | bottom | Position (bottom, middle, top) |
 
 ## Wichtige Umgebungsvariablen
@@ -225,3 +222,24 @@ Die Logs des Containers sind in CloudWatch Logs verfügbar. Prüfe:
 - **Batch Job Definition**: video-processor-job
 - **Batch Job Queue**: video-processing-queue
 - **Callback URL**: https://ad-video-generator.vercel.app/api/batch-callback 
+
+
+
+ToDos bevor Launch:
+Functional
+- Untertitel perfektionieren
+- KI Matching Prompt perfektionieren
+- Ladeleiste von Video Editor verbessern mit Email Notification wenn fertig
+- Premiumfunktionen anpassen
+- Google Login und normaler Login überprüfen
+- Sicherheitschecks durchführen: Insbesondere API Keys Schwachstellen prüfen
+- Voiceover Upload bei Script Seite ermöglichen
+- Perplexity bei Script Matcher Seite für B-Roll adden
+- Finaler Testdurchgang
+
+Marketing
+- Landingpage optimieren und mit Videos ausstatten (UGGS.io und enhancor als Inspo)
+- Linkedin Nachricht formulieren
+- Instagram Seite erstellen
+- Anzeigen bauen
+
