@@ -1530,7 +1530,7 @@ export default function EditorPage() {
                                   fontFamily: subtitleOptions.fontName,
                                   fontSize: `20px`,
                                   color: subtitleOptions.primaryColor,
-                                  textShadow: '-1.5px -1.5px 0 #000, 1.5px -1.5px 0 #000, -1.5px 1.5px 0 #000, 1.5px 1.5px 0 #000',
+                                  textShadow: '-1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000',
                                   letterSpacing: '-0.5px',
                                 }}
                               >
