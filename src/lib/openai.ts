@@ -12,6 +12,7 @@ export interface ScriptSegment {
   text: string;
   keywords: string[];
   duration: number;
+  position?: number; // Startzeit des Segments in Sekunden
 }
 
 /**
