@@ -1,8 +1,9 @@
 import OpenAI from 'openai';
+import { VideoMatch } from '@/utils/tag-matcher';
 
-// OpenAI-Client initialisieren
+// Initialisiere den OpenAI-Client mit dem API-Schlüssel
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
+  apiKey: process.env.OPENAI_API_KEY,
 });
 
 // Interface für ein Skriptsegment
@@ -75,6 +76,7 @@ export async function analyzeScript(script: string): Promise<ScriptSegment[]> {
   }
 }
 
+
 /**
  * Generiert Tags für ein Video basierend auf seinem Inhalt
  * @param videoDescription Eine Beschreibung des Videoinhalts
@@ -115,5 +117,85 @@ export async function generateVideoTags(videoDescription: string): Promise<strin
   } catch (error) {
     console.error('Fehler bei der OpenAI API:', error);
     throw new Error(`Fehler bei der Tag-Generierung: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+/**
+ * Analysiert ein Skript und findet die besten passenden Videos für jedes Segment.
+ * Verwendet GPT-4 für ein kontextuelles Verständnis des gesamten Skripts.
+ * 
+ * @param script Das vollständige Werbeskript.
+ * @param videos Eine Liste der verfügbaren Videos mit Tags und Namen.
+ * @returns Ein Array von Video-Matches, die von der KI zugeordnet wurden.
+ */
+export async function findBestMatchesForScript(
+  script: string,
+  videos: { id: string; name: string; tags: string[] }[]
+): Promise<{ segmentId: string; videoId: string; }[]> {
+  console.log('Starte kontextuelles Video-Matching mit GPT-4 Turbo...');
+
+  // Bereite die Videoliste für den Prompt vor.
+  const videoListString = videos
+    .map(v => `id: "${v.id}", name: "${v.name}", tags: [${v.tags.join(', ')}]`)
+    .join('\n');
+
+  const systemPrompt = `
+Du bist ein Experte für Videoproduktion und deine Aufgabe ist es, ein Werbeskript zu analysieren und die am besten passenden Videoclips zuzuordnen.
+Du erhältst ein Skript, das in Segmente unterteilt ist, und eine Liste von verfügbaren Videoclips.
+
+Dein Vorgehen:
+1.  **Gesamtkontext verstehen:** Lies das gesamte Skript, um das zentrale Thema, die Stimmung (z.B. fröhlich, seriös, dringend) und die gewünschte visuelle Abfolge zu verstehen.
+2.  **Segmentweise Zuordnung:** Gehe das Skript Segment für Segment durch.
+3.  **Bester Clip pro Segment:** Wähle für JEDES Segment den EINEN Videoclip aus der Liste, der thematisch und visuell am besten passt. Berücksichtige dabei den Gesamtkontext. Ein Clip kann mehrfach verwendet werden, wenn es sinnvoll ist.
+4.  **Logische Schlussfolgerung:** Verlasse dich nicht nur auf exakte Keyword-Übereinstimmungen. Nutze die Dateinamen und Tags als Hinweise, aber triff eine intelligente Entscheidung basierend auf dem, was visuell am besten zur Aussage des Segments und zur Stimmung des gesamten Videos passt.
+
+Dein Output MUSS ein valides JSON-Objekt sein, das nur aus einem einzigen Array namens "matches" besteht.
+Jedes Objekt im "matches"-Array repräsentiert ein Skriptsegment und muss folgende Struktur haben:
+{
+  "segmentId": "die ID des Skriptsegments (z.B. 'seg_1')",
+  "videoId": "die ID des zugeordneten Videoclips (z.B. 'vid_abc123')"
+}
+Stelle sicher, dass du für JEDES Segment aus dem Input genau ein Objekt im "matches"-Array zurückgibst.
+`;
+
+  try {
+    const response = await openai.chat.completions.create({
+      model: "gpt-4-turbo-preview", // Einsatz des leistungsstärkeren Modells
+      messages: [
+        {
+          role: "system",
+          content: systemPrompt,
+        },
+        {
+          role: "user",
+          content: `Hier ist das Skript und die Liste der verfügbaren Videos. Führe die Zuordnung durch.
+
+--- SCRIPT ---
+${script}
+
+--- VERFÜGBARE VIDEOS ---
+${videoListString}
+`,
+        },
+      ],
+      response_format: { type: "json_object" },
+    });
+
+    const content = response.choices[0].message.content;
+    if (!content) {
+      throw new Error('OpenAI hat keine gültige Antwort zurückgegeben.');
+    }
+
+    console.log('OpenAI Matching-Antwort erhalten:', content);
+    const result = JSON.parse(content);
+
+    // Verarbeite das Ergebnis, um es in das VideoMatch-Format zu bringen
+    // Diese Logik muss im aufrufenden Service implementiert werden,
+    // da wir hier keinen Zugriff auf die vollständigen Video- oder Segment-Objekte haben.
+    return result.matches || [];
+
+  } catch (error) {
+    console.error('Fehler bei der OpenAI API für das Video-Matching:', error);
+    throw new Error(`Fehler beim kontextuellen Video-Matching: ${error instanceof Error ? error.message : String(error)}`);
   }
 } 

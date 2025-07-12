@@ -17,7 +17,7 @@ export interface VideoMatch {
   score: number;
   startTime?: number;
   endTime?: number;
-  source?: 'auto' | 'manual'; // Ursprung des Matches: automatisch oder manuell zugeordnet
+  source: 'auto' | 'manual'; // Ursprung des Matches: automatisch oder manuell zugeordnet
 }
 
 /**
