@@ -4,14 +4,14 @@ import { authOptions } from '@/lib/auth';
 import dbConnect from '@/lib/mongoose';
 import VideoModel from '@/models/Video';
 import Voiceover, { IWordTimestamp } from '@/models/Voiceover';
-import { findBestMatchesForScript, ScriptSegment } from '@/lib/openai';
+import { createScenesForScript, ScriptSegment } from '@/lib/openai';
 import { createSegmentsFromTimestamps } from '@/utils/segment-generator';
 import { TaggedVideo, VideoMatch } from '@/utils/tag-matcher';
 
-type AiMatch = {
+type Scene = {
   segmentId: string;
-  videoId: string;
-}
+  videoClips: { videoId: string; duration: number }[];
+};
 
 export async function POST(request: NextRequest) {
   try {
@@ -25,70 +25,75 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'voiceoverId is required' }, { status: 400 });
     }
 
-    console.log(`Starte optimiertes Matching für Voiceover: ${voiceoverId}`);
+    console.log(`Starte Szenen-basiertes Matching für Voiceover: ${voiceoverId}`);
 
     await dbConnect();
     
-    // 1. Voiceover mit Timestamps laden
     const voiceover = await Voiceover.findById(voiceoverId).lean<{ wordTimestamps?: IWordTimestamp[] }>();
     if (!voiceover || !voiceover.wordTimestamps || voiceover.wordTimestamps.length === 0) {
       throw new Error('Voiceover not found or does not contain timestamps.');
     }
 
-    // 2. Präzise Segmente aus Timestamps erstellen
     const segments = createSegmentsFromTimestamps(voiceover.wordTimestamps);
     if (segments.length === 0) {
       throw new Error('Could not generate segments from timestamps.');
     }
-    console.log(`${segments.length} präzise Segmente erstellt.`);
 
-    // 3. Verfügbare Videos des Nutzers laden
     const userVideos = await VideoModel.find({ userId: session.user.id, tags: { $exists: true, $not: { $size: 0 } } }).lean();
     if (userVideos.length === 0) {
       return NextResponse.json({ error: 'No tagged videos found for user' }, { status: 404 });
     }
-    const taggedVideos: TaggedVideo[] = userVideos.map(video => ({
+    const taggedVideos = userVideos.map(video => ({
       id: video.id,
       name: video.name,
       tags: video.tags || [],
-      url: video.url || `https://${process.env.NEXT_PUBLIC_S3_BUCKET_NAME}.s3.${process.env.NEXT_PUBLIC_AWS_REGION}.amazonaws.com/${video.path}`,
-      path: video.path,
-      duration: video.duration,
+      duration: video.duration || 0, // Wichtig: Dauer übergeben
     }));
 
-    // 4. KI-Matching in einem Schritt durchführen
-    const aiMatches: AiMatch[] = await findBestMatchesForScript(segments, taggedVideos);
+    // Neue KI-Funktion aufrufen, um Szenen zu erstellen
+    const scenes: Scene[] = await createScenesForScript(segments, taggedVideos);
 
-    // 5. Die rohen KI-Matches mit den vollständigen Daten anreichern
-    const finalMatches: VideoMatch[] = aiMatches.map((aiMatch: AiMatch) => {
-      const segment = segments.find(s => s.id === aiMatch.segmentId);
-      const video = taggedVideos.find(v => v.id === aiMatch.videoId);
+    // Die Szenen in das `VideoMatch` Format umwandeln, das das Frontend erwartet.
+    // HINWEIS: Dieser Teil muss im Frontend angepasst werden, um mehrere Clips pro Segment zu visualisieren.
+    // Vorerst nehmen wir nur den ersten Clip pro Szene für die Kompatibilität.
+    const finalMatches: VideoMatch[] = scenes.map((scene: Scene) => {
+      const segment = segments.find(s => s.id === scene.segmentId);
+      const firstClip = scene.videoClips[0];
+      if (!segment || !firstClip) return null;
 
-      if (!segment || !video) return null;
+      const video = taggedVideos.find(v => v.id === firstClip.videoId);
+      if (!video) return null;
+
+      const fullVideoData: TaggedVideo = {
+        ...video,
+        url: `https://${process.env.NEXT_PUBLIC_S3_BUCKET_NAME}.s3.${process.env.NEXT_PUBLIC_AWS_REGION}.amazonaws.com/${(userVideos.find(v=>v.id === video.id) as any)?.path}`,
+        path: (userVideos.find(v=>v.id === video.id) as any)?.path,
+      }
 
       const newMatch: VideoMatch = {
         segment,
-        video,
-        score: 1, // Score ist 1, da KI-basiert
+        video: fullVideoData,
+        score: 1,
         source: 'auto',
       };
       return newMatch;
     }).filter((match): match is VideoMatch => match !== null);
 
-    console.log(`Optimiertes Matching abgeschlossen. ${finalMatches.length} Matches gefunden.`);
+    console.log(`Szenen-basiertes Matching abgeschlossen. ${finalMatches.length} Matches gefunden.`);
 
     return NextResponse.json({
       success: true,
       segments: segments,
-      matches: finalMatches,
+      matches: finalMatches, // Vorerst nur der erste Clip pro Szene
+      scenes: scenes, // Die volle Szenen-Struktur für zukünftige Frontend-Anpassungen
       totalVideos: taggedVideos.length,
     });
 
   } catch (error) {
-    console.error('Fehler im optimierten Video-Matching Prozess:', error);
+    console.error('Fehler im szenen-basierten Video-Matching:', error);
     return NextResponse.json(
       { 
-        error: 'Failed to match videos with new optimized strategy', 
+        error: 'Failed to match videos with scene-based strategy', 
         details: error instanceof Error ? error.message : String(error) 
       },
       { status: 500 }

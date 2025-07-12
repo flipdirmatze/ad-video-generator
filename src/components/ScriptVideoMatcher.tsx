@@ -20,6 +20,7 @@ export default function ScriptVideoMatcher() {
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [segments, setSegments] = useState<ScriptSegment[]>([])
   const [matches, setMatches] = useState<VideoMatch[]>([])
+  const [scenes, setScenes] = useState<{ segmentId: string; videoClips: { videoId: string; duration: number }[] }[]>([]);
   const [error, setError] = useState('')
   const [totalVideos, setTotalVideos] = useState(0)
   const [voiceoverData, setVoiceoverData] = useState<VoiceoverData | null>(null)
@@ -225,6 +226,7 @@ export default function ScriptVideoMatcher() {
     setError('')
     setSegments([])
     setMatches([])
+    setScenes([])
 
     try {
       const response = await fetch('/api/match-videos', {
@@ -243,6 +245,7 @@ export default function ScriptVideoMatcher() {
 
       setSegments(data.segments || [])
       setMatches(data.matches || [])
+      setScenes(data.scenes || [])
       setTotalVideos(data.totalVideos || 0)
       
       // Speichere die Segmente im Projekt
@@ -318,16 +321,30 @@ export default function ScriptVideoMatcher() {
   // Speichere die gematchten Videos im Projekt
   const saveMatchedVideos = async () => {
     try {
-      // Konvertiere die Matches in das Format für das Projekt
-      const matchedVideos = matches.map((match, index) => ({
-        videoId: match.video.id,
-        segmentId: match.segment.id || generateId(),
-        score: match.score,
-        startTime: 0,
-        duration: match.segment.duration,
-        position: index
-      }));
-      
+      // Konvertiere die SZENEN in das Format für das Projekt
+      const finalSegments = scenes.flatMap(scene => {
+        const segment = segments.find(s => s.id === scene.segmentId);
+        if (!segment) return [];
+
+        // Erstelle für jeden Clip im Segment einen eigenen Eintrag
+        let accumulatedTime = 0;
+        return scene.videoClips.map(clip => {
+          const video = availableVideos.find(v => v.id === clip.videoId);
+          if (!video) return null;
+
+          const segmentEntry = {
+            videoId: clip.videoId,
+            videoKey: (video as any).path, // Benötigt den S3-Key
+            startTime: 0, // Wir starten den Clip von vorne
+            duration: clip.duration,
+            position: segment.position + accumulatedTime, // Position innerhalb des Gesamt-Timings
+          };
+          accumulatedTime += clip.duration;
+          return segmentEntry;
+        });
+      }).filter(Boolean);
+
+
       const response = await fetch('/api/workflow-state', {
         method: 'POST',
         headers: {
@@ -336,7 +353,7 @@ export default function ScriptVideoMatcher() {
         body: JSON.stringify({
           projectId: projectId,
           workflowStep: 'editing',
-          matchedVideos: matchedVideos
+          matchedVideos: finalSegments // Sende die neue, detaillierte Schnittliste
         })
       });
       
@@ -767,130 +784,31 @@ export default function ScriptVideoMatcher() {
                       </div>
                     </div>
                     
-                    {/* Video-Thumbnail und Info */}
+                    {/* Video-Thumbnails und Info */}
                     <div className="p-3">
-                      {match ? (
-                        <div>
-                          <div className="mb-2 flex justify-between items-center">
-                            <div className="text-sm font-medium flex items-center">
-                              <span className={`px-1.5 py-0.5 text-xs rounded mr-2 ${match.source === 'manual' ? 'bg-purple-500/30 text-purple-300' : 'bg-green-500/30 text-green-300'}`}>
-                                {match.source === 'manual' ? 'Manuell' : `${Math.round(match.score * 100)}% Match`}
-                              </span>
-                            </div>
-                          </div>
-                          
-                          <div className="relative aspect-video bg-gray-900/50 rounded overflow-hidden mb-2">
-                            {match.video.url ? (
-                              <div className="relative w-full h-full">
-                                {/* Video-Element für die Wiedergabe */}
-                                <video
-                                  ref={(el) => setVideoRef(match.video.id, el)}
-                                  className="absolute inset-0 w-full h-full object-cover"
-                                  muted
-                                  playsInline
-                                  preload="metadata"
-                                  crossOrigin="anonymous"
-                                  onLoadStart={() => updateVideoLoadingState(match.video.id, true)}
-                                  onCanPlay={() => updateVideoLoadingState(match.video.id, false)}
-                                  onEnded={() => setPlayingVideoId(null)}
-                                  onError={(e) => {
-                                    console.error(`Video error for ${match.video.id}:`, e);
-                                    // Versuche es mit einer neuen URL, falls das Video nicht geladen werden kann
-                                    const videoElement = e.currentTarget as HTMLVideoElement;
-                                    if (!videoElement.src || videoElement.src === '') {
-                                      const videoData = availableVideos.find(v => v.id === match.video.id);
-                                      if (videoData && videoData.url) {
-                                        console.log(`Retrying with URL: ${videoData.url}`);
-                                        videoElement.src = videoData.url;
-                                        videoElement.load();
-                                      }
-                                    }
-                                  }}
-                                />
-                                
-                                {/* Play-Button und Overlay */}
-                                <div 
-                                  className="absolute inset-0 bg-black/40 flex items-center justify-center cursor-pointer"
-                                  onClick={() => playVideo(match.video.id)}
-                                >
-                                  {loadingVideoIds.has(match.video.id) ? (
-                                    <ArrowPathIcon className="h-8 w-8 text-white/80 animate-spin" />
-                                  ) : playingVideoId === match.video.id ? (
-                                    <PauseIcon className="h-8 w-8 text-white/80" />
-                                  ) : (
-                                    <PlayIcon className="h-8 w-8 text-white/80" />
-                                  )}
-                                </div>
+                      {scenes.find(s => s.segmentId === segment.id)?.videoClips.map((clip, clipIndex) => {
+                        const video = availableVideos.find(v => v.id === clip.videoId);
+                        if (!video) return <div key={clipIndex} className="text-xs text-red-400">Video nicht gefunden</div>;
+
+                        return (
+                          <div key={clipIndex} className="mb-3">
+                            <div className="relative aspect-video bg-gray-900/50 rounded overflow-hidden mb-2">
+                              <video
+                                ref={(el) => setVideoRef(video.id, el)}
+                                className="absolute inset-0 w-full h-full object-cover"
+                                muted
+                                playsInline
+                                preload="metadata"
+                                crossOrigin="anonymous"
+                              />
+                              <div className="absolute top-1 right-1 bg-black/60 text-white text-xs px-1.5 py-0.5 rounded">
+                                {clip.duration.toFixed(1)}s
                               </div>
-                            ) : (
-                              <div className="w-full h-full flex items-center justify-center">
-                                <FilmIcon className="h-8 w-8 text-gray-600" />
-                              </div>
-                            )}
-                          </div>
-                          
-                          <p className="text-sm font-medium truncate">{match.video.name}</p>
-                          
-                          <div className="mt-1 flex flex-wrap gap-1">
-                            {match.video.tags.map((tag, tIdx) => (
-                              <span 
-                                key={tIdx} 
-                                className="text-xs bg-blue-900/30 border border-blue-700/30 text-blue-400 rounded px-1.5 py-0.5"
-                              >
-                                {tag}
-                              </span>
-                            ))}
-                          </div>
-                          
-                          {match.video.duration && segment.duration < match.video.duration && (
-                            <div className="mt-2 text-xs text-yellow-400">
-                              Video wird von {match.video.duration}s auf {segment.duration}s gekürzt
                             </div>
-                          )}
-                          
-                          {/* Video-Auswahl Dropdown unter dem Video */}
-                          <div className="mt-3">
-                            <label className="block text-xs text-gray-400 mb-1">Video austauschen:</label>
-                            <select 
-                              className="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1 text-sm"
-                              onChange={(e) => handleManualVideoSelect(index, e.target.value)}
-                              value={match.video.id}
-                            >
-                              <option value={match.video.id}>{match.source === 'manual' ? 'Manuell ausgewählt' : 'Auto-Match'}</option>
-                              <option disabled>──────────</option>
-                              {availableVideos.map(video => (
-                                <option key={video.id} value={video.id} disabled={video.id === match.video.id}>
-                                  {video.name} {video.tags.length > 0 ? `(Tags: ${video.tags.join(', ')})` : ''}
-                                </option>
-                              ))}
-                            </select>
+                            <p className="text-sm font-medium truncate">{video.name}</p>
                           </div>
-                        </div>
-                      ) : (
-                        <div>
-                          <div className="flex items-center justify-center text-yellow-400 py-3 mb-2">
-                            <ExclamationTriangleIcon className="h-5 w-5 mr-2" />
-                            Kein passendes Video gefunden
-                          </div>
-                          
-                          {/* Video-Auswahl Dropdown */}
-                          <div className="mt-3">
-                            <label className="block text-xs text-gray-400 mb-1">Video manuell auswählen:</label>
-                            <select 
-                              className="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1 text-sm"
-                              onChange={(e) => handleManualVideoSelect(index, e.target.value)}
-                              defaultValue=""
-                            >
-                              <option value="" disabled>Video auswählen...</option>
-                              {availableVideos.map(video => (
-                                <option key={video.id} value={video.id}>
-                                  {video.name} {video.tags.length > 0 ? `(Tags: ${video.tags.join(', ')})` : ''}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                        </div>
-                      )}
+                        );
+                      })}
                     </div>
                   </div>
                 );

@@ -48,6 +48,7 @@ export function createSegmentsFromTimestamps(timestamps: IWordTimestamp[]): Scri
       text,
       duration,
       keywords: [], // Keywords werden in einem späteren Schritt von der KI hinzugefügt.
+      position: startTime, // Füge die Startzeit als Position hinzu
     };
   });
 
