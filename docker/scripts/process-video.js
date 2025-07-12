@@ -206,7 +206,7 @@ async function downloadFileFromS3(s3Key, localPath) {
       }
       
       let success = false;
-      for (const tryPath of possiblePaths) {
+      for (const tryPath of [...new Set(possiblePaths)]) {
         if (tryPath === s3Key) continue; // Überspringen des bereits versuchten Pfads
         
         try {
@@ -338,33 +338,64 @@ function generateSrtContent(subtitleText, duration, wordTimestamps = null) {
       console.log(`  ${i+1}: "${ts.word}" - ${ts.startTime.toFixed(3)}s to ${ts.endTime.toFixed(3)}s`);
     });
     
-    const lines = [];
-    let currentLineWords = [];
+    // Einfacher Text-Split Ansatz - direkt Zeilen bilden
+    let words = [];
+    let currentLine = '';
+    let currentStartTime = 0;
+    let currentEndTime = 0;
+    let lines = [];
     
-    wordTimestamps.forEach((wordData, index) => {
-      currentLineWords.push(wordData);
-      const currentLineText = currentLineWords.map(w => w.word).join(' ');
+    for (let i = 0; i < wordTimestamps.length; i++) {
+      const { word, startTime, endTime } = wordTimestamps[i];
       
-      const isLastWord = index === wordTimestamps.length - 1;
-      const isEndOfSentence = /[.!?]$/.test(wordData.word);
-      const nextWord = wordTimestamps[index + 1];
-      const nextLineText = nextWord ? `${currentLineText} ${nextWord.word}` : currentLineText;
-      
-      const isLineTooLong = nextWord ? nextLineText.length > MAX_CHARS_PER_LINE : false;
-      
-      if (isLineTooLong || isEndOfSentence || isLastWord) {
-        if (currentLineWords.length > 0) {
-          const startTime = currentLineWords[0].startTime;
-          const endTime = currentLineWords[currentLineWords.length - 1].endTime;
-          lines.push({
-            text: currentLineText,
-            startTime,
-            endTime
-          });
-          currentLineWords = [];
-        }
+      // Setze Start-Zeit beim ersten Wort einer neuen Zeile
+      if (currentLine === '') {
+        currentStartTime = startTime;
       }
-    });
+      
+      // Setze End-Zeit beim jedem Wort (aktualisiert sich fortlaufend)
+      currentEndTime = endTime;
+      
+      // Prüfe, ob das Wort in die aktuelle Zeile passt
+      if ((currentLine + ' ' + word).trim().length <= MAX_CHARS_PER_LINE) {
+        // Wort passt in die Zeile - füge es hinzu
+        currentLine = (currentLine + ' ' + word).trim();
+        words.push(word);
+    } else {
+        // Zeile ist voll - speichere sie und beginne eine neue
+        if (currentLine) {
+          lines.push({
+            text: currentLine,
+            startTime: currentStartTime,
+            endTime: currentEndTime
+          });
+        }
+        
+        // Beginne neue Zeile mit aktuellem Wort
+        currentLine = word;
+        currentStartTime = startTime;
+        currentEndTime = endTime;
+        words = [word];
+      }
+      
+      // Prüfe, ob das Wort ein Satzende bezeichnet oder ob es das letzte Wort ist
+      const isEndOfSentence = /[.!?]$/.test(word);
+      const isLastWord = i === wordTimestamps.length - 1;
+      
+      if (isEndOfSentence || isLastWord) {
+        // Speichere die aktuelle Zeile, wenn wir am Ende eines Satzes oder des Textes sind
+        if (currentLine) {
+          lines.push({
+            text: currentLine,
+            startTime: currentStartTime,
+            endTime: currentEndTime
+          });
+        }
+        
+        // Beginne mit einer neuen Zeile
+        currentLine = '';
+      }
+    }
     
     console.log(`Created ${lines.length} subtitle lines`);
     
@@ -396,7 +427,6 @@ function generateSrtContent(subtitleText, duration, wordTimestamps = null) {
       srtContent += `${srtIndex}\n${startTimeFormatted} --> ${endTimeFormatted}\n${line.text}\n\n`;
       srtIndex++;
     }
-    return srtContent; // Explizit hier zurückgeben, um Fall-Through zu vermeiden
   } else {
     // Code für den Fall ohne Zeitstempel - wortbasierte Strategie
     console.log('No word timestamps available - using smart word-wrapping strategy');
@@ -1306,50 +1336,31 @@ async function generateFinalVideo() {
             // Wenn keine direkten Timestamps gefunden wurden oder sie ungültig waren, versuche sie von S3 zu laden
             else if (process.env.WORD_TIMESTAMPS_PATH) {
               console.log(`No direct WORD_TIMESTAMPS found, but found WORD_TIMESTAMPS_PATH: ${process.env.WORD_TIMESTAMPS_PATH}`);
-              
+              const timestampsPath = process.env.WORD_TIMESTAMPS_PATH;
+              const localTimestampsPath = path.join(TEMP_DIR, 'timestamps.json');
+
               try {
-                // S3-Datei herunterladen
-                console.log(`Downloading timestamps from S3: ${process.env.WORD_TIMESTAMPS_PATH}`);
+                console.log(`Attempting to download timestamps from S3 path: ${timestampsPath}`);
+                await downloadFileFromS3(timestampsPath, localTimestampsPath);
+
+                const timestampsContent = fs.readFileSync(localTimestampsPath, 'utf-8');
+                console.log(`Timestamp file size: ${timestampsContent.length} bytes`);
                 
-                const s3BucketName = process.env.S3_BUCKET || '';
-                if (!s3BucketName) {
-                  throw new Error('S3_BUCKET environment variable not set');
-                }
-                
-                // Erstelle temporären Pfad für die heruntergeladene Datei
-                const localTimestampsPath = path.join(TEMP_DIR, 'timestamps.json');
-                
-                // Download der Datei mit AWS CLI
-                const downloadCmd = `aws s3 cp s3://${s3BucketName}/${process.env.WORD_TIMESTAMPS_PATH} ${localTimestampsPath} --region ${process.env.AWS_REGION || 'eu-central-1'}`;
-                console.log(`Running S3 download command: ${downloadCmd}`);
-                
-                try {
-                  execSync(downloadCmd, { stdio: 'inherit' });
-                  console.log(`Successfully downloaded timestamps file to ${localTimestampsPath}`);
+                wordTimestamps = JSON.parse(timestampsContent);
+                if (Array.isArray(wordTimestamps) && wordTimestamps.length > 0) {
+                  console.log(`Successfully loaded ${wordTimestamps.length} word timestamps from S3`);
                   
-                  // Datei einlesen und parsen
-                  const timestampsContent = fs.readFileSync(localTimestampsPath, 'utf-8');
-                  console.log(`Timestamp file size: ${timestampsContent.length} bytes`);
-                  
-                  wordTimestamps = JSON.parse(timestampsContent);
-                  if (Array.isArray(wordTimestamps) && wordTimestamps.length > 0) {
-                    console.log(`Successfully loaded ${wordTimestamps.length} word timestamps from S3`);
-                    
-                    // Ausgabe einiger Beispiel-Timestamps
-                    console.log('First 3 timestamps from S3:');
-                    wordTimestamps.slice(0, Math.min(3, wordTimestamps.length)).forEach((ts, i) => {
-                      console.log(`  ${i+1}: "${ts.word}" - ${ts.startTime}s to ${ts.endTime}s`);
-                    });
-                  } else {
-                    console.error('Timestamps from S3 are not in the expected format (array)');
-                    wordTimestamps = null;
-                  }
-                } catch (execError) {
-                  console.error('Error downloading timestamps from S3:', execError.message);
+                  // Ausgabe einiger Beispiel-Timestamps
+                  console.log('First 3 timestamps from S3:');
+                  wordTimestamps.slice(0, Math.min(3, wordTimestamps.length)).forEach((ts, i) => {
+                    console.log(`  ${i+1}: "${ts.word}" - ${ts.startTime}s to ${ts.endTime}s`);
+                  });
+                } else {
+                  console.error('Timestamps from S3 are not in the expected format (array)');
                   wordTimestamps = null;
                 }
               } catch (s3Error) {
-                console.error('Error processing timestamps from S3:', s3Error);
+                console.error('Error processing timestamps from S3:', s3Error.message);
                 console.log('Falling back to character-based timing');
                 wordTimestamps = null;
               }
@@ -1537,50 +1548,31 @@ async function generateFinalVideo() {
       // Wenn keine direkten Timestamps gefunden wurden oder sie ungültig waren, versuche sie von S3 zu laden
       else if (process.env.WORD_TIMESTAMPS_PATH) {
         console.log(`No direct WORD_TIMESTAMPS found, but found WORD_TIMESTAMPS_PATH: ${process.env.WORD_TIMESTAMPS_PATH}`);
-        
+        const timestampsPath = process.env.WORD_TIMESTAMPS_PATH;
+        const localTimestampsPath = path.join(TEMP_DIR, 'timestamps.json');
+
         try {
-          // S3-Datei herunterladen
-          console.log(`Downloading timestamps from S3: ${process.env.WORD_TIMESTAMPS_PATH}`);
+          console.log(`Attempting to download timestamps from S3 path: ${timestampsPath}`);
+          await downloadFileFromS3(timestampsPath, localTimestampsPath);
+
+          const timestampsContent = fs.readFileSync(localTimestampsPath, 'utf-8');
+          console.log(`Timestamp file size: ${timestampsContent.length} bytes`);
           
-          const s3BucketName = process.env.S3_BUCKET || '';
-          if (!s3BucketName) {
-            throw new Error('S3_BUCKET environment variable not set');
-          }
-          
-          // Erstelle temporären Pfad für die heruntergeladene Datei
-          const localTimestampsPath = path.join(TEMP_DIR, 'timestamps.json');
-          
-          // Download der Datei mit AWS CLI
-          const downloadCmd = `aws s3 cp s3://${s3BucketName}/${process.env.WORD_TIMESTAMPS_PATH} ${localTimestampsPath} --region ${process.env.AWS_REGION || 'eu-central-1'}`;
-          console.log(`Running S3 download command: ${downloadCmd}`);
-          
-          try {
-            execSync(downloadCmd, { stdio: 'inherit' });
-            console.log(`Successfully downloaded timestamps file to ${localTimestampsPath}`);
+          wordTimestamps = JSON.parse(timestampsContent);
+          if (Array.isArray(wordTimestamps) && wordTimestamps.length > 0) {
+            console.log(`Successfully loaded ${wordTimestamps.length} word timestamps from S3`);
             
-            // Datei einlesen und parsen
-            const timestampsContent = fs.readFileSync(localTimestampsPath, 'utf-8');
-            console.log(`Timestamp file size: ${timestampsContent.length} bytes`);
-            
-            wordTimestamps = JSON.parse(timestampsContent);
-            if (Array.isArray(wordTimestamps) && wordTimestamps.length > 0) {
-              console.log(`Successfully loaded ${wordTimestamps.length} word timestamps from S3`);
-              
-              // Ausgabe einiger Beispiel-Timestamps
-              console.log('First 3 timestamps from S3:');
-              wordTimestamps.slice(0, Math.min(3, wordTimestamps.length)).forEach((ts, i) => {
-                console.log(`  ${i+1}: "${ts.word}" - ${ts.startTime}s to ${ts.endTime}s`);
-              });
-            } else {
-              console.error('Timestamps from S3 are not in the expected format (array)');
-              wordTimestamps = null;
-            }
-          } catch (execError) {
-            console.error('Error downloading timestamps from S3:', execError.message);
+            // Ausgabe einiger Beispiel-Timestamps
+            console.log('First 3 timestamps from S3:');
+            wordTimestamps.slice(0, Math.min(3, wordTimestamps.length)).forEach((ts, i) => {
+              console.log(`  ${i+1}: "${ts.word}" - ${ts.startTime}s to ${ts.endTime}s`);
+            });
+          } else {
+            console.error('Timestamps from S3 are not in the expected format (array)');
             wordTimestamps = null;
           }
         } catch (s3Error) {
-          console.error('Error processing timestamps from S3:', s3Error);
+          console.error('Error processing timestamps from S3:', s3Error.message);
           console.log('Falling back to character-based timing');
           wordTimestamps = null;
         }
