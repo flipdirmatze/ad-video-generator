@@ -121,6 +121,85 @@ export async function generateVideoTags(videoDescription: string): Promise<strin
 }
 
 /**
+ * Generiert für gegebene Skript-Segmente passende visuelle Beschreibungen.
+ *
+ * @param segments Die Skript-Segmente mit exaktem Text und Dauer.
+ * @returns Die Segmente, angereichert mit visuellen Beschreibungsvorschlägen.
+ */
+export async function generateVisualsForSegments(segments: ScriptSegment[]): Promise<ScriptSegment[]> {
+  console.log('Generiere visuelle Beschreibungen für Segmente mit GPT-4...');
+
+  const scriptForPrompt = segments
+    .map((s, i) => `Segment ${i + 1} (Dauer: ${s.duration}s): "${s.text}"`)
+    .join('\n');
+
+  const systemPrompt = `
+Du bist ein kreativer Video-Regisseur. Deine Aufgabe ist es, für ein gegebenes Werbeskript visuelle Ideen zu entwickeln.
+Du erhältst eine Liste von Text-Segmenten mit ihrer exakten Dauer.
+
+Deine Aufgabe:
+Beschreibe für JEDES Segment eine passende visuelle Szene. Die Beschreibung sollte als Anweisung für ein Video-Matching-System dienen.
+Konzentriere dich auf die Stimmung, die Handlung und die Objekte in der Szene.
+
+Beispiel:
+- Input-Segment: "Dann verpasst du jede Woche echte Aktienchancen!"
+- Output-Beschreibung: "Ein dynamischer Börsenchart, der nach oben zeigt. Eine Person, die erfreut auf einen Computer-Monitor blickt."
+
+Dein Output MUSS ein valides JSON-Objekt sein, das nur aus einem Array namens "visuals" besteht.
+Jedes Objekt im "visuals"-Array muss folgende Struktur haben:
+{
+  "segmentId": "die ID des Segments (z.B. 'seg_1')",
+  "visualDescription": "Deine kreative Beschreibung der visuellen Szene."
+}
+Stelle sicher, dass du für JEDES Segment genau ein Objekt im "visuals"-Array zurückgibst.
+`;
+
+  try {
+    const response = await openai.chat.completions.create({
+      model: "gpt-4-turbo-preview",
+      messages: [
+        {
+          role: "system",
+          content: systemPrompt,
+        },
+        {
+          role: "user",
+          content: `Generiere die visuellen Beschreibungen für die folgenden Skript-Segmente:
+
+${scriptForPrompt}
+`,
+        },
+      ],
+      response_format: { type: "json_object" },
+    });
+
+    const content = response.choices[0].message.content;
+    if (!content) {
+      throw new Error('OpenAI hat keine gültige Antwort zurückgegeben.');
+    }
+
+    const result = JSON.parse(content);
+    const visuals: { segmentId: string; visualDescription: string }[] = result.visuals || [];
+
+    // Reichere die ursprünglichen Segmente mit den visuellen Beschreibungen an.
+    const enrichedSegments = segments.map(segment => {
+      const visual = visuals.find(v => v.segmentId === segment.id);
+      return {
+        ...segment,
+        // Die visuelle Beschreibung wird temporär im keywords-Feld gespeichert.
+        keywords: visual ? [visual.visualDescription] : [],
+      };
+    });
+
+    return enrichedSegments;
+
+  } catch (error) {
+    console.error('Fehler bei der Generierung der visuellen Beschreibungen:', error);
+    throw new Error(`Fehler bei der visuellen Analyse: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+/**
  * Analysiert ein Skript und findet die besten passenden Videos für jedes Segment.
  * Verwendet GPT-4 für ein kontextuelles Verständnis des gesamten Skripts.
  * 
@@ -135,9 +214,11 @@ export async function findBestMatchesForScript(
   console.log('Starte kontextuelles Video-Matching mit GPT-4 Turbo...');
 
   // Bereite die Videoliste für den Prompt vor.
+  console.log('[MATCHING-LOG] Bereite Videoliste für Prompt vor...');
   const videoListString = videos
     .map(v => `id: "${v.id}", name: "${v.name}", tags: [${v.tags.join(', ')}]`)
     .join('\n');
+  console.log(`[MATCHING-LOG] Videoliste erstellt, Länge: ${videoListString.length} Zeichen.`);
 
   const systemPrompt = `
 Du bist ein Experte für Videoproduktion und deine Aufgabe ist es, ein Werbeskript zu analysieren und die am besten passenden Videoclips zuzuordnen.
@@ -159,16 +240,14 @@ Stelle sicher, dass du für JEDES Segment aus dem Input genau ein Objekt im "mat
 `;
 
   try {
-    const response = await openai.chat.completions.create({
-      model: "gpt-4-turbo-preview", // Einsatz des leistungsstärkeren Modells
-      messages: [
-        {
-          role: "system",
-          content: systemPrompt,
-        },
-        {
-          role: "user",
-          content: `Hier ist das Skript und die Liste der verfügbaren Videos. Führe die Zuordnung durch.
+    const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+      {
+        role: "system",
+        content: systemPrompt,
+      },
+      {
+        role: "user",
+        content: `Hier ist das Skript und die Liste der verfügbaren Videos. Führe die Zuordnung durch.
 
 --- SCRIPT ---
 ${script}
@@ -176,10 +255,19 @@ ${script}
 --- VERFÜGBARE VIDEOS ---
 ${videoListString}
 `,
-        },
-      ],
+      },
+    ];
+
+    const totalPromptLength = messages.reduce((acc, msg) => acc + (typeof msg.content === 'string' ? msg.content.length : 0), 0);
+    console.log(`[MATCHING-LOG] Gesamt-Prompt-Länge: ${totalPromptLength} Zeichen. Sende Anfrage an OpenAI...`);
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4-turbo-preview", // Einsatz des leistungsstärkeren Modells
+      messages: messages,
       response_format: { type: "json_object" },
     });
+
+    console.log('[MATCHING-LOG] Antwort von OpenAI erfolgreich erhalten.');
 
     const content = response.choices[0].message.content;
     if (!content) {
