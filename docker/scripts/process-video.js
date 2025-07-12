@@ -709,6 +709,39 @@ function generateSyncedSubtitles(subtitleText, wordTimestamps, maxCharsPerLine, 
 }
 
 /**
+ * Ruft die exakte Dauer einer Mediendatei mit ffprobe ab.
+ * @param {string} filePath Der Pfad zur Mediendatei.
+ * @returns {Promise<number>} Die Dauer der Datei in Sekunden.
+ */
+async function getMediaDuration(filePath) {
+  return new Promise((resolve, reject) => {
+    const ffprobe = spawn('ffprobe', [
+      '-v', 'error',
+      '-show_entries', 'format=duration',
+      '-of', 'default=noprint_wrappers=1:nokey=1',
+      filePath
+    ]);
+
+    let duration = '';
+    ffprobe.stdout.on('data', (data) => {
+      duration += data.toString();
+    });
+
+    ffprobe.on('close', (code) => {
+      if (code === 0) {
+        resolve(parseFloat(duration));
+      } else {
+        reject(new Error(`ffprobe exited with code ${code}`));
+      }
+    });
+
+    ffprobe.on('error', (err) => {
+      reject(err);
+    });
+  });
+}
+
+/**
  * Hauptfunktion für die Videoverarbeitung
  */
 async function main() {
@@ -1176,17 +1209,21 @@ async function generateFinalVideo() {
       // FFmpeg-Befehl zum Hinzufügen des Voiceovers
       console.log('Adding voiceover to video...');
       try {
+        // Exakte Dauer des Voiceovers ermitteln, um die Videolänge zu steuern
+        const voiceoverDuration = await getMediaDuration(voiceoverPath);
+        console.log(`Exact voiceover duration is: ${voiceoverDuration} seconds.`);
+
         await runFFmpeg([
           '-i', concatenatedFile,
           '-i', voiceoverPath,
           '-map', '0:v', // Video vom ersten Input
           '-map', '1:a', // Audio vom zweiten Input
           '-c:v', 'libx264',
-          '-preset', 'veryfast', // Schneller Preset für bessere Geschwindigkeit
-          '-crf', '23', // Bessere Qualität (niedrigerer Wert = höhere Qualität)
+          '-preset', 'veryfast',
+          '-crf', '23',
           '-pix_fmt', 'yuv420p',
           '-movflags', '+faststart',
-          '-shortest',
+          '-t', voiceoverDuration.toString(), // Setze die exakte Enddauer
           '-y',
           finalFile
         ]);
