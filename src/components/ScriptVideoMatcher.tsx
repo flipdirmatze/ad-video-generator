@@ -520,6 +520,22 @@ export default function ScriptVideoMatcher() {
     }
   };
 
+  // Funktion zum manuellen Austauschen eines Videoclips in einer Szene
+  const handleManualClipSelect = (segmentId: string, clipIndex: number, newVideoId: string) => {
+    if (!newVideoId) return;
+
+    setScenes(prevScenes => {
+      return prevScenes.map(scene => {
+        if (scene.segmentId === segmentId) {
+          const newClips = [...scene.videoClips];
+          newClips[clipIndex] = { ...newClips[clipIndex], videoId: newVideoId };
+          return { ...scene, videoClips: newClips };
+        }
+        return scene;
+      });
+    });
+  };
+
   if (isLoading || isLoadingProject) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -706,12 +722,29 @@ export default function ScriptVideoMatcher() {
                                 </div>
                               </div>
                               <p className="text-sm font-medium truncate">{video.name}</p>
+                              
+                              {/* Manuelle Video-Auswahl für jeden Clip */}
+                              <div className="mt-3">
+                                <label className="block text-xs text-gray-400 mb-1">Clip austauschen:</label>
+                                <select 
+                                  className="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1 text-sm"
+                                  value={clip.videoId}
+                                  onChange={(e) => handleManualClipSelect(segment.id, clipIndex, e.target.value)}
+                                >
+                                  {availableVideos.map(v => (
+                                    <option key={v.id} value={v.id}>
+                                      {v.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
                             </div>
                           );
                         })
                       ) : (
                         <div>
-                          <p className="text-xs text-red-400">Kein passendes Video gefunden für dieses Segment.</p>
+                          {/* Hier könnte eine Fallback-UI stehen, wenn keine Clips für eine Szene gefunden wurden */}
+                          <p className="text-xs text-gray-400">Keine Videoclips für diese Szene gefunden.</p>
                         </div>
                       )}
                     </div>
