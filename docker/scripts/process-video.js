@@ -338,64 +338,33 @@ function generateSrtContent(subtitleText, duration, wordTimestamps = null) {
       console.log(`  ${i+1}: "${ts.word}" - ${ts.startTime.toFixed(3)}s to ${ts.endTime.toFixed(3)}s`);
     });
     
-    // Einfacher Text-Split Ansatz - direkt Zeilen bilden
-    let words = [];
-    let currentLine = '';
-    let currentStartTime = 0;
-    let currentEndTime = 0;
-    let lines = [];
+    const lines = [];
+    let currentLineWords = [];
     
-    for (let i = 0; i < wordTimestamps.length; i++) {
-      const { word, startTime, endTime } = wordTimestamps[i];
+    wordTimestamps.forEach((wordData, index) => {
+      currentLineWords.push(wordData);
+      const currentLineText = currentLineWords.map(w => w.word).join(' ');
       
-      // Setze Start-Zeit beim ersten Wort einer neuen Zeile
-      if (currentLine === '') {
-        currentStartTime = startTime;
-      }
+      const isLastWord = index === wordTimestamps.length - 1;
+      const isEndOfSentence = /[.!?]$/.test(wordData.word);
+      const nextWord = wordTimestamps[index + 1];
+      const nextLineText = nextWord ? `${currentLineText} ${nextWord.word}` : currentLineText;
       
-      // Setze End-Zeit beim jedem Wort (aktualisiert sich fortlaufend)
-      currentEndTime = endTime;
+      const isLineTooLong = nextWord ? nextLineText.length > MAX_CHARS_PER_LINE : false;
       
-      // Prüfe, ob das Wort in die aktuelle Zeile passt
-      if ((currentLine + ' ' + word).trim().length <= MAX_CHARS_PER_LINE) {
-        // Wort passt in die Zeile - füge es hinzu
-        currentLine = (currentLine + ' ' + word).trim();
-        words.push(word);
-    } else {
-        // Zeile ist voll - speichere sie und beginne eine neue
-        if (currentLine) {
+      if (isLineTooLong || isEndOfSentence || isLastWord) {
+        if (currentLineWords.length > 0) {
+          const startTime = currentLineWords[0].startTime;
+          const endTime = currentLineWords[currentLineWords.length - 1].endTime;
           lines.push({
-            text: currentLine,
-            startTime: currentStartTime,
-            endTime: currentEndTime
+            text: currentLineText,
+            startTime,
+            endTime
           });
+          currentLineWords = [];
         }
-        
-        // Beginne neue Zeile mit aktuellem Wort
-        currentLine = word;
-        currentStartTime = startTime;
-        currentEndTime = endTime;
-        words = [word];
       }
-      
-      // Prüfe, ob das Wort ein Satzende bezeichnet oder ob es das letzte Wort ist
-      const isEndOfSentence = /[.!?]$/.test(word);
-      const isLastWord = i === wordTimestamps.length - 1;
-      
-      if (isEndOfSentence || isLastWord) {
-        // Speichere die aktuelle Zeile, wenn wir am Ende eines Satzes oder des Textes sind
-        if (currentLine) {
-          lines.push({
-            text: currentLine,
-            startTime: currentStartTime,
-            endTime: currentEndTime
-          });
-        }
-        
-        // Beginne mit einer neuen Zeile
-        currentLine = '';
-      }
-    }
+    });
     
     console.log(`Created ${lines.length} subtitle lines`);
     
@@ -427,6 +396,7 @@ function generateSrtContent(subtitleText, duration, wordTimestamps = null) {
       srtContent += `${srtIndex}\n${startTimeFormatted} --> ${endTimeFormatted}\n${line.text}\n\n`;
       srtIndex++;
     }
+    return srtContent; // Explizit hier zurückgeben, um Fall-Through zu vermeiden
   } else {
     // Code für den Fall ohne Zeitstempel - wortbasierte Strategie
     console.log('No word timestamps available - using smart word-wrapping strategy');
