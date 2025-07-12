@@ -4,7 +4,7 @@ import { authOptions } from '@/lib/auth';
 import dbConnect from '@/lib/mongoose';
 import VideoModel from '@/models/Video';
 import Voiceover, { IWordTimestamp } from '@/models/Voiceover';
-import { generateVisualsForSegments, findBestMatchesForScript, ScriptSegment } from '@/lib/openai';
+import { findBestMatchesForScript, ScriptSegment } from '@/lib/openai';
 import { createSegmentsFromTimestamps } from '@/utils/segment-generator';
 import { TaggedVideo, VideoMatch } from '@/utils/tag-matcher';
 
@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'voiceoverId is required' }, { status: 400 });
     }
 
-    console.log(`Starte präzises Matching für Voiceover: ${voiceoverId}`);
+    console.log(`Starte optimiertes Matching für Voiceover: ${voiceoverId}`);
 
     await dbConnect();
     
@@ -42,11 +42,7 @@ export async function POST(request: NextRequest) {
     }
     console.log(`${segments.length} präzise Segmente erstellt.`);
 
-    // 3. Visuelle Beschreibungen für Segmente generieren
-    const segmentsWithVisuals = await generateVisualsForSegments(segments);
-    console.log('Visuelle Beschreibungen für Segmente erhalten.');
-
-    // 4. Verfügbare Videos des Nutzers laden
+    // 3. Verfügbare Videos des Nutzers laden
     const userVideos = await VideoModel.find({ userId: session.user.id, tags: { $exists: true, $not: { $size: 0 } } }).lean();
     if (userVideos.length === 0) {
       return NextResponse.json({ error: 'No tagged videos found for user' }, { status: 404 });
@@ -60,17 +56,12 @@ export async function POST(request: NextRequest) {
       duration: video.duration,
     }));
 
-    // 5. Basierend auf visuellen Beschreibungen die besten Videos matchen
-    // Wir übergeben der KI die Segmente mit den visuellen Ideen (gespeichert im 'keywords' Feld)
-    const scriptWithVisuals = segmentsWithVisuals
-      .map(s => `Segment (ID: ${s.id}, Dauer: ${s.duration}s, Text: "${s.text}")\nVisuelle Idee: ${s.keywords.join(' ')}`)
-      .join('\n\n');
+    // 4. KI-Matching in einem Schritt durchführen
+    const aiMatches: AiMatch[] = await findBestMatchesForScript(segments, taggedVideos);
 
-    const aiMatches: AiMatch[] = await findBestMatchesForScript(scriptWithVisuals, taggedVideos);
-
-    // 6. Die rohen KI-Matches mit den vollständigen Daten anreichern
+    // 5. Die rohen KI-Matches mit den vollständigen Daten anreichern
     const finalMatches: VideoMatch[] = aiMatches.map((aiMatch: AiMatch) => {
-      const segment = segmentsWithVisuals.find(s => s.id === aiMatch.segmentId);
+      const segment = segments.find(s => s.id === aiMatch.segmentId);
       const video = taggedVideos.find(v => v.id === aiMatch.videoId);
 
       if (!segment || !video) return null;
@@ -84,20 +75,20 @@ export async function POST(request: NextRequest) {
       return newMatch;
     }).filter((match): match is VideoMatch => match !== null);
 
-    console.log(`Präzises Matching abgeschlossen. ${finalMatches.length} Matches gefunden.`);
+    console.log(`Optimiertes Matching abgeschlossen. ${finalMatches.length} Matches gefunden.`);
 
     return NextResponse.json({
       success: true,
-      segments: segmentsWithVisuals,
+      segments: segments,
       matches: finalMatches,
       totalVideos: taggedVideos.length,
     });
 
   } catch (error) {
-    console.error('Fehler im präzisen Video-Matching Prozess:', error);
+    console.error('Fehler im optimierten Video-Matching Prozess:', error);
     return NextResponse.json(
       { 
-        error: 'Failed to match videos with new precise strategy', 
+        error: 'Failed to match videos with new optimized strategy', 
         details: error instanceof Error ? error.message : String(error) 
       },
       { status: 500 }
