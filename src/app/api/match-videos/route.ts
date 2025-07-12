@@ -4,13 +4,13 @@ import { authOptions } from '@/lib/auth';
 import dbConnect from '@/lib/mongoose';
 import VideoModel from '@/models/Video';
 import Voiceover, { IWordTimestamp } from '@/models/Voiceover';
-import { createScenesForScript, ScriptSegment } from '@/lib/openai';
+import { createVisualPlaylistForScript, ScriptSegment } from '@/lib/openai';
 import { createSegmentsFromTimestamps } from '@/utils/segment-generator';
 import { TaggedVideo, VideoMatch } from '@/utils/tag-matcher';
 
-type Scene = {
+type Playlist = {
   segmentId: string;
-  videoClips: { videoId: string; duration: number }[];
+  videoIds: string[];
 };
 
 export async function POST(request: NextRequest) {
@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'voiceoverId is required' }, { status: 400 });
     }
 
-    console.log(`Starte Szenen-basiertes Matching für Voiceover: ${voiceoverId}`);
+    console.log(`Starte optimiertes Playlist-Matching für Voiceover: ${voiceoverId}`);
 
     await dbConnect();
     
@@ -39,61 +39,50 @@ export async function POST(request: NextRequest) {
       throw new Error('Could not generate segments from timestamps.');
     }
 
-    const userVideos = await VideoModel.find({ userId: session.user.id, tags: { $exists: true, $not: { $size: 0 } } }).lean();
+    const userVideos = await VideoModel.find({ userId: session.user.id }).lean();
     if (userVideos.length === 0) {
-      return NextResponse.json({ error: 'No tagged videos found for user' }, { status: 404 });
+      return NextResponse.json({ error: 'No videos found for user' }, { status: 404 });
     }
     const taggedVideos = userVideos.map(video => ({
       id: video.id,
       name: video.name,
       tags: video.tags || [],
-      duration: video.duration || 0, // Wichtig: Dauer übergeben
     }));
 
-    // Neue KI-Funktion aufrufen, um Szenen zu erstellen
-    const scenes: Scene[] = await createScenesForScript(segments, taggedVideos);
+    const playlist: Playlist[] = await createVisualPlaylistForScript(segments, taggedVideos);
 
-    // Die Szenen in das `VideoMatch` Format umwandeln, das das Frontend erwartet.
-    // HINWEIS: Dieser Teil muss im Frontend angepasst werden, um mehrere Clips pro Segment zu visualisieren.
-    // Vorerst nehmen wir nur den ersten Clip pro Szene für die Kompatibilität.
-    const finalMatches: VideoMatch[] = scenes.map((scene: Scene) => {
-      const segment = segments.find(s => s.id === scene.segmentId);
-      const firstClip = scene.videoClips[0];
-      if (!segment || !firstClip) return null;
+    const scenes = playlist.map(item => {
+      const segment = segments.find(s => s.id === item.segmentId);
+      if (!segment) return null;
 
-      const video = taggedVideos.find(v => v.id === firstClip.videoId);
-      if (!video) return null;
+      const clipCount = item.videoIds.length;
+      if (clipCount === 0) return null;
 
-      const fullVideoData: TaggedVideo = {
-        ...video,
-        url: `https://${process.env.NEXT_PUBLIC_S3_BUCKET_NAME}.s3.${process.env.NEXT_PUBLIC_AWS_REGION}.amazonaws.com/${(userVideos.find(v=>v.id === video.id) as any)?.path}`,
-        path: (userVideos.find(v=>v.id === video.id) as any)?.path,
-      }
+      const durationPerClip = parseFloat((segment.duration / clipCount).toFixed(2));
 
-      const newMatch: VideoMatch = {
-        segment,
-        video: fullVideoData,
-        score: 1,
-        source: 'auto',
+      return {
+        segmentId: item.segmentId,
+        videoClips: item.videoIds.map(videoId => ({
+          videoId,
+          duration: durationPerClip,
+        })),
       };
-      return newMatch;
-    }).filter((match): match is VideoMatch => match !== null);
+    }).filter(Boolean);
 
-    console.log(`Szenen-basiertes Matching abgeschlossen. ${finalMatches.length} Matches gefunden.`);
+    console.log(`Optimiertes Matching abgeschlossen. ${scenes.length} Szenen erstellt.`);
 
     return NextResponse.json({
       success: true,
       segments: segments,
-      matches: finalMatches, // Vorerst nur der erste Clip pro Szene
-      scenes: scenes, // Die volle Szenen-Struktur für zukünftige Frontend-Anpassungen
+      scenes: scenes,
       totalVideos: taggedVideos.length,
     });
 
   } catch (error) {
-    console.error('Fehler im szenen-basierten Video-Matching:', error);
+    console.error('Fehler im Playlist-Matching Prozess:', error);
     return NextResponse.json(
       { 
-        error: 'Failed to match videos with scene-based strategy', 
+        error: 'Failed to match videos with playlist strategy', 
         details: error instanceof Error ? error.message : String(error) 
       },
       { status: 500 }

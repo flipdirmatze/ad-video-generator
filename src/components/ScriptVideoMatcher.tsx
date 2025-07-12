@@ -14,13 +14,17 @@ type VoiceoverData = {
   fileName: string;
 };
 
+type Scene = {
+  segmentId: string;
+  videoClips: { videoId: string; duration: number }[];
+};
+
 export default function ScriptVideoMatcher() {
   const router = useRouter()
   const [script, setScript] = useState('')
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [segments, setSegments] = useState<ScriptSegment[]>([])
-  const [matches, setMatches] = useState<VideoMatch[]>([])
-  const [scenes, setScenes] = useState<{ segmentId: string; videoClips: { videoId: string; duration: number }[] }[]>([]);
+  const [scenes, setScenes] = useState<Scene[]>([]);
   const [error, setError] = useState('')
   const [totalVideos, setTotalVideos] = useState(0)
   const [voiceoverData, setVoiceoverData] = useState<VoiceoverData | null>(null)
@@ -31,7 +35,7 @@ export default function ScriptVideoMatcher() {
   const [isSaving, setIsSaving] = useState(false)
   const [workflowStep, setWorkflowStep] = useState<string | null>(null)
   const [isLoadingProject, setIsLoadingProject] = useState(false)
-  const [availableVideos, setAvailableVideos] = useState<{id: string, name: string, url: string, tags: string[]}[]>([])
+  const [availableVideos, setAvailableVideos] = useState<{id: string, name: string, url: string, tags: string[], path?: string}[]>([])
   const [playingVideoId, setPlayingVideoId] = useState<string | null>(null)
   const videoRefs = useRef<{[key: string]: HTMLVideoElement}>({})
   const [loadingVideoIds, setLoadingVideoIds] = useState<Set<string>>(new Set())
@@ -133,6 +137,7 @@ export default function ScriptVideoMatcher() {
               name: file.name,
               url: file.url,
               tags: file.tags || [],
+              path: file.path, // Add path to availableVideos
             })))
           } else {
             console.log('No videos found in response');
@@ -156,42 +161,44 @@ export default function ScriptVideoMatcher() {
       // Sofortiges Update der Video-Elemente
       setTimeout(() => {
         // Finde alle Matches mit Videoreferenzen
-        matches.forEach(match => {
-          if (match && match.video && match.video.id) {
-            const videoElement = videoRefs.current[match.video.id];
-            const videoData = availableVideos.find(v => v.id === match.video.id);
-            
-            // Stelle sicher, dass wir sowohl das Element als auch die Daten haben
-            if (videoElement && videoData && videoData.url) {
-              console.log(`Initializing video ${match.video.id} with URL ${videoData.url}`);
+        scenes.forEach(scene => {
+          scene.videoClips.forEach(clip => {
+            if (clip.videoId) {
+              const videoElement = videoRefs.current[clip.videoId];
+              const videoData = availableVideos.find(v => v.id === clip.videoId);
               
-              // Versuche das Video zu laden
-              videoElement.src = videoData.url;
-              videoElement.load();
-              
-              // CORS-Einstellungen
-              videoElement.crossOrigin = "anonymous";
-              
-              // Event-Listener für besseres Fehler-Handling
-              const errorHandler = (e: any) => {
-                console.error(`Video error for ${match.video.id}:`, e);
-                // Wenn es ein CORS-Problem sein könnte, versuche erneut mit anderer CORS-Einstellung
-                if (e.name === 'NotSupportedError') {
-                  console.log('Possible CORS issue, trying with different settings');
-                  videoElement.crossOrigin = "use-credentials";
-                  videoElement.load();
-                }
-              };
-              
-              // Event-Listener entfernen und neu hinzufügen um Duplikate zu vermeiden
-              videoElement.removeEventListener('error', errorHandler);
-              videoElement.addEventListener('error', errorHandler);
+              // Stelle sicher, dass wir sowohl das Element als auch die Daten haben
+              if (videoElement && videoData && videoData.url) {
+                console.log(`Initializing video ${clip.videoId} with URL ${videoData.url}`);
+                
+                // Versuche das Video zu laden
+                videoElement.src = videoData.url;
+                videoElement.load();
+                
+                // CORS-Einstellungen
+                videoElement.crossOrigin = "anonymous";
+                
+                // Event-Listener für besseres Fehler-Handling
+                const errorHandler = (e: any) => {
+                  console.error(`Video error for ${clip.videoId}:`, e);
+                  // Wenn es ein CORS-Problem sein könnte, versuche erneut mit anderer CORS-Einstellung
+                  if (e.name === 'NotSupportedError') {
+                    console.log('Possible CORS issue, trying with different settings');
+                    videoElement.crossOrigin = "use-credentials";
+                    videoElement.load();
+                  }
+                };
+                
+                // Event-Listener entfernen und neu hinzufügen um Duplikate zu vermeiden
+                videoElement.removeEventListener('error', errorHandler);
+                videoElement.addEventListener('error', errorHandler);
+              }
             }
-          }
+          });
         });
       }, 500); // Kleiner Timeout für zuverlässigere Initialisierung
     }
-  }, [availableVideos, matches]);
+  }, [availableVideos, scenes]);
 
   // Audio-Wiedergabe steuern
   const togglePlay = useCallback(() => {
@@ -225,15 +232,12 @@ export default function ScriptVideoMatcher() {
     setIsAnalyzing(true)
     setError('')
     setSegments([])
-    setMatches([])
     setScenes([])
 
     try {
       const response = await fetch('/api/match-videos', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ voiceoverId: voiceoverData.voiceoverId })
       })
 
@@ -244,14 +248,9 @@ export default function ScriptVideoMatcher() {
       }
 
       setSegments(data.segments || [])
-      setMatches(data.matches || [])
       setScenes(data.scenes || [])
       setTotalVideos(data.totalVideos || 0)
       
-      // Speichere die Segmente im Projekt
-      if (data.segments && data.segments.length > 0) {
-        await saveScriptSegments(data.segments);
-      }
     } catch (err) {
       setError(`Fehler: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
@@ -260,116 +259,61 @@ export default function ScriptVideoMatcher() {
   }
 
   const handleContinueToEditor = async () => {
-    if (matches.length > 0) {
+    if (scenes.length > 0) {
       setIsSaving(true);
-      
       try {
-        // Speichere die Matches im Projekt
-        await saveMatchedVideos();
-        
-        // Navigiere zum Editor
+        await saveMatchedScenes();
         router.push('/editor');
       } catch (error) {
-        setError(`Fehler beim Speichern der Matches: ${error instanceof Error ? error.message : String(error)}`);
+        setError(`Fehler beim Speichern der Szenen: ${error instanceof Error ? error.message : String(error)}`);
       } finally {
         setIsSaving(false);
       }
     }
   };
   
-  // Speichere die Skript-Segmente im Projekt
-  const saveScriptSegments = async (scriptSegments: ScriptSegment[]) => {
+  const saveMatchedScenes = async () => {
     try {
-      // Füge IDs zu den Segmenten hinzu, falls sie noch keine haben
-      const segmentsWithIds = scriptSegments.map(segment => ({
-        ...segment,
-        id: segment.id || generateId()
-      }));
-      
-      const response = await fetch('/api/workflow-state', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          projectId: projectId,
-          workflowStep: 'matching',
-          scriptSegments: segmentsWithIds
-        })
-      });
-      
-      const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(data.error || 'Fehler beim Speichern der Skript-Segmente');
-      }
-      
-      // Aktualisiere die Projekt-ID
-      setProjectId(data.projectId);
-      localStorage.setItem('currentProjectId', data.projectId);
-      
-      // Aktualisiere die Segmente mit IDs
-      setSegments(segmentsWithIds);
-      
-      console.log('Script segments saved successfully:', data);
-    } catch (error) {
-      console.error('Error saving script segments:', error);
-      // Kein Fehler anzeigen, da dies ein Hintergrundprozess ist
-    }
-  };
-  
-  // Speichere die gematchten Videos im Projekt
-  const saveMatchedVideos = async () => {
-    try {
-      // Konvertiere die SZENEN in das Format für das Projekt
       const finalSegments = scenes.flatMap(scene => {
-        const segment = segments.find(s => s.id === scene.segmentId);
-        if (!segment) return [];
+        const segmentDetails = segments.find(s => s.id === scene.segmentId);
+        if (!segmentDetails) return [];
 
-        // Erstelle für jeden Clip im Segment einen eigenen Eintrag
         let accumulatedTime = 0;
         return scene.videoClips.map(clip => {
           const video = availableVideos.find(v => v.id === clip.videoId);
-          if (!video) return null;
+          if (!video || !video.path) return null;
 
           const segmentEntry = {
             videoId: clip.videoId,
-            videoKey: (video as any).path, // Benötigt den S3-Key
-            startTime: 0, // Wir starten den Clip von vorne
+            videoKey: video.path,
+            startTime: 0,
             duration: clip.duration,
-            position: segment.position + accumulatedTime, // Position innerhalb des Gesamt-Timings
+            position: segmentDetails.position + accumulatedTime,
           };
           accumulatedTime += clip.duration;
           return segmentEntry;
         });
       }).filter(Boolean);
 
-
       const response = await fetch('/api/workflow-state', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           projectId: projectId,
           workflowStep: 'editing',
-          matchedVideos: finalSegments // Sende die neue, detaillierte Schnittliste
+          matchedVideos: finalSegments 
         })
       });
       
       const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Fehler beim Speichern der Szenen');
       
-      if (!response.ok) {
-        throw new Error(data.error || 'Fehler beim Speichern der gematchten Videos');
-      }
-      
-      // Aktualisiere die Projekt-ID
       setProjectId(data.projectId);
       localStorage.setItem('currentProjectId', data.projectId);
-      
-      console.log('Matched videos saved successfully:', data);
+      console.log('Szenen erfolgreich gespeichert:', data);
+
     } catch (error) {
-      console.error('Error saving matched videos:', error);
+      console.error('Fehler beim Speichern der Szenen:', error);
       throw error;
     }
   };
@@ -377,42 +321,6 @@ export default function ScriptVideoMatcher() {
   // Generiere eine eindeutige ID
   const generateId = () => {
     return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-  };
-
-  // Funktion zum manuellen Zuordnen eines Videos zu einem Segment
-  const handleManualVideoSelect = (segmentIndex: number, videoId: string) => {
-    if (!videoId) return;
-    
-    console.log(`Manuelles Video ausgewählt: ${videoId} für Segment ${segmentIndex}`);
-    
-    // Video-Daten finden
-    const videoData = availableVideos.find(v => v.id === videoId);
-    if (!videoData) {
-      console.error(`Video mit ID ${videoId} nicht gefunden`);
-      return;
-    }
-    
-    // Segment aus zugeordneten Segmenten finden
-    const segment = segments[segmentIndex];
-    if (!segment) {
-      console.error(`Segment mit Index ${segmentIndex} nicht gefunden`);
-      return;
-    }
-    
-    // Neuen Match erstellen oder vorhandenen ersetzen
-    const newMatch: VideoMatch = {
-      segment,
-      video: videoData,
-      score: 0,  // Manuell ausgewählt, daher keine automatische Bewertung
-      source: 'manual'  // Hier markieren wir, dass es manuell ausgewählt wurde
-    };
-    
-    setMatches(prevMatches => {
-      // Filtern, um vorhandene Matches für dieses Segment zu entfernen
-      const filteredMatches = prevMatches.filter(m => m.segment.text !== segment.text);
-      // Füge neuen Match hinzu
-      return [...filteredMatches, newMatch];
-    });
   };
 
   // Funktion zum Aktualisieren des Ladestatus eines Videos
@@ -753,17 +661,12 @@ export default function ScriptVideoMatcher() {
           <div className="mt-8 space-y-8">
             <h4 className="text-lg font-medium">Vorschau der Videozuordnung</h4>
             
-            {/* Segmente und Videos */}
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-8">
               {segments.map((segment, index) => {
-                const match = matches.find(m => m.segment.text === segment.text);
+                const scene = scenes.find(s => s.segmentId === segment.id);
                 
                 return (
-                  <div 
-                    key={index} 
-                    className="bg-gray-800/50 border border-gray-700 rounded-md overflow-hidden"
-                  >
-                    {/* Segment-Box */}
+                  <div key={index} className="bg-gray-800/50 border border-gray-700 rounded-md overflow-hidden">
                     <div className="p-4 border-b border-gray-700">
                       <div className="flex justify-between items-start mb-2">
                         <span className="text-sm font-medium text-white/90">Segment {index + 1}</span>
@@ -784,31 +687,33 @@ export default function ScriptVideoMatcher() {
                       </div>
                     </div>
                     
-                    {/* Video-Thumbnails und Info */}
                     <div className="p-3">
-                      {scenes.find(s => s.segmentId === segment.id)?.videoClips.map((clip, clipIndex) => {
-                        const video = availableVideos.find(v => v.id === clip.videoId);
-                        if (!video) return <div key={clipIndex} className="text-xs text-red-400">Video nicht gefunden</div>;
+                      {scene && scene.videoClips.length > 0 ? (
+                        scene.videoClips.map((clip, clipIndex) => {
+                          const video = availableVideos.find(v => v.id === clip.videoId);
+                          if (!video) return <div key={clipIndex} className="text-xs text-red-400">Video nicht gefunden</div>;
 
-                        return (
-                          <div key={clipIndex} className="mb-3">
-                            <div className="relative aspect-video bg-gray-900/50 rounded overflow-hidden mb-2">
-                              <video
-                                ref={(el) => setVideoRef(video.id, el)}
-                                className="absolute inset-0 w-full h-full object-cover"
-                                muted
-                                playsInline
-                                preload="metadata"
-                                crossOrigin="anonymous"
-                              />
-                              <div className="absolute top-1 right-1 bg-black/60 text-white text-xs px-1.5 py-0.5 rounded">
-                                {clip.duration.toFixed(1)}s
+                          return (
+                            <div key={clipIndex} className="mb-3">
+                              <div className="relative aspect-video bg-gray-900/50 rounded overflow-hidden mb-2">
+                                <video
+                                  ref={(el) => setVideoRef(video.id, el)}
+                                  className="absolute inset-0 w-full h-full object-cover"
+                                  muted playsInline preload="metadata" crossOrigin="anonymous"
+                                />
+                                <div className="absolute top-1 right-1 bg-black/60 text-white text-xs px-1.5 py-0.5 rounded">
+                                  {clip.duration.toFixed(1)}s
+                                </div>
                               </div>
+                              <p className="text-sm font-medium truncate">{video.name}</p>
                             </div>
-                            <p className="text-sm font-medium truncate">{video.name}</p>
-                          </div>
-                        );
-                      })}
+                          );
+                        })
+                      ) : (
+                        <div>
+                          <p className="text-xs text-red-400">Kein passendes Video gefunden für dieses Segment.</p>
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
@@ -816,7 +721,7 @@ export default function ScriptVideoMatcher() {
             </div>
           </div>
           
-          {matches.length > 0 && (
+          {scenes.length > 0 && (
             <button 
               onClick={handleContinueToEditor}
               disabled={isSaving}

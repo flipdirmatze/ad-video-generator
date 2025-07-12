@@ -1,5 +1,4 @@
 import OpenAI from 'openai';
-import { VideoMatch } from '@/utils/tag-matcher';
 
 // Initialisiere den OpenAI-Client mit dem API-Schlüssel
 const openai = new OpenAI({
@@ -8,30 +7,29 @@ const openai = new OpenAI({
 
 // Interface für ein Skriptsegment
 export interface ScriptSegment {
-  id?: string; // Optionale ID für die Identifizierung des Segments
+  id: string;
   text: string;
   keywords: string[];
   duration: number;
-  position: number; // Startzeit des Segments in Sekunden
+  position: number;
 }
 
 /**
- * Erstellt eine Sequenz von Videoclips, die ein Skriptsegment füllen.
- * Verwendet GPT-4 für eine kontextbasierte, dynamische Szenenerstellung.
+ * Erstellt eine visuelle Playlist für Skript-Segmente.
+ * Verwendet GPT-4, um jedem Segment eine Sequenz von passenden Video-IDs zuzuordnen.
  *
  * @param segments Die exakt getimten Skript-Segmente.
- * @param videos Eine Liste der verfügbaren Videos mit Dauer, Tags und Namen.
- * @returns Ein Array von Szenen, wobei jede Szene eine Liste von Videoclips für ein Segment enthält.
+ * @param videos Eine Liste der verfügbaren Videos mit Tags und Namen.
+ * @returns Ein Array, das jedem Segment eine Liste von Video-IDs zuordnet.
  */
-export async function createScenesForScript(
+export async function createVisualPlaylistForScript(
   segments: ScriptSegment[],
-  videos: { id: string; name: string; tags: string[]; duration: number }[]
-): Promise<{ segmentId: string; videoClips: { videoId: string; duration: number }[] }[]> {
-  console.log('Starte Szenen-Erstellung mit GPT-4 Turbo...');
+  videos: { id: string; name: string; tags: string[] }[]
+): Promise<{ segmentId: string; videoIds: string[] }[]> {
+  console.log('Starte optimierte Playlist-Erstellung mit GPT-4 Turbo...');
 
-  // Bereite die Video- und Segment-Listen für den Prompt vor.
   const videoListString = videos
-    .map(v => `- Video (ID: "${v.id}", Name: "${v.name}", Dauer: ${v.duration}s, Tags: [${v.tags.join(', ')}])`)
+    .map(v => `- Video (ID: "${v.id}", Name: "${v.name}", Tags: [${v.tags.join(', ')}])`)
     .join('\n');
   
   const segmentListString = segments
@@ -39,30 +37,26 @@ export async function createScenesForScript(
     .join('\n');
 
   const systemPrompt = `
-Du bist ein professioneller Video-Editor. Deine Aufgabe ist es, für eine Reihe von gesprochenen Text-Segmenten eine visuell ansprechende und dynamische Video-Sequenz zu erstellen.
+Du bist ein professioneller Video-Editor. Deine Aufgabe ist es, für eine Reihe von gesprochenen Text-Segmenten eine visuelle Playlist zu erstellen.
 
 DEINE AUFGABE:
-Du erhältst eine Liste von Text-Segmenten (mit ihrer exakten Dauer) und eine Bibliothek von verfügbaren Videoclips (ebenfalls mit ihrer Dauer).
-Fülle die Dauer JEDES Text-Segments mit einem oder mehreren passenden Videoclips aus deiner Bibliothek.
+Du erhältst eine Liste von Text-Segmenten und eine Bibliothek von verfügbaren Videoclips.
+Erstelle für JEDES Segment eine Playlist von Video-IDs, die visuell zum Text passen.
 
 REGELN:
-1.  **FÜLLE DIE DAUER:** Die kombinierte Dauer der von dir ausgewählten Videoclips für ein Segment muss exakt der Dauer des Text-Segments entsprechen. Du musst eventuell Clips kürzen.
-2.  **DYNAMISCHE SCHNITTE:** Sorge für visuelle Abwechslung. Wechsle das Video idealerweise alle 4-5 Sekunden. Längere Segmente MÜSSEN aus mehreren, kürzeren Clips bestehen.
-3.  **KONTEXTUELLE PASSUNG:** Wähle Videos, die thematisch und visuell zum Text des Segments und zum Gesamtkontext des Skripts passen. Nutze Dateinamen und Tags als starke Hinweise.
-4.  **WIEDERVERWENDUNG ERLAUBT:** Du kannst Videoclips mehrfach verwenden, wenn es thematisch sinnvoll ist.
+1.  **DYNAMISCHE SCHNITTE:** Wenn ein Segment länger als 5 Sekunden ist, wähle MEHRERE thematisch passende Videos für eine dynamische Sequenz aus, um die visuelle Abwechslung zu erhöhen.
+2.  **KURZE SEGMENTE:** Wenn ein Segment 5 Sekunden oder kürzer ist, wähle EIN passendes Video.
+3.  **KONTEXTUELLE PASSUNG:** Wähle Videos, die zur Stimmung und zum Thema des Segments passen. Nutze Dateinamen und Tags als starke Hinweise.
+4.  **WIEDERVERWENDUNG ERLAUBT:** Du kannst Videos mehrfach verwenden.
 
 OUTPUT-FORMAT:
-Dein Output MUSS ein valides JSON-Objekt sein, das nur aus einem Array namens "scenes" besteht.
-Jedes Objekt im "scenes"-Array repräsentiert ein Text-Segment und muss folgende Struktur haben:
+Dein Output MUSS ein valides JSON-Objekt sein, das nur aus einem Array namens "playlist" besteht.
+Jedes Objekt im "playlist"-Array muss folgende Struktur haben:
 {
   "segmentId": "die ID des Segments",
-  "videoClips": [
-    { "videoId": "die ID des ersten Videos", "duration": 4.5 },
-    { "videoId": "die ID des zweiten Videos", "duration": 3.0 },
-    // ... weitere Clips, bis die Segment-Dauer gefüllt ist
-  ]
+  "videoIds": ["id_des_ersten_videos", "id_des_zweiten_videos", ...]
 }
-Stelle sicher, dass die Summe der "duration" in "videoClips" exakt der Dauer des zugehörigen "segmentId" entspricht.
+Stelle sicher, dass du für JEDES Segment genau ein Objekt im "playlist"-Array zurückgibst.
 `;
 
   try {
@@ -75,7 +69,7 @@ Stelle sicher, dass die Summe der "duration" in "videoClips" exakt der Dauer des
         },
         {
           role: "user",
-          content: `Erstelle die Video-Szenen für die folgenden Segmente und Videos:
+          content: `Erstelle die visuelle Playlist für die folgenden Segmente und Videos:
 
 --- SKRIPT-SEGMENTE ---
 ${segmentListString}
@@ -93,12 +87,12 @@ ${videoListString}
       throw new Error('OpenAI hat keine gültige Antwort zurückgegeben.');
     }
 
-    console.log('OpenAI Szenen-Antwort erhalten:', content);
+    console.log('OpenAI Playlist-Antwort erhalten:', content);
     const result = JSON.parse(content);
-    return result.scenes || [];
+    return result.playlist || [];
 
   } catch (error) {
-    console.error('Fehler bei der OpenAI Szenen-Erstellung:', error);
-    throw new Error(`Fehler bei der Szenen-Erstellung: ${error instanceof Error ? error.message : String(error)}`);
+    console.error('Fehler bei der OpenAI Playlist-Erstellung:', error);
+    throw new Error(`Fehler bei der Playlist-Erstellung: ${error instanceof Error ? error.message : String(error)}`);
   }
 } 
