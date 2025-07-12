@@ -45,7 +45,7 @@ export default function FinalStepForm({ onSubmit }: FinalStepFormProps) {
     addSubtitles: false,
     subtitleOptions: {
       fontName: 'Montserrat',
-      fontSize: 20,
+      fontSize: 18,
       position: 'bottom'
     },
     outputFormat: 'mp4'
@@ -58,7 +58,7 @@ export default function FinalStepForm({ onSubmit }: FinalStepFormProps) {
       subtitleOptions: {
         ...prev.subtitleOptions!,
         fontName: value,
-        fontSize: 20, // Beibehaltung des festen Wertes
+        fontSize: 18, // Beibehaltung des festen Wertes
         position: 'bottom' // Beibehaltung des festen Wertes
       }
     }));
@@ -70,7 +70,7 @@ export default function FinalStepForm({ onSubmit }: FinalStepFormProps) {
       ...options,
       subtitleOptions: options.addSubtitles ? {
         fontName: options.subtitleOptions?.fontName || 'Montserrat',
-        fontSize: 20,
+        fontSize: 18,
         position: 'bottom'
       } : undefined
     };

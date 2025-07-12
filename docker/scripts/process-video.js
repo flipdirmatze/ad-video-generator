@@ -42,7 +42,7 @@ const SUBTITLE_TEXT = process.env.SUBTITLE_TEXT || '';
 
 // Untertitel-Styling-Optionen aus Umgebungsvariablen
 const SUBTITLE_FONT_NAME = process.env.SUBTITLE_FONT_NAME || 'Montserrat';
-const SUBTITLE_FONT_SIZE = process.env.SUBTITLE_FONT_SIZE || '20';
+const SUBTITLE_FONT_SIZE = process.env.SUBTITLE_FONT_SIZE || '18';
 const SUBTITLE_POSITION = process.env.SUBTITLE_POSITION || 'bottom';
 
 // Logge alle Umgebungsvariablen für Debugging (ohne sensible Daten)

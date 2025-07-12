@@ -125,7 +125,7 @@ Anpassungen der Untertitel-Optionen können über die Umgebungsvariablen gesteue
 |----------|----------|-------------|
 | ADD_SUBTITLES | false | Aktiviert die Untertitel |
 | SUBTITLE_FONT_NAME | Montserrat | Schriftart |
-| SUBTITLE_FONT_SIZE | 20 | Schriftgröße |
+| SUBTITLE_FONT_SIZE | 18 | Schriftgröße |
 | SUBTITLE_POSITION | bottom | Position (bottom, middle, top) |
 
 ## Wichtige Umgebungsvariablen
@@ -227,7 +227,7 @@ Die Logs des Containers sind in CloudWatch Logs verfügbar. Prüfe:
 
 ToDos bevor Launch:
 Functional
-- Untertitel perfektionieren
+- Untertitel perfektionieren - DONE
 - KI Matching Prompt perfektionieren
 - Ladeleiste von Video Editor verbessern mit Email Notification wenn fertig
 - Premiumfunktionen anpassen
@@ -242,4 +242,5 @@ Marketing
 - Linkedin Nachricht formulieren
 - Instagram Seite erstellen
 - Anzeigen bauen
+- YT Video Erklärungen drehen
 

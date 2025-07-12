@@ -202,7 +202,7 @@ export default function EditorPage() {
   const [addCaptions, setAddCaptions] = useState(false)
   const [subtitleOptions, setSubtitleOptions] = useState({
     fontName: 'Montserrat',
-    fontSize: 20,
+    fontSize: 18,
     position: 'bottom',
     primaryColor: '#FFFFFF', // Behalten für die Vorschau
   })
@@ -1120,7 +1120,7 @@ export default function EditorPage() {
         subtitleOptions: addCaptions 
           ? { 
               fontName: subtitleOptions.fontName,
-              fontSize: 20,
+              fontSize: 18,
               position: 'bottom'
             } 
           : undefined
@@ -1528,10 +1528,9 @@ export default function EditorPage() {
                                 className="mt-2 p-2 rounded text-center"
                                 style={{
                                   fontFamily: subtitleOptions.fontName,
-                                  fontSize: `20px`,
+                                  fontSize: `18px`,
                                   color: subtitleOptions.primaryColor,
                                   textShadow: '-1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000',
-                                  letterSpacing: '-0.5px',
                                 }}
                               >
                                 Beispieltext für Untertitel
