@@ -216,8 +216,8 @@ export default function ScriptVideoMatcher() {
   }, [voiceoverData, audioElement, isPlaying]);
 
   async function handleAnalyzeScript() {
-    if (!script.trim()) {
-      setError('Bitte gib ein Skript ein')
+    if (!voiceoverData?.voiceoverId) {
+      setError('Bitte erstelle zuerst ein Voiceover, um das Matching zu starten.')
       return
     }
 
@@ -232,7 +232,7 @@ export default function ScriptVideoMatcher() {
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ script })
+        body: JSON.stringify({ voiceoverId: voiceoverData.voiceoverId })
       })
 
       const data = await response.json()
@@ -690,7 +690,7 @@ export default function ScriptVideoMatcher() {
 
       <button 
         onClick={handleAnalyzeScript} 
-        disabled={isAnalyzing || !script.trim()}
+        disabled={isAnalyzing || !voiceoverData?.voiceoverId}
         className="w-full py-2 px-4 bg-blue-600 text-white rounded-md disabled:bg-blue-300 disabled:opacity-50 mb-6"
       >
         {isAnalyzing ? (
