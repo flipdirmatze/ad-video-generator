@@ -536,6 +536,42 @@ export default function ScriptVideoMatcher() {
     });
   };
 
+  // Funktion zum manuellen Hinzufügen eines Videoclips zu einer leeren Szene
+  const handleManualClipAdd = (segmentId: string, newVideoId: string) => {
+    if (!newVideoId) return;
+
+    const segment = segments.find(s => s.id === segmentId);
+    if (!segment) return;
+
+    setScenes(prevScenes => {
+      const sceneExists = prevScenes.some(s => s.segmentId === segmentId);
+      
+      if (sceneExists) {
+        // Wenn die Szene existiert (aber leer ist), füge den Clip hinzu
+        return prevScenes.map(scene => {
+          if (scene.segmentId === segmentId) {
+            const newClip = {
+              videoId: newVideoId,
+              duration: segment.duration // Volle Segmentdauer für den ersten Clip
+            };
+            return { ...scene, videoClips: [newClip] };
+          }
+          return scene;
+        });
+      } else {
+        // Wenn die Szene nicht existiert, erstelle sie mit dem neuen Clip
+        const newScene = {
+          segmentId: segmentId,
+          videoClips: [{
+            videoId: newVideoId,
+            duration: segment.duration
+          }]
+        };
+        return [...prevScenes, newScene];
+      }
+    });
+  };
+
   if (isLoading || isLoadingProject) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -733,7 +769,7 @@ export default function ScriptVideoMatcher() {
                                 >
                                   {availableVideos.map(v => (
                                     <option key={v.id} value={v.id}>
-                                      {v.name}
+                                      {v.name} {v.tags && v.tags.length > 0 ? `(${v.tags.join(', ')})` : ''}
                                     </option>
                                   ))}
                                 </select>
@@ -742,9 +778,24 @@ export default function ScriptVideoMatcher() {
                           );
                         })
                       ) : (
-                        <div>
-                          {/* Hier könnte eine Fallback-UI stehen, wenn keine Clips für eine Szene gefunden wurden */}
-                          <p className="text-xs text-gray-400">Keine Videoclips für diese Szene gefunden.</p>
+                        <div className="flex flex-col items-center justify-center p-4 text-center bg-gray-900/50 rounded-md space-y-3">
+                          <FilmIcon className="h-8 w-8 text-gray-500" />
+                          <p className="text-sm font-semibold text-gray-300">Kein Video gefunden</p>
+                          <p className="text-xs text-gray-400">Bitte wähle manuell ein Video für dieses Segment aus.</p>
+                          <div className="w-full pt-2">
+                            <select
+                              className="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1 text-sm"
+                              value="" // Kein Video initial ausgewählt
+                              onChange={(e) => handleManualClipAdd(segment.id, e.target.value)}
+                            >
+                              <option value="" disabled>Video auswählen...</option>
+                              {availableVideos.map(v => (
+                                <option key={v.id} value={v.id}>
+                                  {v.name} {v.tags && v.tags.length > 0 ? `(${v.tags.join(', ')})` : ''}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
                         </div>
                       )}
                     </div>
