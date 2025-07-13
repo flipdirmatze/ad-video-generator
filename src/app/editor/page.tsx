@@ -1196,9 +1196,10 @@ export default function EditorPage() {
       const responseData = await response.json();
       console.log('Video generation response:', responseData);
       
-      // Projekt-ID und Job-ID speichern
+      // Projekt-ID und Job-ID speichern und für Persistenz in localStorage sichern
       setProjectId(responseData.projectId);
       setJobId(responseData.jobId);
+      localStorage.setItem('currentProjectId', responseData.projectId);
       
       // Update workflow status
       await saveWorkflowState('processing');
