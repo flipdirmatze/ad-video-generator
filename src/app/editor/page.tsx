@@ -236,16 +236,16 @@ export default function EditorPage() {
   const [displayProgress, setDisplayProgress] = useState(0)
   const [generationStatusText, setGenerationStatusText] = useState('Initialisiere den magischen Video-Generator...')
 
-  // Magische Status-Texte
+  // Magische Status-Texte mit Emojis
   const statusMessages = [
-    "Analysiere Skript-Struktur...",
-    "Extrahiere emotionale Schlüsselmomente...",
-    "Komponiere visuellen Rhythmus...",
-    "Synchronisiere Voiceover mit Bildsequenz...",
-    "Wende KI-gestützte Farbkorrektur an...",
-    "Optimiere Audio-Klarheit...",
-    "Rendere finale Szenen in 4K...",
-    "Füge letzte magische Details hinzu..."
+    "🔬 Analysiere Skript-Struktur...",
+    "💖 Extrahiere emotionale Schlüsselmomente...",
+    "🎬 Komponiere visuellen Rhythmus...",
+    "🎤 Synchronisiere Voiceover mit Bildsequenz...",
+    "🎨 Wende KI-gestützte Farbkorrektur an...",
+    "🔊 Optimiere Audio-Klarheit...",
+    "✨ Rendere finale Szenen in 4K...",
+    "🪄 Füge letzte magische Details hinzu..."
   ];
 
   // ------------------- HOOKS SECTION -------------------
@@ -1535,10 +1535,12 @@ export default function EditorPage() {
                         style={{ width: `${displayProgress}%` }}
                       ></div>
                     </div>
-                    <div className="mt-4 text-sm text-white/80 min-h-[20px] transition-all duration-500" key={generationStatusText}>
-                      <p className="animate-fade-in">{generationStatusText}</p>
+                    <div className="mt-6 text-sm min-h-[48px] flex items-center justify-center w-full max-w-sm">
+                      <div className="bg-gray-800/50 border border-gray-700/50 px-4 py-2 rounded-lg transition-all duration-500" key={generationStatusText}>
+                        <p className="animate-fade-in text-white/90">{generationStatusText}</p>
+                      </div>
                     </div>
-                    <div className="mt-8 text-xs text-gray-400 bg-gray-800/50 px-4 py-2 rounded-lg flex items-center gap-2">
+                    <div className="mt-6 text-xs text-gray-400 bg-gray-800/50 px-4 py-2 rounded-lg flex items-center gap-2">
                       <ClockIcon className="h-4 w-4" />
                       <span>Dieser Vorgang kann einige Minuten dauern. Du wirst per E-Mail benachrichtigt, sobald dein Video fertig ist.</span>
                     </div>

@@ -22,6 +22,15 @@ const config: Config = {
         'hero-gradient': 'linear-gradient(135deg, #7C3AED 0%, #3B82F6 100%)',
         'purple-glow': 'radial-gradient(circle at center, rgba(124, 58, 237, 0.15) 0%, rgba(124, 58, 237, 0) 70%)',
       },
+      keyframes: {
+        "fade-in": {
+          "0%": { opacity: "0" },
+          "100%": { opacity: "1" },
+        },
+      },
+      animation: {
+        "fade-in": "fade-in 0.5s ease-in-out",
+      },
     },
     container: {
       center: true,
