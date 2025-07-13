@@ -1361,19 +1361,14 @@ async function generateFinalVideo() {
                 }
               } catch (s3Error) {
                 console.error('Error processing timestamps from S3:', s3Error.message);
-                // Fail hard if timestamps are expected but not found
-                throw new Error(`Failed to load required timestamps from S3: ${s3Error.message}`);
+                console.log('Falling back to character-based timing');
+                wordTimestamps = null;
               }
             } else {
               console.log('No word timestamps provided, using character-based timing');
             }
             
             // Generiere SRT-Inhalt
-            if (!wordTimestamps) {
-                console.warn('No word timestamps available, skipping subtitle generation.');
-                return finalFile; // Return the file without subtitles
-            }
-            
             const srtContent = generateSrtContent(subtitleText, 2.5, wordTimestamps);
             
             // Schreibe SRT-Datei
@@ -1578,19 +1573,14 @@ async function generateFinalVideo() {
           }
         } catch (s3Error) {
           console.error('Error processing timestamps from S3:', s3Error.message);
-          // Fail hard if timestamps are expected but not found
-          throw new Error(`Failed to load required timestamps from S3: ${s3Error.message}`);
+          console.log('Falling back to character-based timing');
+          wordTimestamps = null;
         }
       } else {
         console.log('No word timestamps provided, using character-based timing');
       }
       
       // Generiere SRT-Inhalt
-      if (!wordTimestamps) {
-          console.warn('No word timestamps available, skipping subtitle generation.');
-          return concatenatedFile; // Return the file without subtitles
-      }
-      
       const srtContent = generateSrtContent(subtitleText, 2.5, wordTimestamps);
       
       // Schreibe SRT-Datei

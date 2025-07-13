@@ -238,10 +238,8 @@ export async function POST(request: Request) {
         segments: videoSegments,
         voiceoverId: voiceoverId || null,
         voiceoverText: voiceoverText || '',
-        options: {
-          addSubtitles: addSubtitles || false,
-          subtitleOptions: subtitleOptions || null
-        }
+        addSubtitles: addSubtitles || false,
+        subtitleOptions: subtitleOptions || null
       };
       
       // Template-Daten in S3 speichern, um die Container Overrides Limite zu umgehen
@@ -273,30 +271,64 @@ export async function POST(request: Request) {
         templateDataPath: templateDataKey
       });
 
-      // Lade die Timestamps aus der Voiceover-DB und übergebe sie direkt
-      let wordTimestampsJson = '';
-      if (voiceoverId) {
-        console.log(`Fetching timestamps for voiceoverId: ${voiceoverId}`);
-        const voiceoverDoc = await Voiceover.findById(voiceoverId).select('wordTimestamps').lean();
-        if (voiceoverDoc && 'wordTimestamps' in voiceoverDoc && Array.isArray(voiceoverDoc.wordTimestamps) && voiceoverDoc.wordTimestamps.length > 0) {
-          wordTimestampsJson = JSON.stringify(voiceoverDoc.wordTimestamps);
-          console.log(`Found ${voiceoverDoc.wordTimestamps.length} timestamps, size: ${wordTimestampsJson.length} bytes.`);
-        } else {
-          console.warn(`No timestamps found for voiceoverId: ${voiceoverId}`);
-        }
-      }
-
-      // Bereite zusätzliche Parameter für den Batch-Job vor
-      // WICHTIG: Hier keine großen Datenmengen direkt übergeben!
-      const additionalParams: Record<string, string | number | boolean> = {
-        USER_ID: userId,
+      // Konstruiere die additionalParams für den AWS Batch Job.
+      // Nur noch absolut notwendige IDs und Pfade übergeben.
+      const additionalParams: Record<string, any> = {
+        USER_ID: session.user.id,
         PROJECT_ID: project._id.toString(),
-        TEMPLATE_DATA_PATH: templateDataKey, // Nur der S3-Pfad zu den Template-Daten
+        TEMPLATE_DATA_PATH: templateDataKey, // Der einzige Weg, um komplexe Daten zu übergeben
+        TITLE: title,
       };
 
-      // Füge die Timestamps nur hinzu, wenn sie vorhanden sind
-      if (wordTimestampsJson) {
-        additionalParams.WORD_TIMESTAMPS = wordTimestampsJson;
+      // Voiceover-Informationen als separate, kleine Variablen übergeben, falls vorhanden
+      if (voiceoverId) {
+        additionalParams.VOICEOVER_ID = voiceoverId;
+        
+        interface VoiceoverDoc {
+          path?: string;
+          wordTimestamps?: any[];
+        }
+        
+        const voiceover = await Voiceover.findById(voiceoverId).lean<VoiceoverDoc>();
+        
+        if (voiceover?.path) {
+          additionalParams.VOICEOVER_KEY = voiceover.path;
+        }
+
+        // Wort-Zeitstempel IMMER als S3-Pfad übergeben, nie direkt
+        if (voiceover?.wordTimestamps && voiceover.wordTimestamps.length > 0) {
+          console.log(`Uploading ${voiceover.wordTimestamps.length} word timestamps to S3 to avoid size limits.`);
+          try {
+            const timestampsJson = JSON.stringify(voiceover.wordTimestamps);
+            // Korrekter, mandantengetrennter Pfad für die Timestamps
+            const timestampS3Key = `users/${session.user.id}/timestamps/${voiceoverId}_timestamps.json`;
+            const buffer = Buffer.from(timestampsJson);
+            // Übergebe die userId an die uploadToS3 Funktion, um den korrekten Pfad zu gewährleisten
+            await uploadToS3(
+              buffer,
+              `${voiceoverId}_timestamps.json`,
+              'application/json',
+              'timestamps',
+              session.user.id
+            );
+            
+            // Setze den *vollen* Pfad für die Umgebungsvariable
+            additionalParams.WORD_TIMESTAMPS_PATH = timestampS3Key;
+            console.log('Successfully uploaded timestamps to S3:', timestampS3Key);
+          } catch (s3Error) {
+            console.error('Error uploading timestamps to S3:', s3Error);
+            // Fahre ohne Timestamps fort, wenn der Upload fehlschlägt
+          }
+        }
+      }
+      
+      // Füge Untertitel-Parameter hinzu, falls aktiviert.
+      if (addSubtitles && subtitleOptions) {
+        console.log('Subtitles enabled. Adding subtitle parameters to the job.');
+        additionalParams.ADD_SUBTITLES = 'true';
+        additionalParams.SUBTITLE_FONT_NAME = subtitleOptions.fontName || 'Arial';
+        additionalParams.SUBTITLE_FONT_SIZE = subtitleOptions.fontSize?.toString() || '24';
+        additionalParams.SUBTITLE_POSITION = subtitleOptions.position || 'bottom';
       }
       
       console.log('Final (minimal) params for AWS Batch job:', additionalParams);

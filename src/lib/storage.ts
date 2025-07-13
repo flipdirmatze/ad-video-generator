@@ -18,7 +18,7 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
  */
 
 // Typ für Bucket-Kategorien
-export type S3BucketFolder = 'uploads' | 'processed' | 'final' | 'audio' | 'config';
+export type S3BucketFolder = 'uploads' | 'processed' | 'final' | 'audio' | 'config' | 'timestamps';
 
 // S3 Client Konfiguration
 const s3Config: S3ClientConfig = {
