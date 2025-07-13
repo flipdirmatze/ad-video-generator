@@ -48,6 +48,7 @@ REGELN:
 2.  **KURZE SEGMENTE:** Wenn ein Segment 5 Sekunden oder kürzer ist, wähle EIN passendes Video.
 3.  **KONTEXTUELLE PASSUNG:** Wähle Videos, die zur Stimmung und zum Thema des Segments passen. Nutze Dateinamen und Tags als starke Hinweise.
 4.  **WIEDERVERWENDUNG ERLAUBT:** Du kannst Videos mehrfach verwenden.
+5.  **KEINE TREFFER:** Wenn absolut KEIN Video zur Bedeutung des Segments passt, gib für \`videoIds\` ein **leeres Array \`[]\`** zurück. Es ist besser, keine Auswahl zu treffen, als eine unpassende.
 
 OUTPUT-FORMAT:
 Dein Output MUSS ein valides JSON-Objekt sein, das nur aus einem Array namens "playlist" besteht.
