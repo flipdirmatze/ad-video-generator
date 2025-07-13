@@ -759,6 +759,19 @@ export default function ScriptVideoMatcher() {
                               </div>
                               <p className="text-sm font-medium truncate">{video.name}</p>
                               
+                              {video.tags && video.tags.length > 0 && (
+                                <div className="flex flex-wrap gap-1 mt-2">
+                                  {video.tags.map((tag, tIdx) => (
+                                    <span 
+                                      key={tIdx} 
+                                      className="text-xs bg-green-900/50 border border-green-700/40 text-green-400 rounded-full px-2 py-0.5"
+                                    >
+                                      {tag}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+
                               {/* Manuelle Video-Auswahl für jeden Clip */}
                               <div className="mt-3">
                                 <label className="block text-xs text-gray-400 mb-1">Clip austauschen:</label>
