@@ -239,7 +239,7 @@ export default function EditorPage() {
   // Magische Status-Texte mit Emojis
   const statusMessages = [
     "🔬 Analysiere Skript-Struktur...",
-    "💖 Extrahiere emotionale Schlüsselmomente...",
+    "⚡️ Extrahiere emotionale Schlüsselmomente...",
     "🎬 Komponiere visuellen Rhythmus...",
     "🎤 Synchronisiere Voiceover mit Bildsequenz...",
     "🎨 Wende KI-gestützte Farbkorrektur an...",
@@ -516,8 +516,8 @@ export default function EditorPage() {
       if (!isPollingActive || !isMounted) return;
       
       try {
-        // Verwende die safeFetch-Funktion mit 15 Sekunden Timeout
-        const response = await safeFetch(`/api/project-status/${projectId}`, {}, 15000);
+        // Verwende die safeFetch-Funktion mit 15 Sekunden Timeout und der korrekten Route
+        const response = await safeFetch(`/api/workflow-state?projectId=${projectId}`, {}, 15000);
         
         if (!response.ok) {
           console.error('Failed to fetch project status:', response.status, response.statusText);
@@ -562,16 +562,19 @@ export default function EditorPage() {
         
         // Logging: Logge die empfangenen Daten, bevor der State aktualisiert wird
         console.log('[Editor Status Poll] Received data:', data);
+
+        // Passe die Datenextraktion an die neue API-Antwort an
+        const projectData = data.project;
         
         // Status verarbeiten und UI aktualisieren
-        if (data.status === 'completed') {
+        if (projectData.status === 'completed') {
           // Video ist fertig! Setze final video URL
           if (isMounted) {
-            console.log('Video generation completed successfully', data);
+            console.log('Video generation completed successfully', projectData);
             // Logging: Logge die URLs vor dem Setzen des States
-            console.log(`[Editor Status Poll] Updating state with: finalVideoUrl=${data.outputUrl}, signedVideoUrl=${data.signedUrl}`);
-            setFinalVideoUrl(data.outputUrl);
-            setSignedVideoUrl(data.signedUrl || data.outputUrl);
+            console.log(`[Editor Status Poll] Updating state with: finalVideoUrl=${projectData.outputUrl}, signedVideoUrl=${projectData.signedUrl}`);
+            setFinalVideoUrl(projectData.outputUrl);
+            setSignedVideoUrl(projectData.signedUrl || projectData.outputUrl);
             setIsGenerating(false);
             setGenerationProgress(100);
             
@@ -586,12 +589,12 @@ export default function EditorPage() {
           // Keine weiteren Status-Checks notwendig
           isPollingActive = false;
           return;
-        } else if (data.status === 'failed') {
+        } else if (projectData.status === 'failed') {
           // Fehler bei der Generierung
           if (isMounted) {
-            console.error('Video generation failed:', data.error);
+            console.error('Video generation failed:', projectData.error);
             setError('Video generation failed');
-            setErrorDetails(data.error || null);
+            setErrorDetails(projectData.error || null);
             setIsGenerating(false);
             setGenerationProgress(0);
             
@@ -604,10 +607,10 @@ export default function EditorPage() {
           // Keine weiteren Status-Checks notwendig
           isPollingActive = false;
           return;
-        } else if (data.status === 'processing') {
+        } else if (projectData.status === 'processing') {
           // Update progress if available
-          if (data.progress && isMounted) {
-            setGenerationProgress(Math.min(20 + data.progress * 0.8, 99)); // Scale 0-100 to 20-99
+          if (projectData.progress && isMounted) {
+            setGenerationProgress(Math.min(20 + projectData.progress * 0.8, 99)); // Scale 0-100 to 20-99
           }
         }
         
@@ -615,7 +618,7 @@ export default function EditorPage() {
         if (isMounted && isPollingActive) {
           // Polling rate dynamisch anpassen - längere Intervalle für längere Ausführung
           const basePollingRate = 5000; // Start mit 5 Sekunden
-          const currentProgress = data.progress || 0;
+          const currentProgress = projectData.progress || 0;
           
           // Höherer Fortschritt = längeres Intervall (bis zu 12 Sekunden)
           const dynamicRate = basePollingRate + (currentProgress > 50 ? 7000 : 2000);
@@ -1536,8 +1539,8 @@ export default function EditorPage() {
                       ></div>
                     </div>
                     <div className="mt-6 text-sm min-h-[48px] flex items-center justify-center w-full max-w-sm">
-                      <div className="bg-gray-800/50 border border-gray-700/50 px-4 py-2 rounded-lg transition-all duration-500" key={generationStatusText}>
-                        <p className="animate-fade-in text-white/90">{generationStatusText}</p>
+                      <div className="bg-blue-900/20 border border-blue-700/20 text-blue-300 px-4 py-2 rounded-lg transition-all duration-500" key={generationStatusText}>
+                        <p className="animate-fade-in">{generationStatusText}</p>
                       </div>
                     </div>
                     <div className="mt-6 text-xs text-gray-400 bg-gray-800/50 px-4 py-2 rounded-lg flex items-center gap-2">
