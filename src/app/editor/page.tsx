@@ -260,21 +260,22 @@ export default function EditorPage() {
       setGenerationStatusText('Initialisiere den magischen Video-Generator...');
       setDisplayProgress(0);
 
-      // Sanfter Fortschrittsbalken
+      // Sanfter Fortschrittsbalken, der ca. 2 Minuten benötigt, um 99% zu erreichen
       progressInterval = setInterval(() => {
         setDisplayProgress(prev => {
           if (prev >= 99) {
             if (progressInterval) clearInterval(progressInterval);
             return 99;
           }
-          // Verlangsame den Fortschritt, je näher er an 100% kommt
-          const increment = Math.max(0.1, (100 - prev) / 100 * 2);
+          // Langsamer, realistischerer Zuwachs
+          const increment = 0.1 + Math.random() * 0.2;
           return Math.min(prev + increment, 99);
         });
-      }, 200);
+      }, 300); // Intervall etwas verlangsamt
 
       // Wechsle den Status-Text alle paar Sekunden
       let messageIndex = 0;
+      setGenerationStatusText(statusMessages[messageIndex]); // Setze sofort den ersten Text
       textInterval = setInterval(() => {
         messageIndex = (messageIndex + 1) % statusMessages.length;
         setGenerationStatusText(statusMessages[messageIndex]);
@@ -1520,21 +1521,21 @@ export default function EditorPage() {
                 {/* Generating state */}
                 {isGenerating ? (
                   <div className="text-center py-8 flex flex-col items-center justify-center">
-                    <div className="w-16 h-16 border-4 border-purple-600 border-t-transparent rounded-full animate-spin mb-4"></div>
-                    <div className="text-lg font-medium text-white/80">Video wird generiert...</div>
-                    <div className="text-sm text-white/60 mt-1">{displayProgress.toFixed(0)}% abgeschlossen</div>
-                    <div className="w-full h-3 bg-gray-700 rounded-full mt-3 max-w-sm">
+                    <div className="w-16 h-16 border-4 border-purple-600 border-t-transparent rounded-full animate-spin mb-6"></div>
+                    <div className="text-xl font-medium text-white/90">Video wird generiert...</div>
+                    <div className="text-md text-white/70 mt-2">{displayProgress.toFixed(0)}% abgeschlossen</div>
+                    <div className="w-full h-2 bg-gray-700 rounded-full mt-4 max-w-sm overflow-hidden">
                       <div 
-                        className="h-full bg-purple-600 rounded-full transition-all duration-300"
+                        className="h-full bg-gradient-to-r from-purple-500 to-pink-500 rounded-full transition-all duration-300"
                         style={{ width: `${displayProgress}%` }}
                       ></div>
                     </div>
-                    <div className="mt-4 text-sm text-white/60 min-h-[20px]">
-                      {generationStatusText}
+                    <div className="mt-4 text-sm text-white/80 min-h-[20px] transition-all duration-500" key={generationStatusText}>
+                      <p className="animate-fade-in">{generationStatusText}</p>
                     </div>
-                    <div className="mt-6 text-xs text-gray-500">
-                      <div>Projekt-ID: {projectId}</div>
-                      <div>Job-ID: {jobId}</div>
+                    <div className="mt-8 text-xs text-gray-400 bg-gray-800/50 px-4 py-2 rounded-lg flex items-center gap-2">
+                      <ClockIcon className="h-4 w-4" />
+                      <span>Dieser Vorgang kann einige Minuten dauern. Du wirst per E-Mail benachrichtigt, sobald dein Video fertig ist.</span>
                     </div>
                   </div>
                 ) : (
