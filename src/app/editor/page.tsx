@@ -307,68 +307,44 @@ export default function EditorPage() {
 
   // HOOK 2: Load data from localStorage and server
   useEffect(() => {
-    // Only run in the browser, not during SSR
     if (typeof window !== 'undefined' && !isMounted.current) {
       isMounted.current = true;
       
-      // Lade das aktuelle Projekt aus dem localStorage
       const loadProjectData = async () => {
         setIsLoadingProject(true);
-        
         try {
           const savedProjectId = localStorage.getItem('currentProjectId');
-          
           if (savedProjectId) {
             console.log('Loading project data from server:', savedProjectId);
-            
-            // Projekt-Daten vom Server laden
             const response = await fetch(`/api/workflow-state?projectId=${savedProjectId}`);
-            
             if (response.ok) {
               const data = await response.json();
-              
               if (data.success && data.project) {
-                console.log('Project data loaded:', data.project);
-                
-                // Projekt-ID setzen
-                setProjectId(data.project.id);
-                
-                // Workflow-Schritt setzen
-                setWorkflowStep(data.project.workflowStep);
-                
-                // Wenn das Projekt ein Voiceover-Script hat, lade es
-                if (data.project.voiceoverScript) {
-                  setVoiceoverScript(data.project.voiceoverScript);
-                }
-                
-                // Wenn das Projekt gematchte Videos hat, lade sie
-                if (data.project.matchedVideos && data.project.matchedVideos.length > 0) {
-                  setMatchedVideos(data.project.matchedVideos);
-                  
-                  // Extrahiere die Video-IDs für die Auswahl
-                  const videoIds = data.project.matchedVideos.map((match: MatchedVideo) => match.videoId);
+                const { project } = data;
+                console.log('Project data loaded:', project);
+
+                setProjectId(project.id);
+                setWorkflowStep(project.workflowStep);
+                if (project.voiceoverScript) setVoiceoverScript(project.voiceoverScript);
+
+                if (project.matchedVideos && project.matchedVideos.length > 0) {
+                  setMatchedVideos(project.matchedVideos);
+                  const videoIds = project.matchedVideos.map((match: MatchedVideo) => match.videoId);
                   setSelectedVideos(videoIds);
                   setFromScriptMatcher(true);
-                  
-                  // Setze automatisch den Status
-                  if (data.project.workflowStep === 'editing') {
-                    setWorkflowStatusMessage('Videos wurden aus dem Script-Matcher geladen und sind bereit zur Generierung.');
-                  }
                 }
-                
-                // Wenn das Projekt bereits ein fertiges Video hat, lade es
-                if (data.project.outputUrl) {
-                  setFinalVideoUrl(data.project.outputUrl);
-                  setWorkflowStatusMessage('Deine Werbung wurde erfolgreich generiert!');
-                } else if (data.project.status === 'processing' && data.project.jobId) {
-                  // Wenn das Projekt noch in Bearbeitung ist, stelle den Ladebildschirm wieder her
-                  console.log('Restoring generating state for project:', data.project.id);
-                  setJobId(data.project.jobId);
+
+                if (project.status === 'processing' && project.jobId) {
+                  console.log('Restoring generating state for project:', project.id);
+                  setJobId(project.jobId);
                   setIsGenerating(true);
+                } else if (project.outputUrl) {
+                  setFinalVideoUrl(project.outputUrl);
+                  setSignedVideoUrl(project.signedUrl || project.outputUrl);
+                  setWorkflowStatusMessage('Deine Werbung wurde erfolgreich generiert!');
                 }
               }
             } else {
-              // Wenn das Projekt nicht gefunden wurde, entferne die ID aus dem localStorage
               localStorage.removeItem('currentProjectId');
             }
           }
@@ -417,7 +393,7 @@ export default function EditorPage() {
       
       loadProjectData();
     }
-  }, [])
+  }, []); // Abhängigkeitsarray bleibt leer, um nur beim Mount auszuführen
   
   // HOOK 3: Set up final video playback
   useEffect(() => {
@@ -504,11 +480,13 @@ export default function EditorPage() {
 
   // HOOK 5: Check project status and load video when ready
   useEffect(() => {
-    if (!projectId || !jobId || !isGenerating) return;
+    // Der Polling-Prozess wird ausschließlich durch isGenerating gesteuert.
+    // projectId und jobId müssen zum Startzeitpunkt bereits im State sein.
+    if (!isGenerating || !projectId || !jobId) return;
     
-    let isPollingActive = true; // Flag to track if polling should continue
-    let consecutiveErrors = 0; // Track consecutive errors
-    let isMounted = true; // Track if component is still mounted
+    let isPollingActive = true;
+    let consecutiveErrors = 0;
+    let isMounted = true;
     let timeoutId: NodeJS.Timeout | null = null; // Track current timeout
     
     // Funktion zum Abrufen des Projekt-Status - optimiert für Stabilität
@@ -563,7 +541,6 @@ export default function EditorPage() {
         // Logging: Logge die empfangenen Daten, bevor der State aktualisiert wird
         console.log('[Editor Status Poll] Received data:', data);
 
-        // Passe die Datenextraktion an die neue API-Antwort an
         const projectData = data.project;
         
         // Status verarbeiten und UI aktualisieren
@@ -670,7 +647,7 @@ export default function EditorPage() {
         clearTimeout(timeoutId);
       }
     };
-  }, [projectId, jobId, isGenerating]);
+  }, [isGenerating, projectId, jobId]); // Neu: explizite Abhängigkeiten
 
   // HOOK: Auto-generate video when appropriate
   useEffect(() => {
