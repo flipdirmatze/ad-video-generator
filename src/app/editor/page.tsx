@@ -338,7 +338,8 @@ export default function EditorPage() {
                   console.log('Restoring generating state for project:', project.id);
                   setJobId(project.jobId);
                   setIsGenerating(true);
-                } else if (project.outputUrl) {
+                } else if (project.status === 'completed' && project.outputUrl) {
+                  // Nur das fertige Video anzeigen, wenn der Status 'completed' ist
                   setFinalVideoUrl(project.outputUrl);
                   setSignedVideoUrl(project.signedUrl || project.outputUrl);
                   setWorkflowStatusMessage('Deine Werbung wurde erfolgreich generiert!');
@@ -1245,6 +1246,30 @@ export default function EditorPage() {
     }
   };
 
+  // Funktion zum Starten eines neuen Projekts
+  const handleStartNewProject = () => {
+    // Alle relevanten States zurücksetzen
+    setProjectId(null);
+    setJobId(null);
+    setIsGenerating(false);
+    setFinalVideoUrl('');
+    setSignedVideoUrl('');
+    setMatchedVideos([]);
+    setSelectedVideos([]);
+    setVoiceoverUrl(null);
+    setVoiceoverScript('');
+    setError(null);
+    setErrorDetails(null);
+    
+    // Wichtig: Die Projekt-ID aus dem LocalStorage entfernen
+    localStorage.removeItem('currentProjectId');
+    localStorage.removeItem('voiceoverData');
+    localStorage.removeItem('voiceoverScript');
+    
+    // Optional: Zurück zum Anfang des Workflows navigieren
+    router.push('/voiceover');
+  };
+
   // Play/Pause function
   const togglePlay = useCallback(() => {
     if (isPlaying) {
@@ -1465,6 +1490,13 @@ export default function EditorPage() {
                     </div>
                   </div>
                   <div className="flex gap-2">
+                    <button
+                      onClick={handleStartNewProject}
+                      className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+                    >
+                      <SparklesIcon className="h-4 w-4 mr-2" />
+                      Neues Video erstellen
+                    </button>
                     <a
                       href={signedVideoUrl || finalVideoUrl}
                       download="meine-werbung.mp4"
