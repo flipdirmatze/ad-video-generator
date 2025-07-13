@@ -233,9 +233,67 @@ export default function EditorPage() {
   const [matchedVideos, setMatchedVideos] = useState<MatchedVideo[]>([])
   const [workflowStep, setWorkflowStep] = useState<string | null>(null)
   const [isLoadingProject, setIsLoadingProject] = useState(false)
-  
+  const [displayProgress, setDisplayProgress] = useState(0)
+  const [generationStatusText, setGenerationStatusText] = useState('Initialisiere den magischen Video-Generator...')
+
+  // Magische Status-Texte
+  const statusMessages = [
+    "Analysiere Skript-Struktur...",
+    "Extrahiere emotionale Schlüsselmomente...",
+    "Komponiere visuellen Rhythmus...",
+    "Synchronisiere Voiceover mit Bildsequenz...",
+    "Wende KI-gestützte Farbkorrektur an...",
+    "Optimiere Audio-Klarheit...",
+    "Rendere finale Szenen in 4K...",
+    "Füge letzte magische Details hinzu..."
+  ];
+
   // ------------------- HOOKS SECTION -------------------
   
+  // HOOK für gefälschten Fortschritt und Status-Text
+  useEffect(() => {
+    let progressInterval: NodeJS.Timeout | null = null;
+    let textInterval: NodeJS.Timeout | null = null;
+
+    if (isGenerating) {
+      // Setze den initialen Status-Text
+      setGenerationStatusText('Initialisiere den magischen Video-Generator...');
+      setDisplayProgress(0);
+
+      // Sanfter Fortschrittsbalken
+      progressInterval = setInterval(() => {
+        setDisplayProgress(prev => {
+          if (prev >= 99) {
+            if (progressInterval) clearInterval(progressInterval);
+            return 99;
+          }
+          // Verlangsame den Fortschritt, je näher er an 100% kommt
+          const increment = Math.max(0.1, (100 - prev) / 100 * 2);
+          return Math.min(prev + increment, 99);
+        });
+      }, 200);
+
+      // Wechsle den Status-Text alle paar Sekunden
+      let messageIndex = 0;
+      textInterval = setInterval(() => {
+        messageIndex = (messageIndex + 1) % statusMessages.length;
+        setGenerationStatusText(statusMessages[messageIndex]);
+      }, 3500);
+
+    } else {
+      // Wenn die Generierung abgeschlossen ist, setze auf 100%
+      if (finalVideoUrl) {
+        setDisplayProgress(100);
+        setGenerationStatusText('Video erfolgreich generiert!');
+      }
+    }
+
+    return () => {
+      if (progressInterval) clearInterval(progressInterval);
+      if (textInterval) clearInterval(textInterval);
+    };
+  }, [isGenerating, finalVideoUrl]);
+
   // HOOK 1: Authentication check
   useEffect(() => {
     if (!isLoading && status !== 'loading') {
@@ -1461,20 +1519,22 @@ export default function EditorPage() {
                 
                 {/* Generating state */}
                 {isGenerating ? (
-                  <div className="text-center py-8">
-                    <div className="inline-block">
-                      <div className="w-16 h-16 border-4 border-purple-600 border-t-transparent rounded-full animate-spin mb-4"></div>
-                      <div className="text-lg font-medium text-white/80">Video wird generiert...</div>
-                      <div className="text-sm text-white/60 mt-1">{generationProgress.toFixed(0)}% abgeschlossen</div>
-                      <div className="w-full h-3 bg-gray-700 rounded-full mt-3">
-                        <div 
-                          className="h-full bg-purple-600 rounded-full transition-all duration-300"
-                          style={{ width: `${generationProgress}%` }}
-                        ></div>
-                      </div>
-                      <div className="mt-4 text-sm text-white/60">
-                        Dieser Vorgang kann einige Minuten dauern. Bitte warte, bis das Video fertig ist.
-                      </div>
+                  <div className="text-center py-8 flex flex-col items-center justify-center">
+                    <div className="w-16 h-16 border-4 border-purple-600 border-t-transparent rounded-full animate-spin mb-4"></div>
+                    <div className="text-lg font-medium text-white/80">Video wird generiert...</div>
+                    <div className="text-sm text-white/60 mt-1">{displayProgress.toFixed(0)}% abgeschlossen</div>
+                    <div className="w-full h-3 bg-gray-700 rounded-full mt-3 max-w-sm">
+                      <div 
+                        className="h-full bg-purple-600 rounded-full transition-all duration-300"
+                        style={{ width: `${displayProgress}%` }}
+                      ></div>
+                    </div>
+                    <div className="mt-4 text-sm text-white/60 min-h-[20px]">
+                      {generationStatusText}
+                    </div>
+                    <div className="mt-6 text-xs text-gray-500">
+                      <div>Projekt-ID: {projectId}</div>
+                      <div>Job-ID: {jobId}</div>
                     </div>
                   </div>
                 ) : (
