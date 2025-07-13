@@ -360,6 +360,11 @@ export default function EditorPage() {
                 if (data.project.outputUrl) {
                   setFinalVideoUrl(data.project.outputUrl);
                   setWorkflowStatusMessage('Deine Werbung wurde erfolgreich generiert!');
+                } else if (data.project.status === 'processing' && data.project.jobId) {
+                  // Wenn das Projekt noch in Bearbeitung ist, stelle den Ladebildschirm wieder her
+                  console.log('Restoring generating state for project:', data.project.id);
+                  setJobId(data.project.jobId);
+                  setIsGenerating(true);
                 }
               }
             } else {
