@@ -66,7 +66,7 @@ const VideoSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['draft', 'processing', 'complete'],
+    enum: ['draft', 'processing', 'trimming', 'complete'], // 'trimming' als gültigen Status hinzugefügt
     default: 'complete'
   },
   progress: {
