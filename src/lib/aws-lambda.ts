@@ -1,10 +1,24 @@
 import { LambdaClient, InvokeCommand } from '@aws-sdk/client-lambda';
 
+// Debug: Log credential status (without revealing actual values)
+console.log('AWS Credentials Debug:', {
+  hasAccessKeyId: !!process.env.AWS_ACCESS_KEY_ID,
+  accessKeyIdLength: process.env.AWS_ACCESS_KEY_ID?.length || 0,
+  hasSecretAccessKey: !!process.env.AWS_SECRET_ACCESS_KEY,
+  secretAccessKeyLength: process.env.AWS_SECRET_ACCESS_KEY?.length || 0,
+  region: process.env.AWS_REGION || 'eu-central-1'
+});
+
+// Validate credentials before creating client
+if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY) {
+  throw new Error('Missing AWS credentials. Please check your Vercel environment variables.');
+}
+
 const lambdaClient = new LambdaClient({
   region: process.env.AWS_REGION || 'eu-central-1',
   credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
   },
 });
 
