@@ -1,0 +1,13 @@
+{
+  "name": "video-trimmer-lambda",
+  "version": "1.0.0",
+  "description": "AWS Lambda function for fast video trimming",
+  "main": "trim-video-lambda.js",
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.400.0",
+    "mongodb": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+} 

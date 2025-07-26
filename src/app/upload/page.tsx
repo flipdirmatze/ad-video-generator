@@ -7,6 +7,7 @@ import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { useDropzone, DropEvent, FileRejection } from 'react-dropzone'
 import VideoTrimmerModal from '@/components/VideoTrimmerModal'; // Importieren
+import { startVideoTrimJob } from '@/lib/aws-lambda'; // Lambda Service importieren
 
 // Vereinfachter Video-Typ
 type UploadedVideo = {
@@ -271,7 +272,7 @@ export default function UploadPage() {
       xhr.send(file)
       await uploadPromise
       
-      // 3. Send video metadata AND trim times to backend API
+      // 3. Send video metadata to backend API (WITHOUT trim times)
       const metadataResponse = await fetch('/api/upload-video', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -282,18 +283,19 @@ export default function UploadPage() {
           type: file.type, 
           key, 
           url: fileUrl, 
-          tags: [],
-          trim: { startTime, endTime } // Sende die Trimm-Zeiten mit
+          tags: []
+          // REMOVED: trim times - Lambda handles this now
         }),
       });
+      
       if (!metadataResponse.ok) {
           const errorData = await metadataResponse.json();
           throw new Error(errorData.error || 'Failed to save video metadata');
       }
+      
       const metadataData = await metadataResponse.json();
       console.log('Upload completed - Raw API Response Data:', metadataData);
 
-      // **** KORREKTUR: Prüfe direkt auf metadataData.videoId ****
       if (!metadataData || !metadataData.videoId) { 
           console.error('Error: videoId is missing in the API response.', metadataData);
           setError(`Failed to process metadata for ${file.name}. API response invalid.`);
@@ -320,6 +322,59 @@ export default function UploadPage() {
       
       // Video zur Liste hinzufügen
       setUploadedVideos(prev => [newVideo, ...prev]);
+      
+      // 4. JETZT NEU: Starte Lambda-Funktion für Video-Trimming
+      console.log('Starting Lambda video trimming...');
+      try {
+        const lambdaResult = await startVideoTrimJob({
+          videoId: metadataData.videoId,
+          inputPath: key, // S3 key des hochgeladenen Videos
+          startTime,
+          endTime
+        });
+
+        if (lambdaResult.success) {
+          console.log('Lambda trimming completed successfully:', lambdaResult);
+          
+          // Video-Status auf 'complete' setzen und URL aktualisieren
+          setUploadedVideos(prev => prev.map(video => {
+            if (video.id === metadataData.videoId) {
+              return {
+                ...video,
+                type: file.type, // Zurück zum ursprünglichen Typ
+                url: lambdaResult.outputKey ? `/api/video-stream/${video.id}` : video.url
+              };
+            }
+            return video;
+          }));
+          
+          setSuccess(`Video ${file.name} wurde erfolgreich geschnitten und gespeichert!`);
+        } else {
+          console.error('Lambda trimming failed:', lambdaResult.error);
+          
+          // Video-Status auf 'failed' setzen
+          setUploadedVideos(prev => prev.map(video => {
+            if (video.id === metadataData.videoId) {
+              return { ...video, type: 'failed' };
+            }
+            return video;
+          }));
+          
+          setError(`Video-Bearbeitung fehlgeschlagen: ${lambdaResult.error}`);
+        }
+      } catch (lambdaError) {
+        console.error('Lambda invocation error:', lambdaError);
+        
+        // Video-Status auf 'failed' setzen
+        setUploadedVideos(prev => prev.map(video => {
+          if (video.id === metadataData.videoId) {
+            return { ...video, type: 'failed' };
+          }
+          return video;
+        }));
+        
+        setError(`Video-Bearbeitung fehlgeschlagen: ${lambdaError instanceof Error ? lambdaError.message : 'Unbekannter Fehler'}`);
+      }
       
     } catch (error) {
       console.error('Upload error:', error)

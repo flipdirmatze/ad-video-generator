@@ -38,5 +38,7 @@ COPY docker/scripts/ /app/
 # Mache die Skripte ausführbar
 RUN chmod +x /app/*.js
 
-# Setze den Ausführungspunkt
-ENTRYPOINT ["node", "/app/process-video.js"] 
+# Setze den Ausführungspunkt flexibler
+ENTRYPOINT ["node"]
+# Definiere den Standard-Befehl, der überschrieben werden kann
+CMD ["/app/process-video.js"] 
