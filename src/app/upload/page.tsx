@@ -576,156 +576,179 @@ export default function UploadPage() {
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
               {allVideos.map((video) => (
-                <div key={video.id} className="relative flex flex-col rounded-lg overflow-hidden bg-gray-800">
-                  {/* Tags Section - Above video */}
-                  <div className="p-2 bg-gray-800 border-b border-gray-700">
-                    <div className="flex flex-wrap gap-1 mb-2">
-                      {video.tags.map((tag, index) => (
-                        <span
-                          key={index}
-                          className="bg-purple-500/20 text-purple-300 text-xs px-2 py-1 rounded-full flex items-center"
-                        >
-                          {tag}
+                <div key={video.id} className="relative flex flex-col rounded-lg overflow-hidden bg-gray-800 border border-gray-700/50">
+                  {/* NEUE LOGIK für den Verarbeitungsstatus */}
+                  {video.type === 'processing' ? (
+                    <div className="flex flex-col items-center justify-center h-full p-4" style={{ minHeight: '280px' }}>
+                      <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mb-3"></div>
+                      <p className="text-sm font-semibold text-white/90">Video wird geschnitten...</p>
+                      <p className="text-xs text-white/60 mt-1 text-center">Dieser Vorgang dauert nur einen Moment.</p>
+                      
+                      {/* Optional: Upload-Fortschritt für die Originaldatei, falls verfügbar */}
+                      {uploadProgress[video.id] !== undefined && (
+                         <div className="w-full mt-4">
+                            <div className="h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                              <div 
+                                className="h-full bg-purple-600 transition-all duration-150"
+                                style={{ width: `${uploadProgress[video.id]}%` }}
+                              ></div>
+                            </div>
+                            <div className="text-right text-xs text-gray-400 mt-1">{uploadProgress[video.id]}% hochgeladen</div>
+                         </div>
+                      )}
+                    </div>
+                  ) : (
+                    <>
+                      {/* Bestehende Logik für Tags und Video-Player */}
+                      <div className="p-2 bg-gray-800 border-b border-gray-700">
+                        <div className="flex flex-wrap gap-1 mb-2">
+                          {video.tags.map((tag, index) => (
+                            <span
+                              key={index}
+                              className="bg-purple-500/20 text-purple-300 text-xs px-2 py-1 rounded-full flex items-center"
+                            >
+                              {tag}
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  removeTag(video.id, tag);
+                                }}
+                                className="ml-1 hover:text-white"
+                                aria-label={`Remove tag ${tag}`}
+                              >
+                                <XMarkIcon className="h-3 w-3" />
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                        
+                        {selectedVideoId === video.id ? (
+                          <div className="flex gap-2">
+                            <input
+                              ref={tagInputRef}
+                              type="text"
+                              value={currentTag}
+                              onChange={(e) => handleTagChange(video.id, e.target.value)}
+                              onKeyPress={(e) => e.key === 'Enter' && addTag(video.id)}
+                              placeholder="Add tag..."
+                              className="flex-1 bg-white/10 text-white text-sm rounded px-2 py-1"
+                              aria-label="Enter new tag"
+                            />
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                addTag(video.id);
+                              }}
+                              className="bg-purple-500 text-white px-2 py-1 rounded text-sm hover:bg-purple-600 transition-colors"
+                              aria-label="Add tag"
+                            >
+                              Add
+                            </button>
+                          </div>
+                        ) : (
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              removeTag(video.id, tag);
+                              setSelectedVideoId(video.id);
                             }}
-                            className="ml-1 hover:text-white"
-                            aria-label={`Remove tag ${tag}`}
+                            className="text-white/60 text-sm flex items-center hover:text-white transition-colors"
+                            aria-label="Show tag input"
                           >
-                            <XMarkIcon className="h-3 w-3" />
+                            <TagIcon className="h-4 w-4 mr-1" />
+                            Add Tag
                           </button>
-                        </span>
-                      ))}
-                    </div>
-                    
-                    {selectedVideoId === video.id ? (
-                      <div className="flex gap-2">
-                        <input
-                          ref={tagInputRef}
-                          type="text"
-                          value={currentTag}
-                          onChange={(e) => handleTagChange(video.id, e.target.value)}
-                          onKeyPress={(e) => e.key === 'Enter' && addTag(video.id)}
-                          placeholder="Add tag..."
-                          className="flex-1 bg-white/10 text-white text-sm rounded px-2 py-1"
-                          aria-label="Enter new tag"
-                        />
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            addTag(video.id);
-                          }}
-                          className="bg-purple-500 text-white px-2 py-1 rounded text-sm hover:bg-purple-600 transition-colors"
-                          aria-label="Add tag"
-                        >
-                          Add
-                        </button>
+                        )}
                       </div>
-                    ) : (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedVideoId(video.id);
-                        }}
-                        className="text-white/60 text-sm flex items-center hover:text-white transition-colors"
-                        aria-label="Show tag input"
-                      >
-                        <TagIcon className="h-4 w-4 mr-1" />
-                        Add Tag
-                      </button>
-                    )}
-                  </div>
 
-                  {/* Video Container */}
-                  <div className="relative">
-                    {/* Delete Button moved here */}
-                    <button
-                      onClick={() => handleDeleteVideo(video.id, video.name)}
-                      disabled={isDeleting[video.id]}
-                      className={`absolute top-2 right-2 z-20 p-1.5 rounded-full transition-colors 
+                      <div className="relative">
+                        {/* Delete Button moved here */}
+                        <button
+                          onClick={() => handleDeleteVideo(video.id, video.name)}
+                          disabled={isDeleting[video.id]}
+                          className={`absolute top-2 right-2 z-20 p-1.5 rounded-full transition-colors 
                                   ${isDeleting[video.id]
                                     ? 'bg-gray-600 cursor-not-allowed' 
                                     : 'bg-red-800/70 hover:bg-red-700 text-white'}`}
-                      aria-label="Video löschen"
-                    >
-                      {isDeleting[video.id] ? (
-                        <ArrowPathIcon className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <TrashIcon className="h-4 w-4" />
-                      )}
-                    </button>
-                    
-                    {/* Video Element */}
-                    <video 
-                      className="w-full object-cover"
-                      src={signedUrls[video.id] || video.url}
-                      data-id={video.id}
-                      controls
-                      controlsList="nodownload"
-                      preload="metadata"
-                      playsInline
-                      muted
-                      crossOrigin="anonymous"
-                      onError={async (e) => {
-                        const target = e.target as HTMLVideoElement;
-                        console.error('Video loading error:', {
-                          videoId: video.id,
-                          videoName: video.name,
-                          errorCode: target.error?.code,
-                          errorMessage: target.error?.message,
-                          currentSrc: target.currentSrc,
-                          passedUrl: signedUrls[video.id] || video.url,
-                          videoKey: video.key
-                        });
-
-                        // Wenn bereits ein Upload-Fortschritt angezeigt wird und dieser nicht abgeschlossen ist,
-                        // dann ist der Fehler wahrscheinlich auf den noch nicht abgeschlossenen Upload zurückzuführen.
-                        if (uploadProgress[video.id] !== undefined && uploadProgress[video.id] < 100) {
-                          console.log(`[Video Error Handler] Upload for ${video.name} in progress (${uploadProgress[video.id]}%), ignoring playback error for now.`);
-                          return;
-                        }
+                          aria-label="Video löschen"
+                        >
+                          {isDeleting[video.id] ? (
+                            <ArrowPathIcon className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <TrashIcon className="h-4 w-4" />
+                          )}
+                        </button>
                         
-                        // Versuche immer, eine neue signierte URL zu erhalten, wenn ein Fehler auftritt
-                        // und ein gültiger video.key vorhanden ist.
-                        if (target.error && video.key) {
-                          console.log(`[Video Error Handler] Attempting to refresh signed URL for ${video.name} (key: ${video.key})`);
-                          try {
-                            const response = await fetch(`/api/get-signed-url?key=${encodeURIComponent(video.key)}`);
-                            if (response.ok) {
-                              const data = await response.json();
-                              if (data.url) {
-                                console.log(`[Video Error Handler] Successfully refreshed signed URL for ${video.name}: ${data.url}`);
-                                setSignedUrls(prev => ({
-                                  ...prev,
-                                  [video.id]: data.url
-                                }));
-                                // Wichtig: Nachdem die URL im State aktualisiert wurde, muss das Video-Element
-                                // dazu gebracht werden, die neue URL zu verwenden. 
-                                // Ein direkter .src-Wechsel und .load() ist hier am zuverlässigsten.
-                                target.src = data.url;
-                                target.load(); 
-                                return; // Verhindere, dass der generische setError unten ausgelöst wird
+                        {/* Video Element */}
+                        <video 
+                          className="w-full object-cover"
+                          src={signedUrls[video.id] || video.url}
+                          data-id={video.id}
+                          controls
+                          controlsList="nodownload"
+                          preload="metadata"
+                          playsInline
+                          muted
+                          crossOrigin="anonymous"
+                          onError={async (e) => {
+                            const target = e.target as HTMLVideoElement;
+                            console.error('Video loading error:', {
+                              videoId: video.id,
+                              videoName: video.name,
+                              errorCode: target.error?.code,
+                              errorMessage: target.error?.message,
+                              currentSrc: target.currentSrc,
+                              passedUrl: signedUrls[video.id] || video.url,
+                              videoKey: video.key
+                            });
+
+                            // Wenn bereits ein Upload-Fortschritt angezeigt wird und dieser nicht abgeschlossen ist,
+                            // dann ist der Fehler wahrscheinlich auf den noch nicht abgeschlossenen Upload zurückzuführen.
+                            if (uploadProgress[video.id] !== undefined && uploadProgress[video.id] < 100) {
+                              console.log(`[Video Error Handler] Upload for ${video.name} in progress (${uploadProgress[video.id]}%), ignoring playback error for now.`);
+                              return;
+                            }
+                            
+                            // Versuche immer, eine neue signierte URL zu erhalten, wenn ein Fehler auftritt
+                            // und ein gültiger video.key vorhanden ist.
+                            if (target.error && video.key) {
+                              console.log(`[Video Error Handler] Attempting to refresh signed URL for ${video.name} (key: ${video.key})`);
+                              try {
+                                const response = await fetch(`/api/get-signed-url?key=${encodeURIComponent(video.key)}`);
+                                if (response.ok) {
+                                  const data = await response.json();
+                                  if (data.url) {
+                                    console.log(`[Video Error Handler] Successfully refreshed signed URL for ${video.name}: ${data.url}`);
+                                    setSignedUrls(prev => ({
+                                      ...prev,
+                                      [video.id]: data.url
+                                    }));
+                                    // Wichtig: Nachdem die URL im State aktualisiert wurde, muss das Video-Element
+                                    // dazu gebracht werden, die neue URL zu verwenden. 
+                                    // Ein direkter .src-Wechsel und .load() ist hier am zuverlässigsten.
+                                    target.src = data.url;
+                                    target.load(); 
+                                    return; // Verhindere, dass der generische setError unten ausgelöst wird
+                                  }
+                                }
+                                // Wenn die Antwort nicht ok ist oder keine URL enthält, werfe einen Fehler, um zum Catch-Block zu gelangen
+                                const errorText = await response.text();
+                                throw new Error(`Failed to get new signed URL: ${response.status} ${errorText}`);
+                              } catch (refreshError) {
+                                console.error(`[Video Error Handler] Error refreshing signed URL for ${video.name}:`, refreshError);
+                                // Hier den setError nicht global setzen, da es sonst alle Videos betrifft.
+                                // Der Fehler wird bereits im Log erfasst.
                               }
                             }
-                            // Wenn die Antwort nicht ok ist oder keine URL enthält, werfe einen Fehler, um zum Catch-Block zu gelangen
-                            const errorText = await response.text();
-                            throw new Error(`Failed to get new signed URL: ${response.status} ${errorText}`);
-                          } catch (refreshError) {
-                            console.error(`[Video Error Handler] Error refreshing signed URL for ${video.name}:`, refreshError);
-                            // Hier den setError nicht global setzen, da es sonst alle Videos betrifft.
-                            // Der Fehler wird bereits im Log erfasst.
-                          }
-                        }
-                        
-                        // Generischer Fehler, wenn kein Key vorhanden ist oder das Neuladen fehlschlägt
-                        // Dieser Fehler wird nur angezeigt, wenn das automatische Neuladen fehlschlägt.
-                        setError(`Failed to load video: ${video.name}. Please try refreshing the page or re-uploading.`);
-                      }}
-                      style={{ minHeight: '200px' }}
-                    />
-                  </div>
+                            
+                            // Generischer Fehler, wenn kein Key vorhanden ist oder das Neuladen fehlschlägt
+                            // Dieser Fehler wird nur angezeigt, wenn das automatische Neuladen fehlschlägt.
+                            setError(`Failed to load video: ${video.name}. Please try refreshing the page or re-uploading.`);
+                          }}
+                          style={{ minHeight: '200px' }}
+                        />
+                      </div>
+                    </>
+                  )}
                 </div>
               ))}
             </div>
