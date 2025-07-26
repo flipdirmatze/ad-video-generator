@@ -7,7 +7,7 @@ import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { useDropzone, DropEvent, FileRejection } from 'react-dropzone'
 import VideoTrimmerModal from '@/components/VideoTrimmerModal'; // Importieren
-import { startVideoTrimJob } from '@/lib/aws-lambda'; // Lambda Service importieren
+// REMOVED: import { startVideoTrimJob } from '@/lib/aws-lambda'; // Lambda Service importieren
 
 // Vereinfachter Video-Typ
 type UploadedVideo = {
@@ -323,15 +323,28 @@ export default function UploadPage() {
       // Video zur Liste hinzufügen
       setUploadedVideos(prev => [newVideo, ...prev]);
       
-      // 4. JETZT NEU: Starte Lambda-Funktion für Video-Trimming
-      console.log('Starting Lambda video trimming...');
+      // 4. JETZT NEU: Starte Lambda-Funktion für Video-Trimming über API-Route
+      console.log('Starting Lambda video trimming via API...');
       try {
-        const lambdaResult = await startVideoTrimJob({
-          videoId: metadataData.videoId,
-          inputPath: key, // S3 key des hochgeladenen Videos
-          startTime,
-          endTime
+        const response = await fetch('/api/trim-video', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            videoId: metadataData.videoId,
+            inputPath: key, // S3 key des hochgeladenen Videos
+            startTime,
+            endTime
+          }),
         });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || `API request failed with status: ${response.status}`);
+        }
+
+        const lambdaResult = await response.json();
 
         if (lambdaResult.success) {
           console.log('Lambda trimming completed successfully:', lambdaResult);
