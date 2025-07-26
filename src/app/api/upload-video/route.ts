@@ -5,6 +5,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import dbConnect from '@/lib/mongoose';
 import VideoModel from '@/models/Video';
+import { startVideoTrimJob } from '@/lib/aws-batch'; // Korrekter Import-Pfad
 
 // Define constants for upload restrictions
 const MAX_FILE_SIZE = 150 * 1024 * 1024; // 150MB in bytes
@@ -41,7 +42,7 @@ export async function POST(request: Request) {
       // Direkter S3-Upload: Diese Metadaten kommen vom Frontend, nachdem die Datei direkt zu S3 hochgeladen wurde
       console.log(`[${requestId}] Processing JSON upload data (direct S3 upload)`);
       const data = await request.json();
-      const { videoId, name, size, type, key, url, tags } = data;
+      const { videoId, name, size, type, key, url, tags, trim } = data; // trim-Objekt extrahieren
       
       if (!videoId || !name || !size || !type || !key || !url) {
         console.error(`[${requestId}] Missing required fields: ${JSON.stringify({ videoId, name, size, type, key, url })}`);
@@ -89,13 +90,24 @@ export async function POST(request: Request) {
           path: key,
           tags: tags || [],
           isPublic: false,
-          status: 'complete',
+          status: trim ? 'trimming' : 'complete', // Status basierend auf trim-Parametern setzen
           progress: 100
         });
         
         console.log(`[${requestId}] Video document created successfully: ${video._id}`);
+
+        // Wenn Trimm-Parameter vorhanden sind, starte den Trimm-Job
+        if (trim && trim.startTime !== undefined && trim.endTime !== undefined) {
+          console.log(`[${requestId}] Starting trim job for video ${videoId} from ${trim.startTime}s to ${trim.endTime}s`);
+          await startVideoTrimJob({
+            videoId: video.id,
+            inputPath: video.path,
+            startTime: trim.startTime,
+            endTime: trim.endTime
+          });
+        }
         
-        // Generate a signed URL for the video
+        // Generate a signed URL for the original video for now (optional)
         const signedUrl = await getS3UrlSigned(video.path);
         
         return NextResponse.json({

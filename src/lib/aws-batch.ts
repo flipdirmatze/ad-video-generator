@@ -123,6 +123,71 @@ export async function submitVideoProcessingJob(
 }
 
 /**
+ * Startet einen AWS Batch Job, um ein Video zuzuschneiden.
+ * Dieser Job ist für eine schnelle Verarbeitung optimiert (Stream Copy).
+ *
+ * @param {object} params - Die Parameter für den Trimm-Job.
+ * @param {string} params.videoId - Die ID des Videos in der Datenbank.
+ * @param {string} params.inputPath - Der S3-Key des Originalvideos.
+ * @param {number} params.startTime - Die Startzeit für den Schnitt in Sekunden.
+ * @param {number} params.endTime - Die Endzeit für den Schnitt in Sekunden.
+ * @returns {Promise<object>} - Die Job-ID und der Job-Name.
+ */
+export async function startVideoTrimJob({
+  videoId,
+  inputPath,
+  startTime,
+  endTime
+}: {
+  videoId: string;
+  inputPath: string;
+  startTime: number;
+  endTime: number;
+}) {
+  const jobName = `video-trim-${videoId}-${Date.now()}`;
+
+  // Die Umgebungsvariablen werden direkt an den Container übergeben.
+  const containerOverrides = {
+    environment: [
+      { name: 'JOB_TYPE', value: 'trim-video' },
+      { name: 'VIDEO_ID', value: videoId },
+      { name: 'INPUT_PATH', value: inputPath },
+      { name: 'START_TIME', value: String(startTime) },
+      { name: 'END_TIME', value: String(endTime) },
+      { name: 'S3_BUCKET_NAME', value: process.env.S3_BUCKET_NAME! },
+    ],
+  };
+
+  // Spezifische Job-Definition und Queue für das schnelle Trimming
+  // Diese müssen in der `terraform/main.tf` oder AWS-Konsole erstellt werden.
+  const jobDefinition = process.env.AWS_BATCH_TRIM_JOB_DEFINITION!;
+  const jobQueue = process.env.AWS_BATCH_TRIM_JOB_QUEUE!;
+
+  if (!jobDefinition || !jobQueue) {
+    throw new Error('AWS Batch Trimming-Konfiguration fehlt: JOB_DEFINITION oder JOB_QUEUE nicht definiert');
+  }
+
+  const command = new SubmitJobCommand({
+    jobName,
+    jobQueue,
+    jobDefinition,
+    containerOverrides,
+  });
+
+  try {
+    const response = await batchClient.send(command);
+    console.log(`Video Trim Job gestartet: ${response.jobId} für Video ${videoId}`);
+    return {
+      jobId: response.jobId,
+      jobName,
+    };
+  } catch (error) {
+    console.error(`Fehler beim Starten des Video Trim Jobs für ${videoId}:`, error);
+    throw error;
+  }
+}
+
+/**
  * Hilfsfunktion, um ein Video mit FFmpeg zu trimmen
  */
 export function createTrimJob(

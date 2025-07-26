@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { useDropzone, DropEvent, FileRejection } from 'react-dropzone'
+import VideoTrimmerModal from '@/components/VideoTrimmerModal'; // Importieren
 
 // Vereinfachter Video-Typ
 type UploadedVideo = {
@@ -49,6 +50,13 @@ export default function UploadPage() {
   const [isDeleting, setIsDeleting] = useState<Record<string, boolean>>({})
   const tagInputRef = useRef<HTMLInputElement | null>(null)
   const [tags, setTags] = useState<Record<string, string[]>>({})
+
+  // State für das Trimmer Modal
+  const [isTrimmerOpen, setIsTrimmerOpen] = useState(false);
+  const [currentVideoFile, setCurrentVideoFile] = useState<File | null>(null);
+  const [trimTimes, setTrimTimes] = useState<{ startTime: number, endTime: number } | null>(null);
+  const [pendingFilesQueue, setPendingFilesQueue] = useState<File[]>([]);
+
 
   // Vereinfachte Authentifizierungs-Prüfung
   useEffect(() => {
@@ -143,6 +151,16 @@ export default function UploadPage() {
     checkUntaggedVideos()
   }, [])
 
+  useEffect(() => {
+    // Wenn das Modal geschlossen wird und eine Datei in der Warteschlange ist, öffne das Modal für die nächste Datei
+    if (!isTrimmerOpen && pendingFilesQueue.length > 0) {
+      const nextFile = pendingFilesQueue[0];
+      setPendingFilesQueue(prev => prev.slice(1));
+      setCurrentVideoFile(nextFile);
+      setIsTrimmerOpen(true);
+    }
+  }, [isTrimmerOpen, pendingFilesQueue]);
+
   // Funktion zum Holen der signierten URL (Definition hier sicherstellen)
   const getSignedUrlForKey = useCallback(async (key: string, videoId: string) => {
     if (!key || key === 'pending') return;
@@ -173,137 +191,145 @@ export default function UploadPage() {
     if (videoFiles.length === 0) {
       return;
     }
+    
+    // Füge die hochgeladenen Dateien zur Warteschlange hinzu
+    setPendingFilesQueue(prev => [...prev, ...videoFiles]);
 
+  }, []); 
+
+  // Diese Funktion wird aufgerufen, wenn der Trimmer bestätigt wird
+  const handleTrimAndUpload = async (startTime: number, endTime: number) => {
+    if (!currentVideoFile) return;
+
+    const file = currentVideoFile;
     setIsUploading(true);
-
-    const uploadPromises = videoFiles.map(async (file) => {
-      const videoId = crypto.randomUUID(); 
-      const tempUrl = URL.createObjectURL(file); 
+    
+    const videoId = crypto.randomUUID(); 
+    const tempUrl = URL.createObjectURL(file); 
       
-      // Limit auf 150MB für Video-Uploads
-      const MAX_FILE_SIZE = 150 * 1024 * 1024; // 150MB
-      if (file.size > MAX_FILE_SIZE) {
-        setError(`Datei ${file.name} ist zu groß. Maximale Größe ist 150MB.`)
-        URL.revokeObjectURL(tempUrl);
-        return
+    // Limit auf 150MB für Video-Uploads
+    const MAX_FILE_SIZE = 150 * 1024 * 1024; // 150MB
+    if (file.size > MAX_FILE_SIZE) {
+      setError(`Datei ${file.name} ist zu groß. Maximale Größe ist 150MB.`)
+      URL.revokeObjectURL(tempUrl);
+      setIsUploading(false);
+      return
+    }
+    
+    setUploadProgress(prev => ({ ...prev, [videoId]: 0 }))
+    
+    try {
+      // 1. Hole einen presigned URL von der API
+      console.log(`Getting presigned URL for file: ${file.name} (${file.size} bytes)`)
+      const uploadUrlResponse = await fetch('/api/get-upload-url', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          fileName: file.name,
+          contentType: file.type,
+          folder: 'uploads' // Videos werden immer noch in 'uploads' gespeichert
+        })
+      })
+      
+      if (!uploadUrlResponse.ok) {
+        throw new Error('Failed to get upload URL')
       }
       
-      setUploadProgress(prev => ({ ...prev, [videoId]: 0 }))
+      const { uploadUrl, fileUrl, key } = await uploadUrlResponse.json()
       
-      try {
-        // 1. Hole einen presigned URL von der API
-        console.log(`Getting presigned URL for file: ${file.name} (${file.size} bytes)`)
-        const uploadUrlResponse = await fetch('/api/get-upload-url', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            fileName: file.name,
-            contentType: file.type,
-            folder: 'uploads'
-          })
-        })
-        
-        if (!uploadUrlResponse.ok) {
-          throw new Error('Failed to get upload URL')
+      // 2. Lade die Datei direkt zu S3 hoch mit Progress-Tracking
+      console.log(`Uploading file directly to S3: ${uploadUrl}`)
+      
+      const xhr = new XMLHttpRequest()
+      xhr.open('PUT', uploadUrl)
+      xhr.setRequestHeader('Content-Type', file.type)
+      
+      // Progress-Tracking
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable) {
+          const percentComplete = Math.round((event.loaded / event.total) * 100)
+          setUploadProgress(prev => ({ ...prev, [videoId]: percentComplete }))
         }
-        
-        const { uploadUrl, fileUrl, key } = await uploadUrlResponse.json()
-        
-        // 2. Lade die Datei direkt zu S3 hoch mit Progress-Tracking
-        console.log(`Uploading file directly to S3: ${uploadUrl}`)
-        
-        const xhr = new XMLHttpRequest()
-        xhr.open('PUT', uploadUrl)
-        xhr.setRequestHeader('Content-Type', file.type)
-        
-        // Progress-Tracking
-        xhr.upload.onprogress = (event) => {
-          if (event.lengthComputable) {
-            const percentComplete = Math.round((event.loaded / event.total) * 100)
-            setUploadProgress(prev => ({ ...prev, [videoId]: percentComplete }))
-          }
-        }
-        
-        // Promise für den Upload
-        const uploadPromise = new Promise<void>((resolve, reject) => {
-          xhr.onload = () => {
-            if (xhr.status === 200) {
-              resolve()
-            } else {
-              reject(new Error(`Upload failed with status: ${xhr.status}`))
-            }
-          }
-          xhr.onerror = () => reject(new Error('Upload failed'))
-          xhr.onabort = () => reject(new Error('Upload aborted'))
-        })
-        
-        // Datei senden
-        xhr.send(file)
-        await uploadPromise
-        
-        // 3. Send video metadata to backend API
-        const metadataResponse = await fetch('/api/upload-video', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ videoId, name: file.name, size: file.size, type: file.type, key, url: fileUrl, tags: [] }),
-        });
-        if (!metadataResponse.ok) {
-            const errorData = await metadataResponse.json();
-            throw new Error(errorData.error || 'Failed to save video metadata');
-        }
-        const metadataData = await metadataResponse.json();
-        console.log('Upload completed - Raw API Response Data:', metadataData);
-
-        // **** KORREKTUR: Prüfe direkt auf metadataData.videoId ****
-        if (!metadataData || !metadataData.videoId) { 
-            console.error('Error: videoId is missing in the API response.', metadataData);
-            setError(`Failed to process metadata for ${file.name}. API response invalid.`);
-            setUploadProgress(prev => { const { [videoId]: _, ...rest } = prev; return rest; });
-            setUploadedVideos(prev => prev.filter(v => v.id !== videoId)); 
-            return; 
-        }
-
-        // Upload erfolgreich markieren (Progress entfernen)
-        setUploadProgress(prev => { 
-            const { [videoId]: _, ...rest } = prev; 
-            return rest; 
-        }); 
-        
-        // Neues Video-Objekt erstellen (Daten direkt aus metadataData)
-        const newVideo: UploadedVideo = {
-          id: metadataData.videoId,         // Direkt verwenden
-          name: file.name,                   // Name aus Originaldatei (API gibt keinen Namen zurück)
-          size: file.size,                   // Größe aus Originaldatei (API gibt keine Größe zurück)
-          type: file.type,                   // Typ aus Originaldatei (API gibt keinen Typ zurück)
-          url: '',                            // Wird durch getSignedUrlForKey gesetzt
-          tags: [],                          // Initial leere Tags (API gibt keine Tags zurück)
-          key: metadataData.key             // Key direkt verwenden
-        };
-        
-        // Video zur Liste hinzufügen
-        setUploadedVideos(prev => [newVideo, ...prev]);
-        
-        // Signierte URL holen und Tags setzen
-        if (newVideo.key) {
-            getSignedUrlForKey(newVideo.key, newVideo.id);
-        }
-        setTags(prev => ({ ...prev, [newVideo.id]: newVideo.tags })); 
-        
-      } catch (error) {
-        console.error('Upload error:', error)
-        setError(`Failed to upload ${file.name}: ${error instanceof Error ? error.message : 'Unknown error'}`)
-        setUploadProgress(prev => { const { [videoId]: _, ...rest } = prev; return rest; });
-        setUploadedVideos(prev => prev.filter(v => v.id !== videoId)); 
       }
       
-      URL.revokeObjectURL(tempUrl); 
-    });
+      // Promise für den Upload
+      const uploadPromise = new Promise<void>((resolve, reject) => {
+        xhr.onload = () => {
+          if (xhr.status === 200) {
+            resolve()
+          } else {
+            reject(new Error(`Upload failed with status: ${xhr.status}`))
+          }
+        }
+        xhr.onerror = () => reject(new Error('Upload failed'))
+        xhr.onabort = () => reject(new Error('Upload aborted'))
+      })
+      
+      // Datei senden
+      xhr.send(file)
+      await uploadPromise
+      
+      // 3. Send video metadata AND trim times to backend API
+      const metadataResponse = await fetch('/api/upload-video', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          videoId, 
+          name: file.name, 
+          size: file.size, 
+          type: file.type, 
+          key, 
+          url: fileUrl, 
+          tags: [],
+          trim: { startTime, endTime } // Sende die Trimm-Zeiten mit
+        }),
+      });
+      if (!metadataResponse.ok) {
+          const errorData = await metadataResponse.json();
+          throw new Error(errorData.error || 'Failed to save video metadata');
+      }
+      const metadataData = await metadataResponse.json();
+      console.log('Upload completed - Raw API Response Data:', metadataData);
 
-    await Promise.all(uploadPromises);
-    setIsUploading(false);
-  }, [getSignedUrlForKey]); 
+      // **** KORREKTUR: Prüfe direkt auf metadataData.videoId ****
+      if (!metadataData || !metadataData.videoId) { 
+          console.error('Error: videoId is missing in the API response.', metadataData);
+          setError(`Failed to process metadata for ${file.name}. API response invalid.`);
+          setUploadProgress(prev => { const { [videoId]: _, ...rest } = prev; return rest; });
+          return; 
+      }
+
+      // Upload erfolgreich markieren (Progress entfernen)
+      setUploadProgress(prev => { 
+          const { [videoId]: _, ...rest } = prev; 
+          return rest; 
+      }); 
+      
+      // Zeige temporär einen "Wird geschnitten..." Status
+      const newVideo: UploadedVideo = {
+        id: metadataData.videoId,
+        name: file.name,
+        size: file.size,
+        type: 'processing', // Spezieller Typ für den Trimm-Status
+        url: '',
+        tags: [],
+        key: metadataData.key
+      };
+      
+      // Video zur Liste hinzufügen
+      setUploadedVideos(prev => [newVideo, ...prev]);
+      
+    } catch (error) {
+      console.error('Upload error:', error)
+      setError(`Failed to upload ${file.name}: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      setUploadProgress(prev => { const { [videoId]: _, ...rest } = prev; return rest; });
+    } finally {
+      setIsUploading(false);
+      URL.revokeObjectURL(tempUrl);
+    }
+  };
 
   // Tag management functions
   const handleTagChange = (videoId: string, value: string) => {
@@ -448,6 +474,22 @@ export default function UploadPage() {
 
   return (
     <main className="container py-12 md:py-20">
+      {/* Trimmer Modal */}
+      {currentVideoFile && (
+        <VideoTrimmerModal
+          isOpen={isTrimmerOpen}
+          onClose={() => {
+            setIsTrimmerOpen(false);
+            setCurrentVideoFile(null);
+          }}
+          videoFile={currentVideoFile}
+          onTrim={(startTime, endTime) => {
+            handleTrimAndUpload(startTime, endTime);
+            setIsTrimmerOpen(false); // Schließe das Modal nach Bestätigung
+          }}
+        />
+      )}
+
       <div className="max-w-6xl mx-auto">
         <h1 className="text-3xl font-bold tracking-tight sm:text-4xl bg-gradient-to-r from-white to-white/80 bg-clip-text text-transparent">
           Upload Video Clips
